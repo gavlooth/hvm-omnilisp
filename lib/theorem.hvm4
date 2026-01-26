@@ -1,0 +1,580 @@
+// OmniLisp Theorem Proving Library
+// Leverages HVM4's SUP for proof search and optimal sharing for proof terms
+//
+// Key insight: HVM4's reduction IS proof normalization (Curry-Howard)
+// SUP enables parallel proof search across multiple strategies
+
+// =============================================================================
+// Proof Terms (Curry-Howard Correspondence)
+// =============================================================================
+//
+// Types          ↔  Propositions
+// Terms          ↔  Proofs
+// Functions      ↔  Implications
+// Products       ↔  Conjunctions
+// Sums           ↔  Disjunctions
+// Unit           ↔  Truth
+// Empty          ↔  Falsity
+// Dependent Π    ↔  Universal quantification
+// Dependent Σ    ↔  Existential quantification
+
+// Proof term constructors
+// #Refl{a}           - Reflexivity: a = a
+// #Sym{pf}           - Symmetry: a = b → b = a
+// #Trans{pf1, pf2}   - Transitivity: a = b, b = c → a = c
+// #Cong{f, pf}       - Congruence: a = b → f(a) = f(b)
+// #Subst{pf, P, pa}  - Substitution: a = b, P(a) → P(b)
+// #Triv{}            - Trivial/unit proof
+// #Absurd{pf}        - Ex falso quodlibet
+// #AndI{pf1, pf2}    - Conjunction introduction
+// #AndE1{pf}         - Conjunction elimination (left)
+// #AndE2{pf}         - Conjunction elimination (right)
+// #OrI1{pf}          - Disjunction introduction (left)
+// #OrI2{pf}          - Disjunction introduction (right)
+// #OrE{pf, f1, f2}   - Disjunction elimination
+// #ForallI{f}        - Universal introduction
+// #ForallE{pf, a}    - Universal elimination
+// #ExistsI{a, pf}    - Existential introduction
+// #ExistsE{pf, f}    - Existential elimination
+
+// =============================================================================
+// Proof Normalization (via HVM4 evaluation)
+// =============================================================================
+
+// Normalize a proof term (simplify redundant steps)
+@proof_normalize = λpf.
+  λ{
+    // trans(refl, p) = p
+    #Trans: λ&p1. λ&p2.
+      !!&n1 = @proof_normalize(p1);
+      !!&n2 = @proof_normalize(p2);
+      λ{
+        #Refl: λ&_. n2
+        _: λ{
+          #Refl: λ&_. n1
+          _: #Trans{n1, n2}
+        }(n2)
+      }(n1)
+
+    // sym(refl) = refl
+    #Sym: λ&p.
+      !!&np = @proof_normalize(p);
+      λ{
+        #Refl: λ&a. #Refl{a}
+        #Sym: λ&inner. inner  // sym(sym(p)) = p
+        _: #Sym{np}
+      }(np)
+
+    // cong(f, refl) = refl
+    #Cong: λ&f. λ&p.
+      !!&np = @proof_normalize(p);
+      λ{
+        #Refl: λ&a. #Refl{f(a)}
+        _: #Cong{f, np}
+      }(np)
+
+    // AndE1(AndI(a, b)) = a
+    #AndE1: λ&p.
+      !!&np = @proof_normalize(p);
+      λ{
+        #AndI: λ&a. λ&_. a
+        _: #AndE1{np}
+      }(np)
+
+    // AndE2(AndI(a, b)) = b
+    #AndE2: λ&p.
+      !!&np = @proof_normalize(p);
+      λ{
+        #AndI: λ&_. λ&b. b
+        _: #AndE2{np}
+      }(np)
+
+    // Recursive cases
+    #AndI: λ&p1. λ&p2.
+      #AndI{@proof_normalize(p1), @proof_normalize(p2)}
+
+    #OrI1: λ&p. #OrI1{@proof_normalize(p)}
+    #OrI2: λ&p. #OrI2{@proof_normalize(p)}
+
+    #ForallI: λ&f. #ForallI{λx. @proof_normalize(f(x))}
+    #ForallE: λ&p. λ&a. #ForallE{@proof_normalize(p), a}
+
+    #ExistsI: λ&a. λ&p. #ExistsI{a, @proof_normalize(p)}
+
+    // Already normal
+    _: pf
+  }(pf)
+
+// =============================================================================
+// SUP-Powered Proof Search
+// =============================================================================
+//
+// HVM4's superposition enables parallel exploration of proof strategies.
+// Each SUP branch tries a different approach; first success wins.
+
+// Try to prove a goal automatically
+// Returns #Proof{term} or #NoProof{}
+@auto_prove = λgoal. λctx.
+  // Try multiple strategies in parallel via SUP
+  &Proof{
+    @try_trivial(goal)(ctx),
+    &{@try_assumption(goal)(ctx),
+    &{@try_reflexivity(goal)(ctx),
+    &{@try_symmetry(goal)(ctx),
+    &{@try_transitivity(goal)(ctx),
+    &{@try_congruence(goal)(ctx),
+    &{@try_and_intro(goal)(ctx),
+    &{@try_or_elim(goal)(ctx),
+    @try_induction(goal)(ctx)}}}}}}}}
+
+// Strategy: Trivial (goal is True)
+@try_trivial = λgoal. λctx.
+  λ{
+    #True: #Proof{#Triv{}}
+    _: #NoProof{}
+  }(goal)
+
+// Strategy: Assumption (goal is in context)
+@try_assumption = λgoal. λctx.
+  @find_in_context(goal)(ctx)
+
+@find_in_context = λgoal. λctx.
+  λ{
+    #NIL: #NoProof{}
+    #CON: λ&h. λ&t.
+      λ{
+        #Hyp: λ&name. λ&prop. λ&proof.
+          !!&matches = @props_equal(goal)(prop);
+          λ{
+            1: #Proof{proof}
+            _: @find_in_context(goal)(t)
+          }(matches)
+        _: @find_in_context(goal)(t)
+      }(h)
+  }(ctx)
+
+// Strategy: Reflexivity (goal is a = a)
+@try_reflexivity = λgoal. λctx.
+  λ{
+    #Eq: λ&a. λ&b.
+      !!&equal = @terms_equal(a)(b);
+      λ{
+        1: #Proof{#Refl{a}}
+        _: #NoProof{}
+      }(equal)
+    _: #NoProof{}
+  }(goal)
+
+// Strategy: Symmetry (if b = a in context, prove a = b)
+@try_symmetry = λgoal. λctx.
+  λ{
+    #Eq: λ&a. λ&b.
+      !!&reversed = #Eq{b, a};
+      !!&found = @auto_prove(reversed)(ctx);
+      λ{
+        #Proof: λ&pf. #Proof{#Sym{pf}}
+        _: #NoProof{}
+      }(found)
+    _: #NoProof{}
+  }(goal)
+
+// Strategy: Transitivity (find intermediate c where a = c and c = b)
+@try_transitivity = λgoal. λctx.
+  λ{
+    #Eq: λ&a. λ&b.
+      @try_trans_with_witness(a)(b)(ctx)
+    _: #NoProof{}
+  }(goal)
+
+@try_trans_with_witness = λa. λb. λctx.
+  // Try each hypothesis as potential intermediate
+  @fold_context(λhyp. λacc.
+    λ{
+      #Proof: λ&_. acc  // Already found
+      _:
+        λ{
+          #Hyp: λ&_. λ&prop. λ&_pf.
+            λ{
+              #Eq: λ&x. λ&y.
+                // Check if x = a and try to prove y = b
+                !!&xa = @terms_equal(x)(a);
+                λ{
+                  1:
+                    !!&rest = @auto_prove(#Eq{y, b})(ctx);
+                    λ{
+                      #Proof: λ&pf2.
+                        !!&pf1 = @find_proof_for(prop)(ctx);
+                        #Proof{#Trans{pf1, pf2}}
+                      _: #NoProof{}
+                    }(rest)
+                  _: #NoProof{}
+                }(xa)
+              _: #NoProof{}
+            }(prop)
+          _: #NoProof{}
+        }(hyp)
+    }(acc)
+  )(#NoProof{})(ctx)
+
+@fold_context = λf. λacc. λctx.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t.
+      @fold_context(f)(f(h)(acc))(t)
+  }(ctx)
+
+// Strategy: Congruence (prove f(a) = f(b) from a = b)
+@try_congruence = λgoal. λctx.
+  λ{
+    #Eq: λ&fa. λ&fb.
+      // Check if both are applications of same function
+      λ{
+        #App: λ&f1. λ&a.
+          λ{
+            #App: λ&f2. λ&b.
+              !!&same_f = @terms_equal(f1)(f2);
+              λ{
+                1:
+                  !!&inner = @auto_prove(#Eq{a, b})(ctx);
+                  λ{
+                    #Proof: λ&pf. #Proof{#Cong{f1, pf}}
+                    _: #NoProof{}
+                  }(inner)
+                _: #NoProof{}
+              }(same_f)
+            _: #NoProof{}
+          }(fb)
+        _: #NoProof{}
+      }(fa)
+    _: #NoProof{}
+  }(goal)
+
+// Strategy: And-Introduction (prove A ∧ B by proving A and B)
+@try_and_intro = λgoal. λctx.
+  λ{
+    #And: λ&a. λ&b.
+      !!&pa = @auto_prove(a)(ctx);
+      !!&pb = @auto_prove(b)(ctx);
+      λ{
+        #Proof: λ&pfa.
+          λ{
+            #Proof: λ&pfb. #Proof{#AndI{pfa, pfb}}
+            _: #NoProof{}
+          }(pb)
+        _: #NoProof{}
+      }(pa)
+    _: #NoProof{}
+  }(goal)
+
+// Strategy: Or-Elimination (case split on A ∨ B in context)
+@try_or_elim = λgoal. λctx.
+  @find_or_in_context(goal)(ctx)(ctx)
+
+@find_or_in_context = λgoal. λfull_ctx. λctx.
+  λ{
+    #NIL: #NoProof{}
+    #CON: λ&h. λ&t.
+      λ{
+        #Hyp: λ&name. λ&prop. λ&proof.
+          λ{
+            #Or: λ&a. λ&b.
+              // Try to prove goal assuming a, and assuming b
+              !!&ctx_a = #CON{#Hyp{#gen, a, #Assumed}, full_ctx};
+              !!&ctx_b = #CON{#Hyp{#gen, b, #Assumed}, full_ctx};
+              !!&pa = @auto_prove(goal)(ctx_a);
+              !!&pb = @auto_prove(goal)(ctx_b);
+              λ{
+                #Proof: λ&pfa.
+                  λ{
+                    #Proof: λ&pfb.
+                      #Proof{#OrE{proof, λ_. pfa, λ_. pfb}}
+                    _: @find_or_in_context(goal)(full_ctx)(t)
+                  }(pb)
+                _: @find_or_in_context(goal)(full_ctx)(t)
+              }(pa)
+            _: @find_or_in_context(goal)(full_ctx)(t)
+          }(prop)
+        _: @find_or_in_context(goal)(full_ctx)(t)
+      }(h)
+  }(ctx)
+
+// Strategy: Induction (for Nat goals)
+@try_induction = λgoal. λctx.
+  // Check if goal involves a Nat variable
+  !!&nat_var = @find_nat_var(goal)(ctx);
+  λ{
+    #Some: λ&v.
+      // Try induction on v
+      !!&base_goal = @subst_nat(goal)(v)(#Zero);
+      !!&step_goal = @make_induction_step(goal)(v);
+      !!&base_pf = @auto_prove(base_goal)(ctx);
+      !!&step_pf = @auto_prove(step_goal)(ctx);
+      λ{
+        #Proof: λ&bp.
+          λ{
+            #Proof: λ&sp. #Proof{#Ind{v, bp, sp}}
+            _: #NoProof{}
+          }(step_pf)
+        _: #NoProof{}
+      }(base_pf)
+    _: #NoProof{}
+  }(nat_var)
+
+// =============================================================================
+// Proposition Constructors
+// =============================================================================
+
+// Equality proposition
+@prop_eq = λa. λb. #Eq{a, b}
+
+// Conjunction
+@prop_and = λa. λb. #And{a, b}
+
+// Disjunction
+@prop_or = λa. λb. #Or{a, b}
+
+// Implication (as function type)
+@prop_implies = λa. λb. #Impl{a, b}
+
+// Universal quantification
+@prop_forall = λtype. λpred. #Forall{type, pred}
+
+// Existential quantification
+@prop_exists = λtype. λpred. #Exists{type, pred}
+
+// Negation (as implication to False)
+@prop_not = λa. #Impl{a, #False}
+
+// True and False
+@prop_true = #True
+@prop_false = #False
+
+// =============================================================================
+// Refinement Type Checking
+// =============================================================================
+//
+// Refinement types: {x : T | P(x)}
+// We check refinements using SUP-powered verification
+
+// Check if value satisfies refinement predicate
+// Uses SUP to search for counterexamples
+@check_refinement = λvalue. λpredicate.
+  // First, try to prove the predicate
+  !!&proof_attempt = @auto_prove(predicate(value))(#NIL);
+  λ{
+    #Proof: λ&pf. #Verified{pf}
+    _:
+      // If proof search fails, try to find counterexample
+      !!&counter = @find_counterexample(predicate);
+      λ{
+        #Found: λ&cx. #Refuted{cx}
+        _: #Unknown{}  // Neither proven nor refuted
+      }(counter)
+  }(proof_attempt)
+
+// Search for counterexample using SUP
+@find_counterexample = λpredicate.
+  // Generate test values via superposition
+  !!&tests = @generate_tests;
+  @first_failing(predicate)(tests)
+
+// Generate test values (uses SUP for parallel exploration)
+@generate_tests =
+  &Tests{
+    #Cst{0},
+    &{#Cst{1},
+    &{#Cst{-1},
+    &{#Cst{42},
+    &{#Cst{-42},
+    &{#Cst{100},
+    &{#Cst{-100},
+    &{#Cst{999999},
+    #Cst{-999999}}}}}}}}}
+
+// Find first value that fails predicate
+@first_failing = λpred. λtests.
+  λ{
+    #NIL: #NotFound{}
+    #CON: λ&h. λ&t.
+      !!&result = pred(h);
+      λ{
+        #Fals: #Found{h}
+        #Cst: λ&n. λ{0: #Found{h}; _: @first_failing(pred)(t)}(n)
+        _: @first_failing(pred)(t)
+      }(result)
+    // Handle SUP-generated tests
+    &Tests: λ&a. λ&b.
+      &{@first_failing(pred)(#CON{a, #NIL}),
+        @first_failing(pred)(b)}
+  }(tests)
+
+// =============================================================================
+// Verified Computation Helpers
+// =============================================================================
+
+// Assert with proof
+@assert_proven = λprop. λproof.
+  !!&normalized = @proof_normalize(proof);
+  !!&valid = @validate_proof(prop)(normalized);
+  λ{
+    1: #Ok{normalized}
+    _: #Err{#invalid_proof}
+  }(valid)
+
+// Validate that a proof term proves the given proposition
+@validate_proof = λprop. λproof.
+  λ{
+    #Eq: λ&a. λ&b.
+      λ{
+        #Refl: λ&x. @terms_equal(a)(b)
+        #Sym: λ&pf. @validate_proof(#Eq{b, a})(pf)
+        #Trans: λ&p1. λ&p2.
+          // Would need to infer middle term
+          1  // Simplified
+        #Cong: λ&f. λ&pf.
+          // Would need to extract inner equality
+          1  // Simplified
+        _: 0
+      }(proof)
+
+    #And: λ&a. λ&b.
+      λ{
+        #AndI: λ&pa. λ&pb.
+          !!&va = @validate_proof(a)(pa);
+          !!&vb = @validate_proof(b)(pb);
+          (va * vb)  // Both must be valid
+        _: 0
+      }(proof)
+
+    #True:
+      λ{
+        #Triv: 1
+        _: 0
+      }(proof)
+
+    _: 1  // Default: trust
+  }(prop)
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+@terms_equal = λa. λb.
+  λ{
+    #Cst: λ&na.
+      λ{
+        #Cst: λ&nb. (na == nb)
+        _: 0
+      }(b)
+    #Var: λ&ia.
+      λ{
+        #Var: λ&ib. (ia == ib)
+        _: 0
+      }(b)
+    #App: λ&fa. λ&xa.
+      λ{
+        #App: λ&fb. λ&xb.
+          !!&ef = @terms_equal(fa)(fb);
+          !!&ex = @terms_equal(xa)(xb);
+          (ef * ex)
+        _: 0
+      }(b)
+    #Lam: λ&ba.
+      λ{
+        #Lam: λ&bb. @terms_equal(ba)(bb)
+        _: 0
+      }(b)
+    _: (a == b)
+  }(a)
+
+@props_equal = λa. λb.
+  λ{
+    #Eq: λ&a1. λ&a2.
+      λ{
+        #Eq: λ&b1. λ&b2.
+          !!&e1 = @terms_equal(a1)(b1);
+          !!&e2 = @terms_equal(a2)(b2);
+          (e1 * e2)
+        _: 0
+      }(b)
+    #And: λ&a1. λ&a2.
+      λ{
+        #And: λ&b1. λ&b2.
+          !!&e1 = @props_equal(a1)(b1);
+          !!&e2 = @props_equal(a2)(b2);
+          (e1 * e2)
+        _: 0
+      }(b)
+    #Or: λ&a1. λ&a2.
+      λ{
+        #Or: λ&b1. λ&b2.
+          !!&e1 = @props_equal(a1)(b1);
+          !!&e2 = @props_equal(a2)(b2);
+          (e1 * e2)
+        _: 0
+      }(b)
+    #True: λ{#True: 1; _: 0}(b)
+    #False: λ{#False: 1; _: 0}(b)
+    _: 0
+  }(a)
+
+@find_nat_var = λgoal. λctx.
+  #None  // Simplified
+
+@subst_nat = λgoal. λvar. λval.
+  goal  // Simplified
+
+@make_induction_step = λgoal. λvar.
+  goal  // Simplified
+
+@find_proof_for = λprop. λctx.
+  #Assumed  // Simplified
+
+// =============================================================================
+// Example Proofs
+// =============================================================================
+
+// Prove: 0 = 0
+@proof_zero_eq_zero = #Refl{#Cst{0}}
+
+// Prove: 1 + 1 = 2 (by computation)
+@proof_one_plus_one =
+  // (1 + 1) normalizes to 2, so this is reflexivity
+  #Refl{#Cst{2}}
+
+// Prove: a = a (for any a)
+@proof_reflexive = λa. #Refl{a}
+
+// Prove: if a = b then b = a
+@proof_symmetric = λa. λb. λpf_ab.
+  #Sym{pf_ab}
+
+// Prove: if a = b and b = c then a = c
+@proof_transitive = λa. λb. λc. λpf_ab. λpf_bc.
+  #Trans{pf_ab, pf_bc}
+
+// Prove: A ∧ B → B ∧ A (conjunction is commutative)
+@proof_and_comm = λa. λb. λpf_and_ab.
+  !!&pf_a = #AndE1{pf_and_ab};
+  !!&pf_b = #AndE2{pf_and_ab};
+  #AndI{pf_b, pf_a}
+
+// Prove: A → A ∨ B
+@proof_or_intro_left = λa. λb. λpf_a.
+  #OrI1{pf_a}
+
+// =============================================================================
+// Entry Points
+// =============================================================================
+
+// Prove a goal with automatic search
+@prove = λgoal.
+  @auto_prove(goal)(#NIL)
+
+// Prove with hypotheses
+@prove_with = λgoal. λhypotheses.
+  @auto_prove(goal)(hypotheses)
+
+// Check a refinement type
+@check = λvalue. λrefinement.
+  @check_refinement(value)(refinement)

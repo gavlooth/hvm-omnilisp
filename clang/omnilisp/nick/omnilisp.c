@@ -281,6 +281,30 @@ static u32 OMNI_NAM_EFF;   // Effect declaration
 static u32 OMNI_NAM_ERWS;  // Effect row signature: #ERws{effects}
                            // e.g., ^:effects [{Error} {Ask}] → #ERws{[Error, Ask]}
 
+// Proof-as-Effect system (contract verification)
+// These use the algebraic effects system for proof obligations
+static u32 OMNI_NAM_REQR;  // Require effect (precondition): #Reqr{predicate}
+                           // ^:require P or (require P) → (perform require P)
+static u32 OMNI_NAM_ENSR;  // Ensure effect (postcondition): #Ensr{predicate}
+                           // ^:ensure Q or (ensure Q) → (perform ensure Q)
+static u32 OMNI_NAM_PROV;  // Prove effect: #Prov{goal} - request proof from handler
+
+// Proof terms (Curry-Howard correspondence)
+// Types ↔ Propositions, Terms ↔ Proofs
+static u32 OMNI_NAM_PRRF;  // Proof reflexivity: #PrRf{a} - proof that a = a
+static u32 OMNI_NAM_PRSM;  // Proof symmetry: #PrSm{pf} - if pf : a = b then b = a
+static u32 OMNI_NAM_PRTR;  // Proof transitivity: #PrTr{pf1, pf2} - a=b, b=c → a=c
+static u32 OMNI_NAM_PRCG;  // Proof congruence: #PrCg{f, pf} - a=b → f(a)=f(b)
+static u32 OMNI_NAM_PRJL;  // J eliminator: #PrJl{motive, base, pf} - equality elim
+static u32 OMNI_NAM_PRQD;  // QED marker: #PrQd{proof_term} - completed proof
+static u32 OMNI_NAM_PRBY;  // Proof by: #PrBy{tactic} - proof via tactic application
+static u32 OMNI_NAM_PRSK;  // Proof sketch: #PrSk{hint} - incomplete proof (hole)
+
+// Proof search (SUP-powered parallel exploration)
+static u32 OMNI_NAM_PRSP;  // Proof superposition: #PrSp{branches} - parallel search
+static u32 OMNI_NAM_PRFL;  // Proof failure: #PrFl{reason} - search branch failed
+static u32 OMNI_NAM_PRSC;  // Proof success: #PrSc{proof} - search found proof
+
 // Concurrency
 static u32 OMNI_NAM_FIBR;  // Fiber: #Fibr{state, cont, mailbox}
 static u32 OMNI_NAM_CHAN;  // Channel: #Chan{buf, cap, snd, rcv}
@@ -693,6 +717,26 @@ fn void omni_names_init(void) {
   OMNI_NAM_HDEF = omni_nick("HDef");
   OMNI_NAM_EFF  = omni_nick("Eff");
   OMNI_NAM_ERWS = omni_nick("ERws");  // Effect row signature
+
+  // Proof-as-Effect system
+  OMNI_NAM_REQR = omni_nick("Reqr");  // Require (precondition)
+  OMNI_NAM_ENSR = omni_nick("Ensr");  // Ensure (postcondition)
+  OMNI_NAM_PROV = omni_nick("Prov");  // Prove (request proof)
+
+  // Proof terms
+  OMNI_NAM_PRRF = omni_nick("PrRf");  // Reflexivity
+  OMNI_NAM_PRSM = omni_nick("PrSm");  // Symmetry
+  OMNI_NAM_PRTR = omni_nick("PrTr");  // Transitivity
+  OMNI_NAM_PRCG = omni_nick("PrCg");  // Congruence
+  OMNI_NAM_PRJL = omni_nick("PrJl");  // J eliminator
+  OMNI_NAM_PRQD = omni_nick("PrQd");  // QED marker
+  OMNI_NAM_PRBY = omni_nick("PrBy");  // Proof by tactic
+  OMNI_NAM_PRSK = omni_nick("PrSk");  // Proof sketch (hole)
+
+  // Proof search
+  OMNI_NAM_PRSP = omni_nick("PrSp");  // Superposition (parallel)
+  OMNI_NAM_PRFL = omni_nick("PrFl");  // Failure
+  OMNI_NAM_PRSC = omni_nick("PrSc");  // Success
 
   // Concurrency
   OMNI_NAM_FIBR = omni_nick("Fibr");

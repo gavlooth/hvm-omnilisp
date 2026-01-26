@@ -1,0 +1,232 @@
+// Proof-as-Effect System Tests
+// Tests for contract verification via algebraic effects
+//
+// The proof system uses effects to express proof obligations:
+// - (perform require predicate) - precondition check
+// - (perform ensure predicate) - postcondition check
+// - (perform prove goal) - request automatic proof
+
+// =============================================================================
+// Test 1: Basic require effect
+// =============================================================================
+// (require P) performs the require effect with predicate P
+// Handler evaluates P and continues if true, errors if false
+
+@test_require_pass =
+  // Require with true predicate should succeed
+  @omni_with_proof_checking(@omni_menv_empty)(
+    #Do{#CON{
+      #Perf{#Sym{1374401}, #Cst{1}},  // (perform require true)
+      #CON{#Cst{42}, #NIL}
+    }}
+  )
+  // Expected: #Cst{42}
+
+@test_require_fail =
+  // Require with false predicate should fail
+  @omni_with_proof_checking(@omni_menv_empty)(
+    #Do{#CON{
+      #Perf{#Sym{1374401}, #Cst{0}},  // (perform require false)
+      #CON{#Cst{42}, #NIL}
+    }}
+  )
+  // Expected: #Err{#ContractViolation, ...}
+
+// =============================================================================
+// Test 2: Basic ensure effect
+// =============================================================================
+// (ensure Q) performs the ensure effect with predicate Q
+
+@test_ensure_pass =
+  // Ensure with true predicate should succeed
+  @omni_with_proof_checking(@omni_menv_empty)(
+    #Do{#CON{
+      #Perf{#Sym{575286}, #Cst{1}},  // (perform ensure true)
+      #CON{#Cst{99}, #NIL}
+    }}
+  )
+  // Expected: #Cst{99}
+
+@test_ensure_fail =
+  // Ensure with false predicate should fail
+  @omni_with_proof_checking(@omni_menv_empty)(
+    #Do{#CON{
+      #Perf{#Sym{575286}, #Cst{0}},  // (perform ensure false)
+      #CON{#Cst{99}, #NIL}
+    }}
+  )
+  // Expected: #Err{#ContractViolation, ...}
+
+// =============================================================================
+// Test 3: Truthiness checking
+// =============================================================================
+// @omni_truthy handles various value types
+
+@test_truthy_int_nonzero =
+  @omni_truthy(#Cst{42})
+  // Expected: 1
+
+@test_truthy_int_zero =
+  @omni_truthy(#Cst{0})
+  // Expected: 0
+
+@test_truthy_nil =
+  @omni_truthy(#NIL)
+  // Expected: 0
+
+@test_truthy_nothing =
+  @omni_truthy(#Noth{})
+  // Expected: 0
+
+@test_truthy_true =
+  @omni_truthy(#True{})
+  // Expected: 1
+
+@test_truthy_false =
+  @omni_truthy(#Fals{})
+  // Expected: 0
+
+@test_truthy_other =
+  @omni_truthy(#CON{#Cst{1}, #NIL})
+  // Expected: 1 (non-empty list is truthy)
+
+// =============================================================================
+// Test 4: Auto-prove for equality
+// =============================================================================
+// Auto-prover should find reflexivity proofs
+
+@test_auto_prove_refl =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Eql{#Cst{5}, #Cst{5}})(#NIL)
+  // Expected: #PrSc{#PrRf{#Cst{5}}}
+
+@test_auto_prove_neq =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Eql{#Cst{3}, #Cst{7}})(#NIL)
+  // Expected: #PrFl{...} (not equal)
+
+// =============================================================================
+// Test 5: Auto-prove for comparisons
+// =============================================================================
+
+@test_auto_prove_lt_pass =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Lt{#Cst{3}, #Cst{7}})(#NIL)
+  // Expected: #PrSc{#PrBy{#lt_check}}
+
+@test_auto_prove_lt_fail =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Lt{#Cst{7}, #Cst{3}})(#NIL)
+  // Expected: #PrFl{#lt_failed}
+
+@test_auto_prove_gt_pass =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Gt{#Cst{10}, #Cst{5}})(#NIL)
+  // Expected: #PrSc{#PrBy{#gt_check}}
+
+@test_auto_prove_le_pass =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Le{#Cst{5}, #Cst{5}})(#NIL)
+  // Expected: #PrSc{#PrBy{#le_check}}
+
+@test_auto_prove_ge_pass =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Ge{#Cst{7}, #Cst{7}})(#NIL)
+  // Expected: #PrSc{#PrBy{#ge_check}}
+
+// =============================================================================
+// Test 6: Auto-prove for logical connectives
+// =============================================================================
+
+@test_auto_prove_not_true =
+  @omni_auto_prove_predicate(@omni_menv_empty)(#Not{#Cst{0}})(#NIL)
+  // Expected: #PrSc{#PrBy{#not_check}}
+
+@test_auto_prove_and =
+  @omni_auto_prove_predicate(@omni_menv_empty)(
+    #And{#Cst{1}, #Cst{1}}
+  )(#NIL)
+  // Expected: #PrSc{#AndI{...}}
+
+@test_auto_prove_or_left =
+  @omni_auto_prove_predicate(@omni_menv_empty)(
+    #Or{#Cst{1}, #Cst{0}}
+  )(#NIL)
+  // Expected: #PrSc{#OrI1{...}}
+
+@test_auto_prove_or_right =
+  @omni_auto_prove_predicate(@omni_menv_empty)(
+    #Or{#Cst{0}, #Cst{1}}
+  )(#NIL)
+  // Expected: #PrSc{#OrI2{...}}
+
+// =============================================================================
+// Test 7: Proof handler with auto-prove
+// =============================================================================
+
+@test_auto_handler_simple =
+  @omni_with_auto_proof(@omni_menv_empty)(#NIL)(
+    #Do{#CON{
+      #Perf{#Sym{1374401}, #Lt{#Cst{1}, #Cst{10}}},  // (require (< 1 10))
+      #CON{#Cst{100}, #NIL}
+    }}
+  )
+  // Expected: #Cst{100} (predicate proved automatically)
+
+// =============================================================================
+// Test 8: Combined require and ensure
+// =============================================================================
+// Function with both precondition and postcondition
+
+@test_require_ensure_combined =
+  // Simulate: ^:require (> n 0) ^:ensure (>= result 0) (define abs [n] ...)
+  @omni_with_proof_checking(@omni_menv_empty)(
+    // Body wrapped with require/ensure:
+    // (do (perform require (> n 0))
+    //     (let [result (if (< n 0) (- 0 n) n)]
+    //       (do (perform ensure (>= result 0)) result)))
+    #Do{#CON{
+      #Perf{#Sym{1374401}, #Gt{#Cst{5}, #Cst{0}}},  // require n > 0
+      #CON{
+        #Let{
+          #If{#Lt{#Cst{5}, #Cst{0}}, #Sub{#Cst{0}, #Cst{5}}, #Cst{5}},  // if < 0 then -n else n
+          λresult.
+            #Do{#CON{
+              #Perf{#Sym{575286}, #Ge{result, #Cst{0}}},  // ensure result >= 0
+              #CON{result, #NIL}
+            }}
+        },
+        #NIL
+      }
+    }}
+  )
+  // Expected: #Cst{5}
+
+// =============================================================================
+// Test 9: Prove effect for explicit proof request
+// =============================================================================
+
+@test_prove_effect =
+  @omni_with_auto_proof(@omni_menv_empty)(#NIL)(
+    #Perf{#Sym{1378742}, #Eql{#Cst{42}, #Cst{42}}}  // (prove (= 42 42))
+  )
+  // Expected: Returns a proof term
+
+// =============================================================================
+// Run all tests
+// =============================================================================
+
+@main =
+  #Tests{
+    @test_truthy_int_nonzero,
+    @test_truthy_int_zero,
+    @test_truthy_nil,
+    @test_truthy_nothing,
+    @test_truthy_true,
+    @test_truthy_false,
+    @test_truthy_other,
+    @test_auto_prove_refl,
+    @test_auto_prove_neq,
+    @test_auto_prove_lt_pass,
+    @test_auto_prove_lt_fail,
+    @test_auto_prove_gt_pass,
+    @test_auto_prove_le_pass,
+    @test_auto_prove_ge_pass,
+    @test_auto_prove_not_true,
+    @test_auto_prove_and,
+    @test_auto_prove_or_left,
+    @test_auto_prove_or_right
+  }

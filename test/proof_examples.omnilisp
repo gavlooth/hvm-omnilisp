@@ -1,0 +1,176 @@
+;; OmniLisp Proof-as-Effect System Examples
+;; Contract-based programming with algebraic effects
+
+;; =============================================================================
+;; Example 1: Function with precondition (^:require)
+;; =============================================================================
+
+;; The divisor must be non-zero
+^:require (not (= y 0))
+(define divide [x {Int}] [y {Int}] {Int}
+  (/ x y))
+
+;; Multiple preconditions
+^:require (>= start 0)
+^:require (<= start end)
+(define substring [s {String}] [start {Int}] [end {Int}] {String}
+  (string-substr s start (- end start)))
+
+;; =============================================================================
+;; Example 2: Function with postcondition (^:ensure)
+;; =============================================================================
+
+;; Result is always non-negative
+^:ensure (>= result 0)
+(define abs [x {Int}] {Int}
+  (if (< x 0) (- 0 x) x))
+
+;; Result is always within bounds
+^:require (< n (length arr))
+^:ensure (not (= result nothing))
+(define safe-get [arr {Array T}] [n {Int}] {T}
+  (nth arr n))
+
+;; =============================================================================
+;; Example 3: Combined require and ensure
+;; =============================================================================
+
+;; Square root requires non-negative input, ensures non-negative output
+^:require (>= x 0)
+^:ensure (>= result 0)
+^:ensure (< (abs (- (* result result) x)) 0.0001)  ;; Approximation error bound
+(define sqrt-approx [x {Float}] {Float}
+  ;; Newton-Raphson implementation
+  (let loop [guess (/ x 2)]
+    (let [better (/ (+ guess (/ x guess)) 2)]
+      (if (< (abs (- better guess)) 0.0001)
+        better
+        (loop better)))))
+
+;; =============================================================================
+;; Example 4: Inline require/ensure within function body
+;; =============================================================================
+
+(define process-data [data {List Int}]
+  ;; Inline precondition check
+  (require (not (empty? data)))
+
+  (let [sorted (sort data)]
+    ;; Inline invariant check
+    (require (sorted? sorted))
+
+    (let [result (reduce + 0 sorted)]
+      ;; Inline postcondition
+      (ensure (>= result 0))
+      result)))
+
+;; =============================================================================
+;; Example 5: Using prove for explicit proof requests
+;; =============================================================================
+
+(define verified-append [xs {List T}] [ys {List T}] {List T}
+  (let [result (append xs ys)]
+    ;; Request proof that length is sum of input lengths
+    (prove (= (length result) (+ (length xs) (length ys))))
+    result))
+
+;; =============================================================================
+;; Example 6: Custom proof handlers
+;; =============================================================================
+
+;; Runtime checking mode (default)
+(define with-runtime-checks [body]
+  (handle body
+    (reqr [pred resume]
+      (if pred
+        (resume nothing)
+        (error "Precondition failed")))
+    (ensr [pred resume]
+      (if pred
+        (resume nothing)
+        (error "Postcondition failed")))))
+
+;; Logging mode (check but continue)
+(define with-proof-logging [body]
+  (handle body
+    (reqr [pred resume]
+      (when (not pred)
+        (println "WARNING: Precondition may be violated"))
+      (resume nothing))
+    (ensr [pred resume]
+      (when (not pred)
+        (println "WARNING: Postcondition may be violated"))
+      (resume nothing))))
+
+;; Testing mode (collect all checks)
+(define with-proof-collection [body]
+  (let [checks (ref '())]
+    (handle body
+      (reqr [pred resume]
+        (set! checks (cons {:type :require :pred pred :result pred} @checks))
+        (resume nothing))
+      (ensr [pred resume]
+        (set! checks (cons {:type :ensure :pred pred :result pred} @checks))
+        (resume nothing)))
+    @checks))
+
+;; =============================================================================
+;; Example 7: Integration with types
+;; =============================================================================
+
+;; Refinement-style usage: type + predicate
+^:require (integer? x)
+^:require (> x 0)
+(define factorial [x] {Int}
+  (if (= x 1)
+    1
+    (* x (factorial (- x 1)))))
+
+;; =============================================================================
+;; Example 8: Real-world example - Banking
+;; =============================================================================
+
+^:require (>= amount 0)
+^:require (>= (balance account) amount)
+^:ensure (= (balance result) (- (balance account) amount))
+(define withdraw [account {Account}] [amount {Int}] {Account}
+  (update-balance account (- (balance account) amount)))
+
+^:require (>= amount 0)
+^:ensure (= (balance result) (+ (balance account) amount))
+(define deposit [account {Account}] [amount {Int}] {Account}
+  (update-balance account (+ (balance account) amount)))
+
+^:require (>= (balance from) amount)
+^:ensure (= (+ (balance from-result) (balance to-result))
+            (+ (balance from) (balance to)))
+(define transfer [from {Account}] [to {Account}] [amount {Int}]
+  (let [from-new (withdraw from amount)]
+    (let [to-new (deposit to amount)]
+      [from-new to-new])))
+
+;; =============================================================================
+;; Example 9: Data structure invariants
+;; =============================================================================
+
+;; Binary search tree: left < root < right
+^:ensure (bst-valid? result)
+(define bst-insert [tree {BST T}] [value {T}] {BST T}
+  (match tree
+    [Empty]           (Node Empty value Empty)
+    [(Node l v r)]
+      (if (< value v)
+        (Node (bst-insert l value) v r)
+        (Node l v (bst-insert r value)))))
+
+;; Sorted list invariant
+^:require (sorted? xs)
+^:ensure (sorted? result)
+^:ensure (contains? result x)
+(define sorted-insert [xs {List Int}] [x {Int}] {List Int}
+  (match xs
+    [()]      (list x)
+    [(h .. t)]
+      (if (<= x h)
+        (cons x xs)
+        (cons h (sorted-insert t x)))))

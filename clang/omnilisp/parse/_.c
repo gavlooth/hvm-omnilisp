@@ -2292,6 +2292,73 @@ fn Term parse_omni_sexp(PState *s) {
       }
     }
 
+    // Parse ^:require precondition(s): ^:require predicate
+    // Multiple ^:require can be specified
+    // Desugars to (perform require predicate) at function entry
+    Term requires = omni_nil();
+    Term *requires_tail = &requires;
+    while (parse_peek(s) == '^') {
+      u32 saved_req_pos = s->pos;
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len) &&
+            omni_symbol_is(s, meta_start, meta_len, "require")) {
+          // Parse the predicate expression
+          Term predicate = parse_omni_expr(s);
+          // Create #Reqr{predicate} node
+          Term req = omni_ctr1(OMNI_NAM_REQR, predicate);
+          Term cell = omni_cons(req, omni_nil());
+          *requires_tail = cell;
+          requires_tail = &HEAP[term_val(cell) + 1];
+          omni_skip(s);
+        } else {
+          // Not ^:require, restore position and break
+          s->pos = saved_req_pos;
+          break;
+        }
+      } else {
+        // Not ^:something, restore position and break
+        s->pos = saved_req_pos;
+        break;
+      }
+    }
+
+    // Parse ^:ensure postcondition(s): ^:ensure predicate
+    // Multiple ^:ensure can be specified
+    // Desugars to (perform ensure predicate) wrapping the result
+    // Note: 'result' is bound to the function's return value in the predicate
+    Term ensures = omni_nil();
+    Term *ensures_tail = &ensures;
+    while (parse_peek(s) == '^') {
+      u32 saved_ens_pos = s->pos;
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len) &&
+            omni_symbol_is(s, meta_start, meta_len, "ensure")) {
+          // Parse the predicate expression
+          Term predicate = parse_omni_expr(s);
+          // Create #Ensr{predicate} node
+          Term ens = omni_ctr1(OMNI_NAM_ENSR, predicate);
+          Term cell = omni_cons(ens, omni_nil());
+          *ensures_tail = cell;
+          ensures_tail = &HEAP[term_val(cell) + 1];
+          omni_skip(s);
+        } else {
+          // Not ^:ensure, restore position and break
+          s->pos = saved_ens_pos;
+          break;
+        }
+      } else {
+        // Not ^:something, restore position and break
+        s->pos = saved_ens_pos;
+        break;
+      }
+    }
+
     // Push parameter bindings
     for (u32 i = 0; i < slot_count; i++) {
       omni_bind_push(slots[i].name_nick);
@@ -2304,6 +2371,86 @@ fn Term parse_omni_sexp(PState *s) {
 
     // Pop bindings
     omni_bind_pop(slot_count);
+
+    // Desugar ^:require and ^:ensure to effect calls
+    // ^:require P1 ^:require P2 ... body
+    // becomes: (do (perform require P1) (perform require P2) ... body)
+    if (term_ext(requires) != OMNI_NAM_NIL) {
+      // Build a do-block with all require performs followed by body
+      Term do_exprs = omni_nil();
+      Term *do_tail = &do_exprs;
+
+      // Add performs for each require
+      Term req_cur = requires;
+      while (term_ext(req_cur) != OMNI_NAM_NIL) {
+        // Extract #Reqr{predicate} from list
+        Term req_node = omni_ctr_arg(req_cur, 0);  // car
+        Term predicate = omni_ctr_arg(req_node, 0);  // predicate from #Reqr{predicate}
+
+        // Create: (perform require predicate)
+        Term require_tag = omni_sym(omni_nick("reqr"));
+        Term perform_require = omni_perform(require_tag, predicate);
+
+        Term cell = omni_cons(perform_require, omni_nil());
+        *do_tail = cell;
+        do_tail = &HEAP[term_val(cell) + 1];
+
+        req_cur = omni_ctr_arg(req_cur, 1);  // cdr
+      }
+
+      // Add body as last expression
+      Term cell = omni_cons(body, omni_nil());
+      *do_tail = cell;
+
+      // Wrap in do-block: #Do{exprs}
+      body = omni_ctr1(OMNI_NAM_DO, do_exprs);
+    }
+
+    // ^:ensure Q1 ^:ensure Q2 ... body
+    // becomes: (let [__result body] (do (perform ensure Q1) (perform ensure Q2) ... __result))
+    if (term_ext(ensures) != OMNI_NAM_NIL) {
+      // Push binding for __result
+      u32 result_nick = omni_nick("rslt");  // internal binding for result
+      omni_bind_push(result_nick);
+
+      // Build a do-block with all ensure performs followed by __result ref
+      Term do_exprs = omni_nil();
+      Term *do_tail = &do_exprs;
+
+      // Add performs for each ensure
+      Term ens_cur = ensures;
+      while (term_ext(ens_cur) != OMNI_NAM_NIL) {
+        // Extract #Ensr{predicate} from list
+        Term ens_node = omni_ctr_arg(ens_cur, 0);  // car
+        Term predicate = omni_ctr_arg(ens_node, 0);  // predicate from #Ensr{predicate}
+
+        // Create: (perform ensure predicate)
+        Term ensure_tag = omni_sym(omni_nick("ensr"));
+        Term perform_ensure = omni_perform(ensure_tag, predicate);
+
+        Term cell = omni_cons(perform_ensure, omni_nil());
+        *do_tail = cell;
+        do_tail = &HEAP[term_val(cell) + 1];
+
+        ens_cur = omni_ctr_arg(ens_cur, 1);  // cdr
+      }
+
+      // Add __result reference as last expression (de Bruijn index 0)
+      Term result_ref = omni_var(0);
+      Term cell = omni_cons(result_ref, omni_nil());
+      *do_tail = cell;
+
+      // do-block: #Do{exprs}
+      Term do_block = omni_ctr1(OMNI_NAM_DO, do_exprs);
+
+      // Pop the result binding
+      omni_bind_pop(1);
+
+      // Wrap in let: (let [__result body] do_block)
+      // #Let{body, lambda_over_do_block}
+      Term let_body = omni_lam(do_block);  // lambda wrapping do_block
+      body = omni_ctr2(OMNI_NAM_LET, body, let_body);
+    }
 
     // Wrap body in lambdas
     for (int i = (int)slot_count - 1; i >= 0; i--) {
@@ -4225,6 +4372,39 @@ fn Term parse_omni_sexp(PState *s) {
     Term body = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr3(OMNI_NAM_HTTP, method, omni_cons(url, omni_cons(headers, omni_cons(body, omni_nil()))));
+  }
+
+  // require: (require predicate) - inline precondition check
+  // Desugars to: (perform require predicate)
+  // Used for contract-based programming within function bodies
+  if (omni_symbol_is(s, sym_start, sym_len, "require")) {
+    Term predicate = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    // Create: (perform require predicate)
+    Term require_tag = omni_sym(omni_nick("reqr"));
+    return omni_perform(require_tag, predicate);
+  }
+
+  // ensure: (ensure predicate) - inline postcondition check
+  // Desugars to: (perform ensure predicate)
+  // Typically used at the end of function bodies
+  if (omni_symbol_is(s, sym_start, sym_len, "ensure")) {
+    Term predicate = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    // Create: (perform ensure predicate)
+    Term ensure_tag = omni_sym(omni_nick("ensr"));
+    return omni_perform(ensure_tag, predicate);
+  }
+
+  // prove: (prove goal) - request automatic proof from handler
+  // Desugars to: (perform prove goal)
+  // Used to request that the proof handler prove a goal
+  if (omni_symbol_is(s, sym_start, sym_len, "prove")) {
+    Term goal = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    // Create: (perform prove goal)
+    Term prove_tag = omni_sym(omni_nick("prov"));
+    return omni_perform(prove_tag, goal);
   }
 
   // perform: (perform effect-tag payload)
