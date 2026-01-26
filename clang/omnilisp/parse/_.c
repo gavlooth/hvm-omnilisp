@@ -3154,6 +3154,15 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_not(a);
   }
 
+  // Type predicates
+  // (type? value {Type}) - check if value has given type
+  if (omni_symbol_is(s, sym_start, sym_len, "type?")) {
+    Term value = parse_omni_expr(s);
+    Term type = parse_omni_type(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_TYCK, value, type);
+  }
+
   // List operations
   if (omni_symbol_is(s, sym_start, sym_len, "list")) {
     Term items = omni_nil();

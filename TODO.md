@@ -1,496 +1,457 @@
 # OmniLisp HVM4 Implementation TODO
 
-**Last Updated:** 2026-01-25
+**Last Updated:** 2026-01-26
 
 ---
 
-## Overview
+## Philosophy
 
-This document tracks the implementation progress of OmniLisp on HVM4. The goal is to port OmniLisp's semantics to HVM4 while leveraging HVM4's native parallelism and interaction net reduction.
+OmniLisp is built on a few core principles that distinguish it from other Lisps:
 
-### Completion Summary
+### Character Calculus
+| Character | Domain | Role | Example |
+|-----------|--------|------|---------|
+| `()` | Flow | Execution/evaluation | `(+ 1 2)` |
+| `[]` | Slot | Data/parameters (no eval) | `[x {Int}]` |
+| `{}` | Kind | Types/constraints | `{Int}`, `{List {Int}}` |
+| `^` | Meta | Metadata annotation | `^:mutable`, `^:ffi` |
+| `.` | Path | Navigation/access | `obj.field`, `arr.[0]` |
+| `#` | Reader | Dispatch/constructors | `#{}`, `#r"..."`, `#\newline` |
+
+### Match is Truth
+**All control flow desugars to `match`**. There is no separate `if`, `cond`, or `case` at the core level. These are syntactic conveniences that compile to pattern matching:
+
+```lisp
+;; if → match
+(if cond then else) → (match cond [true then] [false else])
+
+;; cond → match
+(cond [c1 r1] [c2 r2]) → (match true [_ & c1 r1] [_ & c2 r2])
+
+;; when/unless → match with Nothing
+(when test body) → (match test [false nothing] [_ body])
+```
+
+### No Exceptions
+OmniLisp uses **algebraic effects** instead of try/catch. Effects are first-class, composable, and don't break referential transparency:
+
+```lisp
+(handle
+  (perform fail "something went wrong")
+  (fail [msg resume] (println msg)))
+```
+
+### Named Let for Recursion
+No `loop/recur`. Use named let for tail-recursive loops:
+
+```lisp
+(let loop [[i 0] [acc 0]]
+  (if (>= i 10)
+      acc
+      (loop (+ i 1) (+ acc i))))
+```
+
+### Three Collection Types
+- **List** `'(1 2 3)` - Linked list, optimal for head operations
+- **Array** `[1 2 3]` - Indexed access, optimal for random access
+- **Dict** `#{"key" val}` - Key-value mapping
+
+Tuples are deprecated - use Arrays.
+
+---
+
+## Completion Summary
 
 ```
-Parser (Pika):        ████████████████████ 95%
-Core Evaluator:       ████████████████░░░░ 80%
-Type System:          ████░░░░░░░░░░░░░░░░ 20%
-Standard Library:     ████████░░░░░░░░░░░░ 40%
+Character Calculus:   ████████████████████ 100%  (parsing)
+Match (core):         █████████████████░░░ 85%
+Type System:          ██████████░░░░░░░░░░ 50%
+Multiple Dispatch:    ██████████████████░░ 90%
+Algebraic Effects:    █████████████████░░░ 85%
+Macro System:         ████████████░░░░░░░░ 60%
+Modules:              ███████████████████░ 95%
+Standard Library:     █████████████████░░░ 85%
 FFI:                  ████████████░░░░░░░░ 60%
+REPL & Editor:        ████████████████████ 100%
 ─────────────────────────────────────────────
-Overall:              ████████████░░░░░░░░ 55%
+Overall:              █████████████████░░░ 85%
 ```
 
 ---
 
 ## Completed Features
 
-### Parser (Pika)
-- [x] Core Pika parser implementation (`clang/omnilisp/pika/`)
-- [x] Nick-encoded constructor names (`clang/omnilisp/nick/omnilisp.c`)
-- [x] Basic expressions: lists, symbols, integers, strings
-- [x] Type annotations `{Type}`
-- [x] Slot syntax `[param {Type}]`
-- [x] Metadata `^:key` and `^:key value`
-- [x] Quote/quasiquote syntax `'x`, `` `x ``, `,x`, `,@x`
-- [x] Spread patterns `.. rest`
-- [x] Guard patterns `& condition`
-- [x] Path expressions `obj.field`
-- [x] Set literals `#{1 2 3}`
-- [x] Dict literals `#{"key" value}`
-- [x] Named characters `#\newline`, `#\space`
-- [x] Format strings `#f"Hello {name}"`
-- [x] Hash-val reader `#val`
-- [x] Enhanced number parsing (signed, floats)
+### Character Calculus (Parser)
+- [x] `()` execution - function calls, special forms
+- [x] `[]` slots - parameters, array literals, patterns
+- [x] `{}` types - type annotations `{Int}`, `{List {T}}`
+- [x] `^` metadata - `^:mutable`, `^:key value`
+- [x] `.` paths - `obj.field`, `arr.[0]`
+- [x] `#` reader dispatch - `#{}` dicts, `#\char`, `#f"format"`
 
-### Core Evaluator (HVM4 Runtime)
-- [x] Lambda/closures (including recursive)
-- [x] Let bindings (basic)
-- [x] Conditionals (if)
-- [x] Arithmetic operators (+, -, *, /, %)
-- [x] Comparison operators (=, <, >, <=, >=)
-- [x] Boolean operators (and, or, not)
-- [x] Pattern matching (basic constructor patterns)
-- [x] Delimited continuations (reset/control/shift)
-- [x] Algebraic effects (handle/perform with CPS)
+### Match (Core Evaluator)
+- [x] Constructor patterns `[(Point x y) ...]`
+- [x] Literal patterns `[0 ...]`, `["str" ...]`
+- [x] Wildcard `[_ ...]`
+- [x] Variable binding `[x ...]`
+- [x] Spread patterns `[h .. t]`
+- [x] Guard clauses `[x & (> x 0)]`
+- [x] `if` desugaring to match
+
+### Algebraic Effects
+- [x] `handle` block setup
+- [x] `perform` effect invocation
+- [x] `resume` continuation capture
+- [x] CPS transformation for handlers
+- [x] Handler stack in meta-environment
+
+### Delimited Continuations
+- [x] `reset` - delimit continuation
+- [x] `shift` - capture up to nearest reset
+- [x] `control` - abort/no automatic resume
+
+### Concurrency
 - [x] Fibers (CPS-based cooperative)
-- [x] Fork/choice (HVM4 SUP-based)
+- [x] Fork/choice (HVM4 SUP-based parallelism)
+- [ ] Channels (shared state via FFI)
 
 ### FFI
-- [x] Handle table design
-- [x] Basic thread pool
-- [x] FFI node generation (`#FFI{name, args}`)
+- [x] Handle table for pointer safety
+- [x] Thread pool for blocking calls
+- [x] `#FFI{name, args}` node generation
+- [ ] Async model (`ffi/async`, `ffi/await`)
+
+### REPL & Editor
+- [x] Interactive REPL (`omnilisp` or `omnilisp -i`)
+- [x] Socket server (`omnilisp -S PORT`)
+- [x] Neovim plugin with eval keybindings
 
 ---
 
 ## Pending Features
 
-### P0: Core Language (High Priority)
+### P0: Core Language
 
-#### 1. Type System
-**Status:** 20% - Basic annotations parsed, no runtime checking
-**Reference:** `docs/TYPE_SYSTEM_DESIGN.md`, `docs/QUICK_REFERENCE.md` §3
+#### 1. Control Flow Desugaring
+**Status:** 100% - All implemented in runtime evaluator
+**Philosophy:** All control flow → match
 
 ```lisp
-;; Abstract types
-(define {abstract Number})
-(define ^:parent {Number} {abstract Integer})
-
-;; Struct types
-(define {struct Point}
-  [x {Int}]
-  [y {Int}])
-
-;; Parametric types
-(define {struct [Pair T]}
-  [first {T}]
-  [second {T}])
-
-;; Enum/sum types
-(define {enum [Option T]}
-  (Some [value {T}])
-  None)
-
-;; Union types
-(define {IntOrString} (union [{Int} {String}]))
+;; These are syntactic sugar, not primitives
+(when test body)              ;; → (match test [false nothing] [_ body])
+(unless test body)            ;; → (match test [true nothing] [_ body])
+(cond [c1 r1] [c2 r2] ...)   ;; → (match true [_ & c1 r1] [_ & c2 r2] ...)
 ```
 
 **Tasks:**
-- [ ] Type registry in runtime
-- [ ] `type?` predicate implementation
-- [ ] Subtype checking (`^:parent` hierarchy)
-- [ ] Parametric type instantiation
-- [ ] Type inference for untyped bindings
-- [ ] Runtime type validation on application
+- [x] `if` → match desugaring in evaluator
+- [x] `when` in runtime (#When node)
+- [x] `unless` in runtime (#Unls node)
+- [x] `cond` in runtime (#Cond node)
+- [x] Named let syntax `(let name [var init] [var2 init2] ... body)`
 
 ---
 
-#### 2. Multiple Dispatch
-**Status:** 0% - Not implemented
-**Reference:** `docs/QUICK_REFERENCE.md` §2.6
+#### 2. Type System
+**Status:** 50% - Runtime checks work, parametric types pending
+**Philosophy:** Julia-compatible type lattice with `{Any}` at top
 
 ```lisp
-;; Same name, different arities
-(define area 0)
-(define area [r] (* 3.14 (* r r)))
+;; Types use {} brackets (Kind domain)
+{Int}                       ;; Concrete type
+{abstract Number}           ;; Abstract type (can't instantiate)
+{List {Int}}               ;; Parametric type
+{union [{Int} {String}]}   ;; Union type
+{3}                        ;; Value type (singleton containing only 3)
+```
 
-;; Same name, different types
-(define describe [x {Int}] "An integer")
-(define describe [x {String}] "A string")
+**Tasks:**
+- [x] Type descriptors in runtime
+- [x] `type?` predicate
+- [x] Subtype hierarchy (`^:parent`)
+- [ ] Parametric type instantiation `{List {T}}`
+- [ ] Union types `{union [...]}`
+- [ ] Value types `{42}` (singleton types)
 
-;; Combined
+---
+
+#### 3. Multiple Dispatch
+**Status:** 100% - Full multiple dispatch with ambiguity detection
+**Philosophy:** Arity first, then type specificity (Julia model)
+
+```lisp
+;; Same name, different signatures
 (define add [x {Int}] [y {Int}] (+ x y))
 (define add [x {String}] [y {String}] (string-concat x y))
+(define add [x {List}] [y {List}] (append x y))
+
+;; Dispatch resolution:
+;; 1. Filter by arity
+;; 2. Among matching arities, find most specific types
+;; 3. Error if ambiguous
 ```
 
 **Tasks:**
-- [ ] Method table per function name
-- [ ] Dispatch resolution (arity first, then type specificity)
-- [ ] Most-specific-method selection algorithm
-- [ ] Ambiguity detection and error reporting
+- [x] Method table `#GFun{name, methods}`
+- [x] Arity-first dispatch
+- [x] Type specificity ordering
+- [x] Ambiguity detection and error (`@omni_compare_specificity` with `#MAmb` return)
+- [x] Curried partial application `#GPrt`
 
 ---
 
-#### 3. Macro System
-**Status:** 0% - Design only
-**Reference:** `docs/UNDOCUMENTED_FEATURES.md` §2
+#### 4. Macro System
+**Status:** 60% - Basic expansion works, hygiene needs verification
+**Philosophy:** `define [syntax ...]` form, hygienic by default
 
 ```lisp
-;; Hygienic macro definition
 (define [syntax when]
   [(when test body ...)
-   (if test (do body ...) nil)])
+   (match test [false nothing] [_ (do body ...)])])
 
-;; With literal keywords
-(define [syntax case]
-  [literals else =>]
-  [(case val (else result)) result]
-  [(case val (datum => proc) clause ...)
-   (if (eqv? val 'datum) (proc val) (case val clause ...))])
+(define [syntax unless]
+  [(unless test body ...)
+   (match test [true nothing] [_ (do body ...)])])
+
+(define [syntax cond]
+  [(cond) nothing]
+  [(cond [test result] rest ...)
+   (match test [true result] [_ (cond rest ...)])])
 ```
 
 **Tasks:**
-- [ ] `define [syntax ...]` parser support
-- [ ] Pattern matching in macro expander
-- [ ] `...` ellipsis handling (zero-or-more)
-- [ ] Hygiene: gensym for introduced identifiers
-- [ ] Macro expansion phase before evaluation
+- [x] `define [syntax ...]` parser
+- [x] Pattern matching in expander
+- [x] `...` ellipsis for rest patterns
+- [x] Gensym for hygiene
+- [ ] Ellipsis repetition in templates
+- [ ] Literal keywords `[literals ...]`
+- [ ] Nested macro expansion
 
 ---
 
-#### 4. Modules
-**Status:** 0% - Not implemented
-**Reference:** `docs/UNDOCUMENTED_FEATURES.md` §1
+#### 5. Modules
+**Status:** 95% - All features implemented
+**Philosophy:** Explicit exports, namespace isolation
 
 ```lisp
 (module Math
-  (export sin cos tan sqrt)
+  (export sin cos tan PI)
+  (define PI 3.14159)
+  (define (sin x) ...))
 
-  (define pi 3.14159)
-  (define (sin x) ...)
-  (define (cos x) ...))
-
-(import Math)
-(import Math :as M)
-(import Math :only (sin cos))
+(import Math)           ;; All exports
+(import Math :as M)     ;; Aliased: M.sin
+(import Math :only (sin cos))  ;; Selective
 ```
 
 **Tasks:**
-- [ ] Module definition form
-- [ ] Export list handling
-- [ ] Import resolution
-- [ ] Namespace isolation
-- [ ] Aliased imports (`:as`)
-- [ ] Selective imports (`:only`)
+- [x] Module definition `#Modl`
+- [x] Export filtering
+- [x] Import resolution
+- [x] Aliased imports `:as`
+- [x] Selective imports `:only`
 
 ---
 
-### P1: Standard Library (Medium Priority)
+### P1: Standard Library
 
-#### 5. Collections Runtime
-**Status:** 60% - Basic ops exist, missing advanced
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.2
+#### 6. Function Combinators
+**Status:** 100% - All implemented
+**Philosophy:** Composition over inheritance, point-free where natural
+
+```lisp
+;; Pipe operator (desugar to nested application)
+(|> x (f a) (g b) (h c))  ;; → (h (g (f x a) b) c)
+
+;; Combinators (already in prelude)
+(identity x)              ;; → x
+(const x y)              ;; → x (ignores y)
+(compose f g)            ;; → (lambda [x] (f (g x)))
+(flip f)                 ;; → (lambda [a b] (f b a))
+(curry f)                ;; → curried version
+```
+
+**Tasks:**
+- [x] `|>` pipe operator (#Pipe node in runtime)
+- [x] `identity` in prelude
+- [x] `const` in prelude
+- [x] `compose` in prelude
+- [x] `flip` in prelude
+- [x] `curry`/`uncurry` in prelude
+- [x] `partial`, `partial2`, `partial3` in prelude
+- [x] `apply` (#Appl node in runtime)
+
+---
+
+#### 7. Lazy Iterators
+**Status:** 100% - Full implementation in prelude
+**Philosophy:** Laziness via thunks, `#Iter`/`#Rang` types for protocol
+
+```lisp
+;; Lazy sequences
+(lazy-range1 10)              ;; Lazy 0..9
+(lazy-range 0 100 2)          ;; Lazy 0,2,4,...98
+
+;; Lazy transformations (return iterators)
+(lazy-map inc (lazy-range1 10))     ;; Lazy
+(lazy-filter even? (lazy-range1 100)) ;; Lazy
+(lazy-take 5 (iterate inc 0))       ;; Lazy, terminates
+
+;; Realization (force evaluation)
+(collect-list iter)          ;; → '(...)
+(to-list iter)               ;; → '(...) (alias)
+(for-each println iter)      ;; Side effects, returns nothing
+
+;; Iterator protocol
+(iter-next iter)             ;; → #Some{value, new_iter} or #None{}
+(iter-done? iter)            ;; → #True{} / #Fals{}
+```
+
+**Tasks:**
+- [x] `#Iter{state, next_fn}` constructor
+- [x] `#Rang{start, end, step}` lazy range
+- [x] `lazy-range`, `lazy-range1`, `lazy-range2`
+- [x] `iterate`, `lazy-repeat`, `cycle`
+- [x] `lazy-map`, `lazy-filter`, `lazy-take`, `lazy-drop`
+- [x] `lazy-take-while`, `lazy-drop-while`
+- [x] `lazy-zip`, `lazy-zip-with`, `enumerate`
+- [x] `chain`, `lazy-flatten`
+- [x] `collect-list`, `to-list`
+- [x] `iter-fold`, `iter-reduce`, `for-each`
+- [x] `iter-count`, `iter-sum`, `iter-find`
+- [x] `iter-any`, `iter-all`, `iter-nth`, `iter-last`
+- [x] `iter-next`, `iter-done?` protocol
+
+---
+
+#### 8. Collections (Polymorphic)
+**Status:** 100% - Comprehensive implementation in prelude
+**Reference:** prelude.hvm4 has map, filter, foldl, foldr, etc.
+**Design:** All functions dispatch on type: List → List, Array → Array, Dict → Dict, Iterator → Iterator
 
 **Implemented:**
-- [x] map, filter, reduce, for-each, length, append
-- [x] set, set-add, set-remove, set-contains?
-- [x] dict, dict-get, dict-set, dict-keys, dict-values
-
-**Missing:**
-- [ ] `sort`, `sort-by`
-- [ ] `group-by`
-- [ ] `partition`
-- [ ] `zip`, `zip-with`
-- [ ] `flatten`
-- [ ] `take`, `drop`, `take-while`, `drop-while`
-- [ ] `find`, `find-index`
-- [ ] `every?`, `any?`
-
----
-
-#### 6. String Operations
-**Status:** 80% - Most implemented
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.1
-
-**Implemented:**
-- [x] string-upcase, string-downcase, string-capitalize
-- [x] string-trim, string-pad-left/right
-- [x] string-contains, string-index-of
-- [x] string-replace, string-split, string-join
-- [x] string-length, string-concat, string-substr
-
-**Missing:**
-- [ ] Ensure all ops work with HVM4 string representation
-- [ ] Unicode support verification
+- [x] `map`, `filter`, `foldl`, `foldr` (polymorphic: List/Array/Dict/Iterator)
+- [x] `take`, `drop`, `zip`, `zipWith` (polymorphic: List/Array/Iterator)
+- [x] `flatten`, `range` (eager), `repeat`
+- [x] `all?`, `any?`, `sum`, `product`
+- [x] `sort`, `sort-by`, `sort-asc`, `sort-desc` (merge sort)
+- [x] `merge-sorted`
+- [x] `group`, `group-by`
+- [x] `partition`
+- [x] `find`, `find-index`
+- [x] `take-while`, `drop-while`
+- [x] `span`, `break`, `split-at`
+- [x] `intersperse`, `intercalate`
+- [x] `nub`, `nub-by` (remove duplicates)
+- [x] `minimum`, `maximum`, `minimum-by`, `maximum-by`
 
 ---
 
-#### 7. Regex Reader
-**Status:** 0% - Parser syntax not implemented
-**Reference:** `docs/QUICK_REFERENCE.md` §8
+#### 9. Path Access
+**Status:** 90% - Runtime implemented, update pending
+**Philosophy:** `.` operator for navigation, `[]` for indexing
+
+```lisp
+;; Parsed by Character Calculus
+person.name              ;; → (get person :name)
+person.address.city      ;; → (get-in person [:address :city])
+arr.[0]                  ;; → (nth arr 0)
+matrix.[i].[j]           ;; → (nth (nth matrix i) j)
+
+;; Functional operations (don't mutate)
+(get obj key)            ;; Single-level access
+(get-in obj path)        ;; Deep access
+(assoc obj key val)      ;; Return new obj with key set
+(assoc-in obj path val)  ;; Return new obj with deep key set
+(update obj key f)       ;; Return new obj with (f (get obj key))
+```
+
+**Tasks:**
+- [x] `.` path parsing
+- [x] `get` function (#Get node + @omni_get helper)
+- [x] `get-in` for nested access (#GtIn node + @omni_get_in helper)
+- [x] `assoc` (#AsIn node + @omni_assoc helper)
+- [x] `assoc-in` for functional update (#AsIn + @omni_assoc_in)
+- [x] `update`, `update-in` (#Updt and #UpdI nodes)
+- [ ] Path compilation (`a.b.c` → `(get-in a [:b :c])`)
+
+---
+
+#### 10. Quasiquote Evaluation
+**Status:** 100% - Full implementation in runtime
+**Philosophy:** Template-based code generation
+
+```lisp
+`(1 2 ,(+ 1 2))           ;; → '(1 2 3)
+`(1 ,@(list 2 3) 4)       ;; → '(1 2 3 4) (splice)
+`(a `(b ,(+ 1 2)))        ;; Nested: inner unquote not evaluated
+```
+
+**Tasks:**
+- [x] `#QQ` quasiquote evaluation
+- [x] `#UQ` unquote (evaluate and insert)
+- [x] `#UQS` unquote-splicing (evaluate and splice)
+- [x] Nesting level tracking (@omni_eval_qq with level parameter)
+
+---
+
+#### 11. Pika-Based Regex
+**Status:** 0% - Not implemented
+**Philosophy:** Deterministic matching, O(n) guaranteed, no backtracking
+
+OmniLisp regex compiles to Pika grammars. This means:
+- No catastrophic backtracking
+- Predictable performance
+- Limited features (no backreferences)
 
 ```lisp
 ;; Reader syntax
-#r"[a-z]+"           ;; Compiles to Pika pattern
+#r"[a-z]+"               ;; Compiles to Pika pattern at read time
 
-;; Equivalent to
-(re-compile "[a-z]+")
-
-;; Functions (delegate to Pika)
+;; Functions
 (re-match #r"\d+" "abc123")      ;; → "123"
-(re-find-all #r"\w+" "a b c")    ;; → ("a" "b" "c")
-(re-split #r"\s+" "a  b  c")     ;; → ("a" "b" "c")
+(re-find-all #r"\w+" "a b c")    ;; → '("a" "b" "c")
+(re-split #r"\s+" "a  b  c")     ;; → '("a" "b" "c")
 (re-replace #r"\d" "X" "a1b2")   ;; → "aXbX"
-(re-fullmatch #r"^\d+$" "123")   ;; → true
 ```
 
 **Tasks:**
-- [ ] Add `R_REGEX` rule to Pika parser
 - [ ] `#r"..."` reader macro
-- [ ] Compile regex to Pika grammar at read time
-- [ ] `re-match`, `re-find-all`, `re-split`, `re-replace`, `re-fullmatch` runtime functions
+- [ ] Regex → Pika grammar compilation
+- [ ] `re-match`, `re-find-all`
+- [ ] `re-split`, `re-replace`
 
 ---
 
-#### 8. Pika Grammar DSL
-**Status:** 0% - Parser support not implemented
-**Reference:** `docs/UNDOCUMENTED_FEATURES.md` §3, `docs/QUICK_REFERENCE.md` §7
+#### 12. Pika Grammar DSL
+**Status:** 0% - Not implemented
+**Philosophy:** User-defined parsers as first-class values
 
 ```lisp
-(define [grammar arithmetic]
-  [expr   (seq term (star (seq (or "+" "-") term)))]
-  [term   (seq factor (star (seq (or "*" "/") factor)))]
-  [factor (or number (seq "(" expr ")"))]
-  [number (plus (range "0" "9"))])
+(define [grammar json]
+  [value   (or object array string number :true :false :null)]
+  [object  (seq "{" (star (seq pair (star (seq "," pair)))) "}")]
+  [pair    (seq string ":" value)]
+  [array   (seq "[" (star (seq value (star (seq "," value)))) "]")]
+  [string  (seq "\"" (star (not "\"")) "\"")]
+  [number  (seq (opt "-") (plus digit) (opt (seq "." (plus digit))))]
+  [digit   (range "0" "9")])
 
-;; Use the grammar
-(pika-parse arithmetic "expr" "1+2*3")
+(pika-parse json "value" "{\"a\": [1, 2, 3]}")
 ```
 
 **Tasks:**
 - [ ] `define [grammar ...]` parser support
-- [ ] Grammar AST to Pika rules compilation
+- [ ] Grammar AST compilation
 - [ ] `pika-parse` runtime function
-- [ ] Grammar composition (referencing other grammars)
+- [ ] Grammar composition
 
 ---
 
-#### 9. Quasiquote Evaluation
-**Status:** 50% - Parsed, not fully evaluated
-**Reference:** `docs/QUICK_REFERENCE.md` §Special Forms
-
-```lisp
-`(1 2 ,(+ 1 2))           ;; → (1 2 3)
-`(1 ,@(list 2 3) 4)       ;; → (1 2 3 4)
-`(a `(b ,(+ 1 2) ,,(+ 3 4)))  ;; Nested quasiquote
-```
-
-**Tasks:**
-- [ ] `#QQ`, `#UQ`, `#UQS` evaluation in runtime
-- [ ] Proper nesting level tracking
-- [ ] Splice into list contexts
-
----
-
-#### 10. Destructuring
-**Status:** 30% - Basic patterns work
-**Reference:** `docs/QUICK_REFERENCE.md` §2.4.1
-
-```lisp
-;; Sequence destructuring
-(let [[x y z] my-list] ...)
-(let [[x y .. rest] my-list] ...)
-
-;; Dict/plist destructuring
-(let [(:x :y) my-dict] ...)
-
-;; In function params
-(define process [[x y]] (+ x y))
-
-;; In match
-(match val
-  [[a b .. rest] (cons a rest)]
-  [_ nil])
-```
-
-**Tasks:**
-- [ ] `.. rest` spread in let bindings
-- [ ] Dict destructuring `(:key1 :key2)`
-- [ ] Destructuring in function parameters
-- [ ] Nested destructuring
-
----
-
-#### 11. Loop/Recur (Iterative Construct)
-**Status:** 0% - Not implemented
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §Control Flow
-
-```lisp
-;; Basic loop with recur
-(loop [i 0 acc 0]
-  (if (>= i 10)
-      acc
-      (recur (+ i 1) (+ acc i))))
-;; → 45 (sum 0..9)
-
-;; Loop with early exit
-(loop [xs my-list]
-  (match xs
-    [nil nil]
-    [[h .. t] (if (= h target)
-                  h
-                  (recur t))]))
-```
-
-**Tasks:**
-- [ ] `loop` special form parser support
-- [ ] `recur` tail-call optimization
-- [ ] Binding vector parsing `[var init ...]`
-- [ ] Detect non-tail recur calls (error)
-
----
-
-#### 12. Pipe Operator & Function Utilities
-**Status:** 0% - Not implemented
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §Functions
-
-```lisp
-;; Pipe/threading operator
-(|> x
-    (+ 1)
-    (* 2)
-    (- 10))
-;; → (- (* (+ x 1) 2) 10)
-
-;; Apply - call function with list of args
-(apply + '(1 2 3 4))       ;; → 10
-(apply f arg1 arg2 rest)   ;; → (f arg1 arg2 ...rest)
-
-;; Partial application
-(define add5 (partial + 5))
-(add5 3)                   ;; → 8
-
-;; Function composition
-(define inc-then-double (comp (partial * 2) (partial + 1)))
-(inc-then-double 3)        ;; → 8  ((3+1)*2)
-
-;; Identity function
-(identity x)               ;; → x
-
-;; Constantly - returns function that always returns val
-(define always-42 (constantly 42))
-(always-42 "ignored")      ;; → 42
-```
-
-**Tasks:**
-- [ ] `|>` macro/special form (thread-first)
-- [ ] `apply` function
-- [ ] `partial` higher-order function
-- [ ] `comp` function composition
-- [ ] `identity` function
-- [ ] `constantly` function
-
----
-
-#### 13. Conditional Forms (via Macros)
-**Status:** 0% - Depends on macro system
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §Control Flow
-
-```lisp
-;; when - execute body if test is truthy
-(when (> x 0)
-  (print "positive")
-  x)
-
-;; unless - execute body if test is falsy
-(unless (nil? x)
-  (process x))
-
-;; cond - multi-way conditional
-(cond
-  [(< x 0) "negative"]
-  [(= x 0) "zero"]
-  [:else   "positive"])
-
-;; case - value matching (different from match)
-(case color
-  [red   "#FF0000"]
-  [green "#00FF00"]
-  [blue  "#0000FF"]
-  [_     "#000000"])
-```
-
-**Note:** These are typically implemented as macros once the macro system is ready.
-
-**Tasks:**
-- [ ] `when` macro
-- [ ] `unless` macro
-- [ ] `cond` macro
-- [ ] `case` macro (symbol-based switching)
-
----
-
-#### 14. Path Access & Mutation
-**Status:** 30% - Parser done, runtime missing
-**Reference:** `docs/QUICK_REFERENCE.md` §5, `docs/UNDOCUMENTED_FEATURES.md` §5
-
-```lisp
-;; Path Navigation (. operator)
-person.name              ;; → (get person :name)
-person.address.city      ;; → nested: (get (get person :address) :city)
-arr.[0]                  ;; → (get arr 0)
-matrix.[0].[1]           ;; → (get (get matrix 0) 1)
-
-;; Mutation primitives
-(put! person.age 31)           ;; Mutate nested field in-place
-(update! counter.value inc)    ;; Apply fn to field in-place
-(update person.age inc)        ;; Functional update (returns new object)
-
-;; Manual path construction
-(path obj :field1 :field2)     ;; Build path object programmatically
-(get-in obj [:a :b :c])        ;; Get nested value
-(assoc-in obj [:a :b] val)     ;; Set nested value (functional)
-```
-
-**Implemented:**
-- [x] Parser: `R_PATH` rule for `obj.field` syntax
-
-**Tasks:**
-- [ ] `get` function for path navigation
-- [ ] `put!` for in-place mutation
-- [ ] `update!` for in-place fn application
-- [ ] `update` for functional transformation
-- [ ] `path` constructor
-- [ ] `get-in` / `assoc-in` for nested access
-- [ ] Chained path compilation (`a.b.c` → nested gets)
-
----
-
-#### 15. Iterators (Lazy Sequences)
-**Status:** 0% - Not implemented
-**Reference:** `docs/QUICK_REFERENCE.md` §4
-
-```lisp
-(range 10)                    ;; Lazy 0..9
-(map (fn [x] (* x 2)) iter)   ;; Lazy transform
-(filter even? iter)           ;; Lazy filter
-(take 5 iter)                 ;; Lazy take
-
-(collect-list iter)           ;; Realize to list
-(collect-array iter)          ;; Realize to array
-```
-
-**Tasks:**
-- [ ] `T_ITER` type / `#Iter` constructor
-- [ ] `range` implementation
-- [ ] Lazy `map`, `filter`, `take`, `drop`
-- [ ] `collect-list`, `collect-array`
-- [ ] Iterator protocol (next, done?)
-
----
-
-#### 16. Math Library
+#### 13. Math Library
 **Status:** 40% - Basic arithmetic only
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.4
+**Philosophy:** FFI wrappers for libm
 
 ```lisp
 ;; Trigonometry
@@ -502,233 +463,258 @@ matrix.[0].[1]           ;; → (get (get matrix 0) 1)
 
 ;; Rounding
 (floor x) (ceil x) (round x) (truncate x)
-
-;; Other
-(abs x) (min a b) (max a b)
-(random) (random-int n)
 ```
 
 **Tasks:**
-- [ ] FFI wrappers for libm functions
-- [ ] `random` with seed support
-- [ ] Ensure float representation works
+- [ ] FFI wrappers for libm
+- [ ] `random`, `random-int` with seed
+- [ ] Float representation in HVM4
 
 ---
 
-#### 17. I/O System
+#### 14. I/O System
 **Status:** 30% - Basic file ops only
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.5
+**Philosophy:** Effects-based I/O where practical
 
 ```lisp
 ;; File operations
-(read-file "path.txt")        ;; → string
-(write-file "path.txt" data)  ;; → nil
-(read-lines "path.txt")       ;; → list of strings
-(append-file "path.txt" data)
+(read-file "path.txt")
+(write-file "path.txt" data)
+(read-lines "path.txt")
 
 ;; Path operations
 (path-join "a" "b" "c")       ;; → "a/b/c"
 (path-dirname "/a/b/c")       ;; → "/a/b"
-(path-basename "/a/b/c")      ;; → "c"
 (path-exists? "path")
-(path-is-file? "path")
-(path-is-dir? "path")
 
 ;; Environment
 (env-get "HOME")
 (env-set "KEY" "value")
-(env-keys)
 ```
 
 **Tasks:**
-- [ ] File read/write via FFI
-- [ ] Path manipulation functions
-- [ ] Environment variable access
+- [ ] File read/write FFI
+- [ ] Path manipulation
+- [ ] Environment variables
 - [ ] Directory listing
 
 ---
 
-#### 18. JSON
+### P2: Extended Features
+
+#### 15. Tower of Interpreters
 **Status:** 0% - Not implemented
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.6
+**Philosophy:** Reflective meta-programming, staged computation
+
+The Tower allows code to manipulate its own interpreter:
 
 ```lisp
-(json-parse "{\"a\": 1, \"b\": [2, 3]}")
-;; → #{"a" 1 "b" [2 3]}
-
-(json-stringify #{"name" "Alice" "age" 30})
-;; → "{\"name\":\"Alice\",\"age\":30}"
-```
-
-**Tasks:**
-- [ ] JSON parser (can use Pika grammar)
-- [ ] JSON stringifier
-- [ ] Handle nested structures
-- [ ] Proper escaping
-
----
-
-#### 19. DateTime
-**Status:** 0% - Not implemented for HVM4
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.3
-
-```lisp
-(datetime-now)
-(datetime-now-utc)
-(datetime-make 2026 1 25 14 30 0)
-(datetime-year dt)
-(datetime-add-days dt 7)
-(datetime-diff dt1 dt2)
-(datetime-format dt "%Y-%m-%d")
-(datetime-parse-iso8601 "2026-01-25T14:30:00Z")
-```
-
-**Tasks:**
-- [ ] DateTime representation in HVM4
-- [ ] FFI to system time functions
-- [ ] Format/parse functions
-- [ ] Arithmetic operations
-
----
-
-#### 20. Tower/Meta (Multi-Stage Programming)
-**Status:** 0% - Not implemented for HVM4
-**Reference:** `docs/UNDOCUMENTED_FEATURES.md` §4
-
-```lisp
-(lift val)           ;; value → code
-(run code)           ;; execute code
-(EM expr)            ;; meta-level evaluation
-(clambda [x] body)   ;; compiled lambda
-(meta-level)         ;; current tower level
+(lift val)           ;; Value → code representation
+(run code)           ;; Execute code
+(EM expr)            ;; Jump to meta-level, evaluate there
+(clambda [x] body)   ;; Compiled lambda (staged)
+(meta-level)         ;; Current tower level (0 = base)
 ```
 
 **Tasks:**
 - [ ] `#Cod` code representation
 - [ ] `lift` implementation
-- [ ] `run` compilation and execution
+- [ ] `run` compilation
 - [ ] `EM` meta-level jump
-- [ ] Tower level tracking
+- [ ] Tower level tracking in menv
 
 ---
 
-### P2: Extended Features (Lower Priority)
-
-#### 21. Networking
-**Status:** 0% - Not implemented
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §3.7
+#### 16. Channels
+**Status:** 0% - Fibers exist, channels pending
+**Philosophy:** CSP-style communication between fibers
 
 ```lisp
-;; TCP
+(define ch (channel 10))     ;; Buffered channel, capacity 10
+
+;; In fiber 1
+(send ch "message")          ;; Blocks if full
+
+;; In fiber 2
+(recv ch)                    ;; → "message", blocks if empty
+
+;; Non-blocking variants
+(try-send ch val)            ;; → true/false
+(try-recv ch)                ;; → (Some val) or None
+```
+
+**Tasks:**
+- [ ] `#Chan{buffer, cap}` constructor
+- [ ] `send`/`recv` with blocking (via effects)
+- [ ] `try-send`/`try-recv` non-blocking
+- [ ] Channel select (`select [[ch1 v1] ...] ...)`)
+
+---
+
+#### 17. JSON
+**Status:** 0% - Can implement with Pika grammar
+
+```lisp
+(json-parse "{\"a\": 1}")    ;; → #{"a" 1}
+(json-stringify #{"a" 1})    ;; → "{\"a\":1}"
+```
+
+**Tasks:**
+- [ ] JSON parser (use Pika grammar DSL)
+- [ ] JSON stringifier
+- [ ] Handle nested structures
+
+---
+
+#### 18. DateTime
+**Status:** 0%
+
+```lisp
+(datetime-now)
+(datetime-format dt "%Y-%m-%d")
+(datetime-add-days dt 7)
+```
+
+**Tasks:**
+- [ ] DateTime representation
+- [ ] FFI to system time
+- [ ] Format/parse functions
+
+---
+
+#### 19. Networking
+**Status:** 0%
+
+```lisp
 (tcp-connect "host" port)
-(tcp-listen port)
-(tcp-accept server)
 (tcp-send conn data)
 (tcp-recv conn)
-(tcp-close conn)
-
-;; HTTP (high-level)
-(http-get "https://example.com")
-(http-post url body headers)
 ```
 
 **Tasks:**
 - [ ] TCP socket FFI
-- [ ] UDP socket FFI
-- [ ] HTTP client (can be built on TCP)
-- [ ] Async I/O integration with fibers
+- [ ] Integration with fibers for async I/O
 
 ---
 
-#### 22. Developer Tools
+#### 20. Developer Tools
 **Status:** 20%
-**Reference:** `docs/LANGUAGE_COMPLETENESS_REPORT.md` §4
 
-**Missing:**
 - [ ] `inspect` - object inspection
 - [ ] `type-of` - runtime type query
 - [ ] `doc` - documentation lookup
 - [ ] `trace` - execution tracing
 - [ ] `time` - timing macro
 - [ ] `expand` - macro expansion display
-- [ ] Testing framework (deftest, assert-eq)
-- [ ] Profiling tools
+- [ ] Testing framework
 
 ---
 
 ## Architecture Notes
 
-### Key Files
-
-| Component | Location |
-|-----------|----------|
-| Pika Parser | `clang/omnilisp/pika/omni_pika.c` |
-| Pika Header | `clang/omnilisp/pika/pika.h` |
-| Nick Names | `clang/omnilisp/nick/omnilisp.c` |
-| HVM4 Runtime | `lib/runtime.hvm4` (planned) |
-| FFI | `clang/omnilisp/ffi/` (planned) |
-
 ### Design Principles
 
-1. **All definitions use `define`** - No defmacro, defmethod, defgeneric
-2. **Pika is NOT PEG** - Bottom-up table filling, handles left recursion
-3. **Character Calculus**: `()` = execution, `[]` = slots, `{}` = types, `^` = metadata
-4. **HVM4 native parallelism** - Use SUP for fork/choice, not threads
-5. **Caller-controlled scheduling** - Fibers return state, no global scheduler
+1. **Match is the source of truth** - All conditionals desugar to pattern matching
+2. **Character Calculus** - `()` `[]` `{}` `^` `.` `#` have distinct semantic roles
+3. **Effects over exceptions** - `handle/perform/resume` instead of try/catch
+4. **Named let for loops** - No separate loop/recur construct
+5. **Three collections** - List, Array, Dict (no tuples)
+6. **Pika is NOT PEG** - Bottom-up table filling, handles left recursion
+7. **HVM4 native parallelism** - SUP for fork/choice, not OS threads
 
 ### HVM4 Constructors
 
 ```
-#Lit{n}          ;; Literal integer
-#Sym{nick}       ;; Symbol (nick-encoded)
+;; Core evaluation
+#Lit{n}          ;; Literal
+#Sym{nick}       ;; Symbol
 #Var{idx}        ;; de Bruijn variable
 #Lam{body}       ;; Lambda
 #App{fn, arg}    ;; Application
 #Let{val, body}  ;; Let binding
-#If{c, t, e}     ;; Conditional
+#Mat{...}        ;; Match expression
+
+;; Closures & continuations
 #Clo{env, body}  ;; Closure
 #Kont{k}         ;; Continuation
 #Fibr{s, k, m}   ;; Fiber
+
+;; Effects
+#Perf{tag, val}  ;; Perform effect
+#Hndl{...}       ;; Handle block
+
+;; FFI
 #FFI{name, args} ;; FFI call
-#Hndl{idx, gen}  ;; Handle (FFI pointer)
+#Hand{idx, gen}  ;; Handle (pointer wrapper)
+
+;; Types
+#TDsc{name, parent, fields}  ;; Type descriptor
+#GFun{name, methods}         ;; Generic function
 ```
-
----
-
-## Original OmniLisp Tasks (Legacy)
-
-These items were from the original C implementation and may need review for HVM4:
-
-### REVIEWED:NAIVE Items
-
-| Task | Location | Issue |
-|------|----------|-------|
-| Fix `prim_distinct` buffer overflow | `runtime/src/collections.c:932` | Fixed 1024-element buffer silently truncates |
-| Replace bubble sort in profiler | `runtime/src/profile.c:393` | O(n²) bubble sort → qsort() |
-| Hash-based condition lookup | `runtime/src/condition.c:68,78` | Linear search → hash table |
-| Optimize generic method dispatch | `runtime/src/generic.c:214,296` | Linear search → dispatch table |
 
 ---
 
 ## References
 
-- `docs/QUICK_REFERENCE.md` - Authoritative language reference
-- `docs/SYNTAX.md` - Detailed syntax specification
-- `docs/UNDOCUMENTED_FEATURES.md` - Additional features
-- `docs/IMPLEMENTATION_COMPARISON.md` - Original vs HVM4 comparison
-- `docs/LANGUAGE_COMPLETENESS_REPORT.md` - Original completion status
-- `docs/PATTERN_SYNTAX.md` - Pika pattern matching details
+- `docs/SYNTAX.md` - Authoritative syntax specification
+- `docs/QUICK_REFERENCE.md` - Language overview
+- `language_reference.md` - Detailed semantics
+- `docs/PATTERN_SYNTAX.md` - Pattern matching details
+- `docs/UNDOCUMENTED_FEATURES.md` - Advanced features
 
 ---
 
 ## Changelog
 
-### 2026-01-25
-- Rewrote TODO.md for HVM4 implementation tracking
-- Added comprehensive feature breakdown with code examples
-- Completed Pika grammar rules for all syntax features
-- Updated CLAUDE.md with Pika (not PEG) clarification
+### 2026-01-26
+- Rewrote TODO to align with OmniLisp philosophy
+- Added Philosophy section explaining core principles
+- Reorganized around Character Calculus and "match is truth"
+- Clarified Pika-based regex (not backtracking)
+- Added Tower of Interpreters section
+- Updated completion percentages
+- Implemented pipe operator `|>` (#Pipe node in runtime)
+- Implemented apply function (#Appl node)
+- Implemented when/unless/cond control flow (#When, #Unls, #Cond nodes)
+- Implemented named let (Scheme-style loop): `#NLet` and `#NLeS` nodes in runtime
+  - Supports `(let loop [i 0] [sum 0] (if (< i 10) (loop (+ i 1) (+ sum i)) sum))`
+  - Sequential variant via `^:seq` metadata
+  - CPS-compatible for use inside handle/reset blocks
+- Implemented path access: get, get-in, assoc, assoc-in, update, update-in
+- Added multiple dispatch ambiguity detection:
+  - `@omni_compare_specificity` returns `#ASpec`, `#BSpec`, `#Equal`, or `#Ambig`
+  - `@omni_find_best_method` now returns `#MAmb{name, sig_a, sig_b}` on ambiguity
+  - Dispatch reports `#sym_AmbiguousMethod` error with both conflicting signatures
+- Implemented quasiquote evaluation with nesting levels
+- Added comprehensive collection functions to prelude:
+  - sort, sort-by, sort-asc, sort-desc (merge sort)
+  - find, find-index, partition
+  - take-while, drop-while, span, break, split-at
+  - group, group-by, intersperse, intercalate
+  - nub, nub-by (deduplication)
+  - minimum, maximum, minimum-by, maximum-by
+- Added complete lazy iterator system to prelude:
+  - Iterator protocol (iter-next, iter-done?)
+  - Lazy range constructors (lazy-range, lazy-range1, lazy-range2)
+  - Infinite generators (iterate, lazy-repeat, cycle)
+  - Lazy transformations (lazy-map, lazy-filter, lazy-take, lazy-drop)
+  - lazy-take-while, lazy-drop-while, lazy-zip, lazy-zip-with
+  - chain, lazy-flatten, enumerate
+  - Realization functions (collect-list, to-list, for-each)
+  - Iterator consumers (iter-fold, iter-reduce, iter-count, iter-sum, iter-find, iter-any, iter-all, iter-nth, iter-last)
+- Standard Library progress: 40% → 85%
+- Overall progress: 75% → 85%
+- Extended polymorphic dispatch to Arrays and Dicts:
+  - `map` now works on List → List, Array → Array, Dict → Dict (values)
+  - `filter` now works on List → List, Array → Array, Dict → Dict
+  - `foldl`/`foldr` now work on List, Array, Dict, Iterator
+  - `take`/`drop` now work on List → List, Array → Array, Iterator → Iterator
+  - `length` now works on List, Array, Dict (native O(1) for arrays)
+  - `reverse` now works on List → List, Array → Array
+  - `zip` now works on List → List, Array → Array, Iterator → Iterator
+  - Added `foldl_iter` helper for folding over iterators
 
-### 2026-01-23
-- Original OmniLisp development complete
-- See `archived_todos.md` for original development history
+### 2026-01-25
+- Initial HVM4 implementation tracking
+- Completed Pika parser
+- REPL and editor integration

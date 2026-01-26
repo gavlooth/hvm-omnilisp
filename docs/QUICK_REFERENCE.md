@@ -399,32 +399,55 @@ Check if a value is of a specific type:
 
 ## 4. Sequences & Iterators
 
-### 4.1 Generic Collection Operations (Gradual Dispatch)
+### 4.1 Polymorphic Dispatch (Type-Preserving Operations)
 
-Collection functions use **gradual multiple dispatch** to work on any collection type. The same function name dispatches to different implementations based on argument type:
+All sequence functions use **polymorphic dispatch**: the input type determines the output type. This enables gradual laziness - if you start with a lazy iterator, operations return lazy iterators.
 
 ```lisp
-;; Generic functions work on Lists, Arrays, and Iterators
-(map f some-list)      ; → new list (eager)
-(map f some-array)     ; → new array (eager)
-(map f some-iterator)  ; → lazy iterator wrapper
+;; Polymorphic dispatch - type flows through
+(map f some-list)      ; → List (eager)
+(map f some-array)     ; → Array (eager)
+(map f some-dict)      ; → Dict (maps over values, preserves keys)
+(map f some-iterator)  ; → Iterator (lazy)
 
-;; Same for filter, take, drop, fold, find, any?, all?
-(filter pred coll)
-(take n coll)
-(fold f init coll)
+;; Same pattern for all core functions
+(filter pred coll)     ; preserves type
+(take n coll)          ; preserves type
+(drop n coll)          ; preserves type
+(zip xs ys)            ; preserves type
+(foldl f init coll)    ; works on all types
+(length coll)          ; O(1) for arrays, O(n) for lists
+(reverse coll)         ; preserves type
 ```
 
 **Behavior by collection type:**
 
-| Function | List/Array | Iterator |
-|----------|------------|----------|
-| `map` | Eager, returns same type | Lazy `#IMap` wrapper |
-| `filter` | Eager, returns same type | Lazy `#IFlt` wrapper |
-| `take` | Eager, returns same type | Lazy `#ITkn` wrapper |
-| `fold` | Immediate result | Consumes iterator |
+| Function | List | Array | Dict | Iterator |
+|----------|------|-------|------|----------|
+| `map` | → List | → Array | → Dict (values) | → Iterator |
+| `filter` | → List | → Array | → Dict (by value) | → Iterator |
+| `take`/`drop` | → List | → Array | — | → Iterator |
+| `zip` | → List | → Array | — | → Iterator |
+| `foldl`/`foldr` | immediate | immediate | immediate (values) | immediate |
+| `length` | O(n) | O(1) | O(n) | consumes |
+| `reverse` | → List | → Array | — | — |
 
-### 4.2 Lazy Iterators
+### 4.2 Collection Realization
+
+Convert between collection types using realization functions:
+
+```lisp
+(collect iter)         ; Iterator → List
+(collect_array iter)   ; Iterator → Array
+(collect_dict iter)    ; Iterator of pairs → Dict
+
+;; Type-directed collection with `into`
+(into [] seq)          ; → Array
+(into #{} seq)         ; → Dict
+(into '() seq)         ; → List
+```
+
+### 4.3 Lazy Iterators
 
 Iterators are **pull-based lazy sequences**. Operations on iterators return wrapper nodes that defer computation until consumed.
 
@@ -440,7 +463,7 @@ Iterators are **pull-based lazy sequences**. Operations on iterators return wrap
 *   `(chain it1 it2 ...)`: Concatenate iterators.
 *   `(cycle it)`: Infinite repetition.
 
-### 4.3 Realization (Consuming Iterators)
+### 4.4 Realization (Consuming Iterators)
 
 Type constructors double as converters via gradual dispatch:
 *   `(list iter)`: Collect iterator to list. Also `(list 1 2 3)` creates list.

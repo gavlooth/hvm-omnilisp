@@ -320,10 +320,12 @@ static u32 OMNI_NAM_METH;  // Method: #Meth{name, sig, impl, constraints, effect
                            // constraints: list of #TWhr{tvar, bound} from ^:where
                            // effects: #ERws{effect_types} from ^:effects or NIL
 static u32 OMNI_NAM_GFUN;  // Generic function: #GFun{name, methods}
+static u32 OMNI_NAM_GPRT;  // Generic partial application: #GPrt{name, methods, args, remaining}
 static u32 OMNI_NAM_DISP;  // Dispatch call: #Disp{name, args}
 static u32 OMNI_NAM_SIG;   // Signature: #Sig{types}
 static u32 OMNI_NAM_TWHR;  // Type constraint (^:where): #TWhr{tvar, bound}
                            // e.g., ^:where [T {Number}] → #TWhr{T, Number}
+static u32 OMNI_NAM_TYCK;  // Type check: #Tyck{value, type}
 
 // Macro system
 static u32 OMNI_NAM_MSYN;  // Syntax macro definition: #MSyn{name, patterns}
@@ -338,6 +340,7 @@ static u32 OMNI_NAM_MODL;  // Module definition: #Modl{name, exports, body}
 static u32 OMNI_NAM_IMPT;  // Import: #Impt{module_name, bindings}
 static u32 OMNI_NAM_EXPT;  // Export list: #Expt{names}
 static u32 OMNI_NAM_QUAL;  // Qualified access: #Qual{module, name}
+static u32 OMNI_NAM_MODA;  // Module alias: #ModAlias{env} - for (import M :as Alias)
 
 // Code/quasiquote
 static u32 OMNI_NAM_COD;   // Code: #Cod{expr}
@@ -751,9 +754,11 @@ fn void omni_names_init(void) {
   // Multiple dispatch
   OMNI_NAM_METH = omni_nick("Meth");
   OMNI_NAM_GFUN = omni_nick("GFun");
+  OMNI_NAM_GPRT = omni_nick("GPrt");  // Generic partial application
   OMNI_NAM_DISP = omni_nick("Disp");
   OMNI_NAM_SIG  = omni_nick("Sig");
   OMNI_NAM_TWHR = omni_nick("TWhr");  // Type where constraint
+  OMNI_NAM_TYCK = omni_nick("Tyck");  // Type check
 
   // Macro system
   OMNI_NAM_MSYN = omni_nick("MSyn");
@@ -768,6 +773,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_IMPT = omni_nick("Impt");
   OMNI_NAM_EXPT = omni_nick("Expt");
   OMNI_NAM_QUAL = omni_nick("Qual");
+  OMNI_NAM_MODA = omni_nick("ModA");
 
   // Code/quasiquote
   OMNI_NAM_COD  = omni_nick("Cod");

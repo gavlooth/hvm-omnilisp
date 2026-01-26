@@ -1,49 +1,144 @@
 // OmniLisp Standard Library (Prelude)
 // Common functions for list manipulation, I/O, and utilities
+//
+// Design principle: Functions dispatch on input type.
+// - List (#CON/#NIL) → eager, returns List
+// - Iterator (#Iter/#Rang) → lazy, returns Iterator
+// This enables gradual/flowing laziness through pipelines.
 
 // =============================================================================
-// List Operations
+// Polymorphic Sequence Operations (dispatch on List vs Iterator)
 // =============================================================================
 
-// Map a function over a list
+// Map a function over a sequence
+// List → List, Array → Array, Dict → Dict (values), Iterator → Iterator
 @map = λf. λxs.
   λ{
+    // Eager: list
     #NIL: #NIL
     #CON: λ&h. λ&t. #CON{f(h), @map(f)(t)}
+    // Eager: array
+    #Arr: λ&len. λ&data.
+      #Arr{len, @map(f)(data)}
+    // Eager: dict (maps over values, preserves keys)
+    #Dict: λ&entries.
+      #Dict{@map(λpair.
+        λ{#CON: λ&k. λ&rest.
+          λ{#CON: λ&v. λ&_.
+            #CON{k, #CON{f(v), #NIL}}
+          }(rest)
+        }(pair)
+      )(entries)}
+    // Lazy: iterator
+    #Iter: λ&state. λ&next_fn.
+      #Iter{xs, λi.
+        λ{
+          #Some: λ&v. λ&rest. #Some{f(v), @map(f)(rest)}
+          #None: #None{}
+        }(@iter_next(i))
+      }
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{xs, λi.
+        λ{
+          #Some: λ&v. λ&rest. #Some{f(v), @map(f)(rest)}
+          #None: #None{}
+        }(@iter_next(i))
+      }
   }(xs)
 
-// Filter a list by predicate
+// Filter a sequence by predicate
+// List → List, Array → Array, Dict → Dict (by value), Iterator → Iterator
 @filter = λp. λxs.
   λ{
+    // Eager: list
     #NIL: #NIL
     #CON: λ&h. λ&t.
       λ{
         #True: #CON{h, @filter(p)(t)}
         _: @filter(p)(t)
       }(p(h))
+    // Eager: array (filter then rebuild)
+    #Arr: λ&len. λ&data.
+      @list_to_arr(@filter(p)(data))
+    // Eager: dict (filter by value predicate)
+    #Dict: λ&entries.
+      #Dict{@filter(λpair.
+        λ{#CON: λ&_. λ&rest.
+          λ{#CON: λ&v. λ&_. p(v)}(rest)
+        }(pair)
+      )(entries)}
+    // Lazy: iterator
+    #Iter: λ&state. λ&next_fn.
+      #Iter{xs, @filter_iter_next(p)}
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{xs, @filter_iter_next(p)}
   }(xs)
 
-// Left fold
+@filter_iter_next = λp. λi.
+  λ{
+    #Some: λ&v. λ&rest.
+      λ{
+        #True: #Some{v, @filter(p)(rest)}
+        _: @filter_iter_next(p)(rest)
+      }(p(v))
+    #None: #None{}
+  }(@iter_next(i))
+
+// Left fold - works on List, Array, Dict (values), Iterator
 @foldl = λf. λacc. λxs.
   λ{
     #NIL: acc
     #CON: λ&h. λ&t. @foldl(f)(f(acc)(h))(t)
+    #Arr: λ&len. λ&data. @foldl(f)(acc)(data)
+    #Dict: λ&entries.
+      @foldl(λa. λpair.
+        λ{#CON: λ&_. λ&rest.
+          λ{#CON: λ&v. λ&_. f(a)(v)}(rest)
+        }(pair)
+      )(acc)(entries)
+    #Iter: λ&state. λ&next_fn.
+      @foldl_iter(f)(acc)(xs)
+    #Rang: λ&s. λ&e. λ&st.
+      @foldl_iter(f)(acc)(xs)
   }(xs)
 
-// Right fold
+// Helper for folding over iterators
+@foldl_iter = λf. λacc. λi.
+  λ{
+    #Some: λ&v. λ&rest. @foldl_iter(f)(f(acc)(v))(rest)
+    #None: acc
+  }(@iter_next(i))
+
+// Right fold - works on List, Array, Dict (values)
 @foldr = λf. λacc. λxs.
   λ{
     #NIL: acc
     #CON: λ&h. λ&t. f(h)(@foldr(f)(acc)(t))
+    #Arr: λ&len. λ&data. @foldr(f)(acc)(data)
+    #Dict: λ&entries.
+      @foldr(λpair. λa.
+        λ{#CON: λ&_. λ&rest.
+          λ{#CON: λ&v. λ&_. f(v)(a)}(rest)
+        }(pair)
+      )(acc)(entries)
   }(xs)
 
-// Length of a list
+// Length of a sequence - List, Array, Dict
 @length = λxs.
-  @foldl(λacc. λ_. #Cst{(λ{#Cst: λ&n. n}(acc) + 1)})(#Cst{0})(xs)
+  λ{
+    #NIL: #Cst{0}
+    #CON: λ&h. λ&t. @foldl(λacc. λ_. #Cst{(λ{#Cst: λ&n. n}(acc) + 1)})(#Cst{0})(xs)
+    #Arr: λ&len. λ&data. len
+    #Dict: λ&entries. @length(entries)
+  }(xs)
 
-// Reverse a list
+// Reverse a sequence - List → List, Array → Array
 @reverse = λxs.
-  @foldl(λacc. λh. #CON{h, acc})(#NIL)(xs)
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. @foldl(λacc. λh. #CON{h, acc})(#NIL)(xs)
+    #Arr: λ&len. λ&data. #Arr{len, @reverse(data)}
+  }(xs)
 
 // Append two lists
 @append = λxs. λys.
@@ -57,24 +152,78 @@
   @foldr(@append)(#NIL)(xss)
 
 // Take first n elements
+// List → List, Array → Array, Iterator → Iterator
 @take = λn. λxs.
   λ{
-    0: #NIL
-    _: λ{
-      #NIL: #NIL
-      #CON: λ&h. λ&t. #CON{h, @take((n - 1))(t)}
-    }(xs)
-  }(λ{#Cst: λ&m. m}(n))
+    // Eager: list
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        0: #NIL
+        _: #CON{h, @take(#Cst{(λ{#Cst: λ&m. m}(n) - 1)})(t)}
+      }(λ{#Cst: λ&m. m}(n))
+    // Eager: array
+    #Arr: λ&len. λ&data.
+      @list_to_arr(@take(n)(data))
+    // Lazy: iterator
+    #Iter: λ&state. λ&next_fn.
+      #Iter{#CON{n, xs}, @take_iter_next}
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{#CON{n, xs}, @take_iter_next}
+  }(xs)
+
+@take_iter_next = λstate.
+  λ{#CON: λ&count. λ&i.
+    λ{#Cst: λ&c.
+      λ{
+        0: #None{}
+        _: λ{
+          #Some: λ&v. λ&rest.
+            #Some{v, #CON{#Cst{(c - 1)}, rest}}
+          #None: #None{}
+        }(@iter_next(i))
+      }(c)
+    }(count)
+  }(state)
 
 // Drop first n elements
+// List → List, Array → Array, Iterator → Iterator
 @drop = λn. λxs.
   λ{
-    0: xs
-    _: λ{
-      #NIL: #NIL
-      #CON: λ&h. λ&t. @drop((n - 1))(t)
-    }(xs)
-  }(λ{#Cst: λ&m. m}(n))
+    // Eager: list
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        0: xs
+        _: @drop(#Cst{(λ{#Cst: λ&m. m}(n) - 1)})(t)
+      }(λ{#Cst: λ&m. m}(n))
+    // Eager: array
+    #Arr: λ&len. λ&data.
+      @list_to_arr(@drop(n)(data))
+    // Lazy: iterator
+    #Iter: λ&state. λ&next_fn.
+      #Iter{#CON{n, xs}, @drop_iter_next}
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{#CON{n, xs}, @drop_iter_next}
+  }(xs)
+
+@drop_iter_next = λstate.
+  λ{#CON: λ&count. λ&i.
+    λ{#Cst: λ&c.
+      λ{
+        0: λ{
+          #Some: λ&v. λ&rest.
+            #Some{v, #CON{#Cst{0}, rest}}
+          #None: #None{}
+        }(@iter_next(i))
+        _: λ{
+          #Some: λ&_. λ&rest.
+            @drop_iter_next(#CON{#Cst{(c - 1)}, rest})
+          #None: #None{}
+        }(@iter_next(i))
+      }(c)
+    }(count)
+  }(state)
 
 // Get element at index
 @nth = λn. λxs.
@@ -143,48 +292,385 @@
       }(@omni_values_equal(x)(h))
   }(xs)
 
-// Zip two lists
+// Zip two sequences
+// List → List, Array → Array, Iterator → Iterator
 @zip = λxs. λys.
   λ{
+    // Eager: list
     #NIL: #NIL
     #CON: λ&xh. λ&xt.
       λ{
         #NIL: #NIL
         #CON: λ&yh. λ&yt.
           #CON{#CON{xh, #CON{yh, #NIL}}, @zip(xt)(yt)}
+        #Arr: λ&len. λ&data.
+          @zip(xs)(data)
       }(ys)
+    // Eager: array - zip underlying data, rebuild array
+    #Arr: λ&len1. λ&data1.
+      λ{
+        #Arr: λ&len2. λ&data2.
+          @list_to_arr(@zip(data1)(data2))
+        _: @zip(data1)(ys)
+      }(ys)
+    // Lazy: iterator
+    #Iter: λ&state. λ&next_fn.
+      #Iter{#CON{xs, ys}, @zip_iter_next}
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{#CON{xs, ys}, @zip_iter_next}
   }(xs)
 
+@zip_iter_next = λstate.
+  λ{#CON: λ&i1. λ&i2.
+    λ{
+      #Some: λ&v1. λ&rest1.
+        λ{
+          #Some: λ&v2. λ&rest2.
+            #Some{#CON{v1, #CON{v2, #NIL}}, #CON{rest1, rest2}}
+          #None: #None{}
+        }(@iter_next(i2))
+      #None: #None{}
+    }(@iter_next(i1))
+  }(state)
+
 // Zip with function
+// List → List (eager), Iterator → Iterator (lazy)
 @zipWith = λf. λxs. λys.
-  λ{
-    #NIL: #NIL
-    #CON: λ&xh. λ&xt.
-      λ{
-        #NIL: #NIL
-        #CON: λ&yh. λ&yt.
-          #CON{f(xh)(yh), @zipWith(f)(xt)(yt)}
-      }(ys)
-  }(xs)
+  @map(λpair.
+    λ{#CON: λ&a. λ&rest.
+      λ{#CON: λ&b. λ&_. f(a)(b)}(rest)
+    }(pair)
+  )(@zip(xs)(ys))
 
 // Flatten (one level)
 @flatten = @concat
 
-// Range [start..end)
+// =============================================================================
+// Lazy Iterators (default for sequences)
+// =============================================================================
+
+// Range [start..end) with step - LAZY by default
+// Returns #Rang iterator, use (collect ...) to realize
 @range = λstart. λend.
+  #Rang{start, end, #Cst{1}}
+
+// Range with explicit step
+@range_step = λstart. λend. λstep.
+  #Rang{start, end, step}
+
+// Eager range (when you need a list immediately)
+@range! = λstart. λend.
   !!&s = λ{#Cst: λ&n. n}(start);
   !!&e = λ{#Cst: λ&n. n}(end);
   λ{
     1: #NIL
-    _: #CON{#Cst{s}, @range(#Cst{(s + 1)})(#Cst{e})}
+    _: #CON{#Cst{s}, @range!(#Cst{(s + 1)})(#Cst{e})}
   }((s >= e))
 
-// Repeat value n times
-@repeat = λn. λx.
+// Iterate: generate infinite sequence by applying f repeatedly
+// (iterate inc 0) → 0, 1, 2, 3, ...
+@iterate = λf. λseed.
+  #Iter{seed, λs. #Some{s, f(s)}}
+
+// Repeat value infinitely
+@repeat = λx.
+  #Iter{x, λv. #Some{v, v}}
+
+// Repeat value n times (finite, eager)
+@repeat_n = λn. λx.
   λ{
     0: #NIL
-    _: #CON{x, @repeat((n - 1))(x)}
+    _: #CON{x, @repeat_n((n - 1))(x)}
   }(λ{#Cst: λ&m. m}(n))
+
+// Cycle through a list infinitely
+@cycle = λxs.
+  #Iter{#CON{xs, xs}, @cycle_next}
+
+@cycle_next = λstate.
+  λ{#CON: λ&orig. λ&curr.
+    λ{
+      #NIL: @cycle_next(#CON{orig, orig})
+      #CON: λ&h. λ&t. #Some{h, #CON{orig, t}}
+    }(curr)
+  }(state)
+
+// =============================================================================
+// Iterator Protocol
+// =============================================================================
+
+// Advance iterator: returns #Some{value, rest} or #None{}
+@iter_next = λiter.
+  λ{
+    // Range iterator
+    #Rang: λ&start. λ&end. λ&step.
+      !!&s = λ{#Cst: λ&n. n}(start);
+      !!&e = λ{#Cst: λ&n. n}(end);
+      !!&st = λ{#Cst: λ&n. n}(step);
+      λ{
+        1: #None{}
+        _: #Some{start, #Rang{#Cst{(s + st)}, end, step}}
+      }((st > 0) * (s >= e) + (st < 0) * (s <= e))
+    // General iterator
+    #Iter: λ&state. λ&next_fn.
+      next_fn(state)
+    // List-as-iterator
+    #CON: λ&h. λ&t. #Some{h, t}
+    #NIL: #None{}
+    _: #None{}
+  }(iter)
+
+// Check if done
+@done? = λiter.
+  λ{
+    #Some: λ&_. λ&_. #Fals{}
+    #None: #True{}
+  }(@iter_next(iter))
+
+// =============================================================================
+// Realization (Iterator → Collection)
+// =============================================================================
+
+// Collect: realize sequence into list
+@collect = λseq.
+  λ{
+    // Already a list - return as-is
+    #NIL: #NIL
+    #CON: λ&h. λ&t. seq
+    // Array - convert to list
+    #Arr: λ&len. λ&data. @arr_to_list(seq)
+    // Dict - convert to list of pairs
+    #Dict: λ&entries. entries
+    // Iterator - realize it
+    _: @collect_helper(seq)(#NIL)
+  }(seq)
+
+@collect_helper = λiter. λacc.
+  λ{
+    #Some: λ&v. λ&rest.
+      @collect_helper(rest)(#CON{v, acc})
+    #None: @reverse(acc)
+  }(@iter_next(iter))
+
+// Collect into array
+@collect_array = λseq.
+  λ{
+    // Already an array - return as-is
+    #Arr: λ&len. λ&data. seq
+    // List - convert to array
+    #NIL: #Arr{#Cst{0}, #NIL}
+    #CON: λ&h. λ&t. @list_to_arr(seq)
+    // Dict - keys as array
+    #Dict: λ&entries. @list_to_arr(@map(@head)(entries))
+    // Iterator - collect then convert
+    _: @list_to_arr(@collect(seq))
+  }(seq)
+
+// Collect into dict (from sequence of pairs)
+@collect_dict = λseq.
+  λ{
+    // Already a dict - return as-is
+    #Dict: λ&entries. seq
+    // List of pairs - convert to dict
+    #NIL: #Dict{#NIL}
+    #CON: λ&h. λ&t. #Dict{seq}
+    // Iterator - collect pairs then wrap
+    _: #Dict{@collect(seq)}
+  }(seq)
+
+// Into: collect into target collection type
+// (into [] seq) → array
+// (into '() seq) → list
+// (into #{} seq) → dict
+@into = λtarget. λseq.
+  λ{
+    #Arr: λ&len. λ&data.
+      @collect_array(@chain(target)(seq))
+    #Dict: λ&entries.
+      @collect_dict(@chain(entries)(seq))
+    #NIL: @collect(seq)
+    #CON: λ&h. λ&t.
+      @append(target)(@collect(seq))
+  }(target)
+
+// =============================================================================
+// Array Operations
+// =============================================================================
+
+// Array length
+@arr_len = λarr.
+  λ{#Arr: λ&len. λ&_. len}(arr)
+
+// Array get (indexed access)
+@arr_get = λarr. λidx.
+  λ{#Arr: λ&len. λ&data.
+    @nth(idx)(data)
+  }(arr)
+
+// Array set (functional update, returns new array)
+@arr_set = λarr. λidx. λval.
+  λ{#Arr: λ&len. λ&data.
+    #Arr{len, @list_set(data)(idx)(val)}
+  }(arr)
+
+@list_set = λxs. λidx. λval.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{#Cst: λ&i.
+        λ{
+          0: #CON{val, t}
+          _: #CON{h, @list_set(t)(#Cst{(i - 1)})(val)}
+        }(i)
+      }(idx)
+  }(xs)
+
+// List to array
+@list_to_arr = λxs.
+  #Arr{@length(xs), xs}
+
+// Array to list
+@arr_to_list = λarr.
+  λ{#Arr: λ&len. λ&data. data}(arr)
+
+// Array map (returns array)
+@arr_map = λf. λarr.
+  λ{#Arr: λ&len. λ&data.
+    #Arr{len, @map(f)(data)}
+  }(arr)
+
+// Array filter (returns array)
+@arr_filter = λp. λarr.
+  @list_to_arr(@filter(p)(@arr_to_list(arr)))
+
+// Array as iterator
+@arr_iter = λarr.
+  λ{#Arr: λ&len. λ&data. data}(arr)
+
+// =============================================================================
+// Dict Operations
+// =============================================================================
+
+// Dict get
+@dict_get = λdict. λkey.
+  λ{#Dict: λ&entries.
+    @alist_get(entries)(key)
+  }(dict)
+
+@alist_get = λentries. λkey.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&pair. λ&rest.
+      λ{#CON: λ&k. λ&v_rest.
+        λ{
+          1: λ{#CON: λ&v. λ&_. v}(v_rest)
+          _: @alist_get(rest)(key)
+        }(@omni_values_equal(k)(key))
+      }(pair)
+  }(entries)
+
+// Dict set (functional update)
+@dict_set = λdict. λkey. λval.
+  λ{#Dict: λ&entries.
+    #Dict{@alist_set(entries)(key)(val)}
+  }(dict)
+
+@alist_set = λentries. λkey. λval.
+  λ{
+    #NIL: #CON{#CON{key, #CON{val, #NIL}}, #NIL}
+    #CON: λ&pair. λ&rest.
+      λ{#CON: λ&k. λ&v_rest.
+        λ{
+          1: #CON{#CON{key, #CON{val, #NIL}}, rest}
+          _: #CON{pair, @alist_set(rest)(key)(val)}
+        }(@omni_values_equal(k)(key))
+      }(pair)
+  }(entries)
+
+// Dict remove
+@dict_remove = λdict. λkey.
+  λ{#Dict: λ&entries.
+    #Dict{@alist_remove(entries)(key)}
+  }(dict)
+
+@alist_remove = λentries. λkey.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{#CON: λ&k. λ&_.
+        λ{
+          1: rest
+          _: #CON{pair, @alist_remove(rest)(key)}
+        }(@omni_values_equal(k)(key))
+      }(pair)
+  }(entries)
+
+// Dict has key?
+@dict_has? = λdict. λkey.
+  λ{
+    #Noth: #Fals{}
+    _: #True{}
+  }(@dict_get(dict)(key))
+
+// Dict keys
+@dict_keys = λdict.
+  λ{#Dict: λ&entries.
+    @map(@head)(entries)
+  }(dict)
+
+// Dict values
+@dict_values = λdict.
+  λ{#Dict: λ&entries.
+    @map(λpair. λ{#CON: λ&_. λ&rest. λ{#CON: λ&v. λ&_. v}(rest)}(pair))(entries)
+  }(dict)
+
+// Dict entries (as list of pairs)
+@dict_entries = λdict.
+  λ{#Dict: λ&entries. entries}(dict)
+
+// Dict size
+@dict_size = λdict.
+  λ{#Dict: λ&entries. @length(entries)}(dict)
+
+// Dict map values
+@dict_map = λf. λdict.
+  λ{#Dict: λ&entries.
+    #Dict{@map(λpair.
+      λ{#CON: λ&k. λ&rest.
+        λ{#CON: λ&v. λ&_.
+          #CON{k, #CON{f(v), #NIL}}
+        }(rest)
+      }(pair)
+    )(entries)}
+  }(dict)
+
+// Dict filter
+@dict_filter = λp. λdict.
+  λ{#Dict: λ&entries.
+    #Dict{@filter(λpair.
+      λ{#CON: λ&k. λ&rest.
+        λ{#CON: λ&v. λ&_. p(k)(v)}(rest)
+      }(pair)
+    )(entries)}
+  }(dict)
+
+// Dict merge (right takes precedence)
+@dict_merge = λd1. λd2.
+  λ{#Dict: λ&e1.
+    λ{#Dict: λ&e2.
+      #Dict{@foldl(λacc. λpair.
+        λ{#CON: λ&k. λ&rest.
+          λ{#CON: λ&v. λ&_.
+            @alist_set(acc)(k)(v)
+          }(rest)
+        }(pair)
+      )(e1)(e2)}
+    }(d2)
+  }(d1)
+
+// Dict as iterator (yields pairs)
+@dict_iter = λdict.
+  λ{#Dict: λ&entries. entries}(dict)
 
 // =============================================================================
 // Higher-Order Functions
@@ -213,6 +699,18 @@
   λ{#CON: λ&x. λ&rest.
     λ{#CON: λ&y. λ&_. f(x)(y)}(rest)
   }(pair)
+
+// Partial application - bind first n arguments
+@partial = λf. λfirst_arg.
+  λx. f(first_arg)(x)
+
+// Partial application with 2 fixed args
+@partial2 = λf. λa1. λa2.
+  λx. f(a1)(a2)(x)
+
+// Partial application with 3 fixed args
+@partial3 = λf. λa1. λa2. λa3.
+  λx. f(a1)(a2)(a3)(x)
 
 // =============================================================================
 // Numeric Functions
@@ -475,4 +973,301 @@
 // Greater than or equal?
 @ge? = λa. λb.
   @omni_or(@omni_gt(a)(b))(@omni_eql(a)(b))
+
+// =============================================================================
+// Additional Collection Functions
+// =============================================================================
+
+// Find first element matching predicate
+@find = λp. λxs.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: h
+        _: @find(p)(t)
+      }(p(h))
+  }(xs)
+
+// Find index of first element matching predicate
+@find_index = λp. λxs.
+  @find_index_helper(p)(xs)(#Cst{0})
+
+@find_index_helper = λp. λxs. λidx.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: idx
+        _: @find_index_helper(p)(t)(#Cst{(λ{#Cst: λ&n. n}(idx) + 1)})
+      }(p(h))
+  }(xs)
+
+// Partition list by predicate: returns (matching, not-matching)
+@partition = λp. λxs.
+  @partition_helper(p)(xs)(#NIL)(#NIL)
+
+@partition_helper = λp. λxs. λyes. λno.
+  λ{
+    #NIL: #CON{@reverse(yes), #CON{@reverse(no), #NIL}}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: @partition_helper(p)(t)(#CON{h, yes})(no)
+        _: @partition_helper(p)(t)(yes)(#CON{h, no})
+      }(p(h))
+  }(xs)
+
+// Take while predicate holds
+@take_while = λp. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #True: #CON{h, @take_while(p)(t)}
+        _: #NIL
+      }(p(h))
+  }(xs)
+
+// Drop while predicate holds
+@drop_while = λp. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #True: @drop_while(p)(t)
+        _: xs
+      }(p(h))
+  }(xs)
+
+// Split at position n: returns (take n, drop n)
+@split_at = λn. λxs.
+  #CON{@take(n)(xs), #CON{@drop(n)(xs), #NIL}}
+
+// Span: split at first element not satisfying predicate
+@span = λp. λxs.
+  #CON{@take_while(p)(xs), #CON{@drop_while(p)(xs), #NIL}}
+
+// Break: split at first element satisfying predicate
+@break = λp. λxs.
+  @span(λx. @omni_not(p(x)))(xs)
+
+// Group consecutive equal elements
+@group = λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&spanned = @span(λx. λ{1: #True{}; _: #Fals{}}(@omni_values_equal(x)(h)))(t);
+      λ{
+        #CON: λ&same. λ&rest.
+          λ{
+            #CON: λ&remaining. λ&_.
+              #CON{#CON{h, same}, @group(remaining)}
+          }(rest)
+      }(spanned)
+  }(xs)
+
+// Group by key function
+@group_by = λf. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&key = f(h);
+      !!&spanned = @span(λx. λ{1: #True{}; _: #Fals{}}(@omni_values_equal(f(x))(key)))(t);
+      λ{
+        #CON: λ&same. λ&rest.
+          λ{
+            #CON: λ&remaining. λ&_.
+              #CON{#CON{h, same}, @group_by(f)(remaining)}
+          }(rest)
+      }(spanned)
+  }(xs)
+
+// Intersperse element between list elements
+@intersperse = λsep. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: #CON{h, #NIL}
+        _: #CON{h, #CON{sep, @intersperse(sep)(t)}}
+      }(t)
+  }(xs)
+
+// Intercalate: intersperse then flatten
+@intercalate = λsep. λxss.
+  @concat(@intersperse(sep)(xss))
+
+// Remove duplicates (keeps first occurrence)
+@nub = λxs.
+  @nub_helper(xs)(#NIL)
+
+@nub_helper = λxs. λseen.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #True: @nub_helper(t)(seen)
+        _: #CON{h, @nub_helper(t)(#CON{h, seen})}
+      }(@elem?(h)(seen))
+  }(xs)
+
+// Remove duplicates by key function
+@nub_by = λf. λxs.
+  @nub_by_helper(f)(xs)(#NIL)
+
+@nub_by_helper = λf. λxs. λseen.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&key = f(h);
+      λ{
+        #True: @nub_by_helper(f)(t)(seen)
+        _: #CON{h, @nub_by_helper(f)(t)(#CON{key, seen})}
+      }(@elem?(key)(seen))
+  }(xs)
+
+// Merge sort (stable sort)
+@sort = λcmp. λxs.
+  !!&len = @length(xs);
+  λ{
+    #Cst: λ&n.
+      λ{
+        0: xs
+        1: xs
+        _: @merge_sorted(cmp)(@sort(cmp)(@take(#Cst{(n / 2)})(xs)))
+                              (@sort(cmp)(@drop(#Cst{(n / 2)})(xs)))
+      }(n)
+  }(len)
+
+// Merge two sorted lists
+@merge_sorted = λcmp. λxs. λys.
+  λ{
+    #NIL: ys
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: xs
+        #CON: λ&yh. λ&yt.
+          !!&c = cmp(xh)(yh);
+          λ{
+            #Cst: λ&n.
+              λ{
+                1: #CON{yh, @merge_sorted(cmp)(xs)(yt)}
+                _: #CON{xh, @merge_sorted(cmp)(xt)(ys)}
+              }(n)
+          }(c)
+      }(ys)
+  }(xs)
+
+// Sort by key function (ascending)
+@sort_by = λf. λxs.
+  @sort(λa. λb. @compare(f(a))(f(b)))(xs)
+
+// Sort ascending (for numeric lists)
+@sort_asc = λxs.
+  @sort(@compare)(xs)
+
+// Sort descending (for numeric lists)
+@sort_desc = λxs.
+  @sort(λa. λb. @compare(b)(a))(xs)
+
+// Minimum of list by comparison
+@minimum_by = λcmp. λxs.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      @foldl(λacc. λx.
+        !!&c = cmp(x)(acc);
+        λ{
+          #Cst: λ&n.
+            λ{
+              1: acc
+              _: x
+            }(n)
+        }(c)
+      )(h)(t)
+  }(xs)
+
+// Maximum of list by comparison
+@maximum_by = λcmp. λxs.
+  @minimum_by(λa. λb. cmp(b)(a))(xs)
+
+// Minimum of numeric list
+@minimum = λxs.
+  @minimum_by(@compare)(xs)
+
+// Maximum of numeric list
+@maximum = λxs.
+  @maximum_by(@compare)(xs)
+
+// =============================================================================
+// Additional Iterator Operations
+// =============================================================================
+
+// Enumerate: pair elements with indices
+// Works on both lists and iterators
+@enumerate = λxs.
+  @zip(@iterate(λn. #Cst{(λ{#Cst: λ&m. m}(n) + 1)})(#Cst{0}))(xs)
+
+// Chain: concatenate two sequences
+@chain = λxs. λys.
+  λ{
+    // Eager: list
+    #NIL: ys
+    #CON: λ&h. λ&t. @append(xs)(ys)
+    // Lazy: iterator
+    #Iter: λ&state. λ&next_fn.
+      #Iter{#CON{xs, ys}, @chain_iter_next}
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{#CON{xs, ys}, @chain_iter_next}
+  }(xs)
+
+@chain_iter_next = λstate.
+  λ{#CON: λ&i1. λ&i2.
+    λ{
+      #Some: λ&v. λ&rest1.
+        #Some{v, #CON{rest1, i2}}
+      #None: @iter_next(i2)
+    }(@iter_next(i1))
+  }(state)
+
+// For-each: apply function for side effects
+// Works on both lists and iterators
+@for_each = λf. λxs.
+  λ{
+    // Eager: list
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      !!&_ = f(h);
+      @for_each(f)(t)
+    // Lazy: iterator
+    _: @for_each_iter(f)(xs)
+  }(xs)
+
+@for_each_iter = λf. λiter.
+  λ{
+    #Some: λ&v. λ&rest.
+      !!&_ = f(v);
+      @for_each_iter(f)(rest)
+    #None: #Noth{}
+  }(@iter_next(iter))
+
+// Reduce: fold without initial value
+@reduce = λf. λxs.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t. @foldl(f)(h)(t)
+    _: λ{
+      #Some: λ&v. λ&rest.
+        @foldl(f)(v)(rest)
+      #None: #Noth{}
+    }(@iter_next(xs))
+  }(xs)
+
+// Count elements
+@count = λxs.
+  λ{
+    #NIL: #Cst{0}
+    #CON: λ&h. λ&t. @length(xs)
+    _: @foldl(λacc. λ_. #Cst{(λ{#Cst: λ&n. n}(acc) + 1)})(#Cst{0})(xs)
+  }(xs)
 
