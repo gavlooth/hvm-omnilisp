@@ -1,0 +1,282 @@
+// OmniLisp Syntax Macros (Hygienic)
+// Defined with: (define [syntax name] ...)
+// See docs/UNDOCUMENTED_FEATURES.md for specification
+
+// =============================================================================
+// SYNTAX MACRO INFRASTRUCTURE
+// =============================================================================
+
+// Syntax macro representation
+// #Synt{name, literals, rules}
+//   name: symbol (nick-encoded)
+//   literals: list of literal keywords that match exactly
+//   rules: list of [pattern template] pairs
+
+// Pattern elements:
+// #PatV{name}        - Pattern variable (binds to any expr)
+// #PatL{sym}         - Literal (matches symbol exactly)
+// #PatE{name}        - Ellipsis pattern (name ...) - zero or more
+// #PatS{patterns}    - Sequence pattern
+
+// Template elements:
+// #TmpV{name}        - Insert bound variable
+// #TmpE{name}        - Splice ellipsis-bound values
+// #TmpL{expr}        - Literal expression
+// #TmpS{templates}   - Sequence of templates
+
+// =============================================================================
+// SYNTAX DEFINITION
+// =============================================================================
+
+// Define a syntax macro
+// (define [syntax name] [literals ...] [(pattern) template] ...)
+@omni_define_syntax = λname. λliterals. λrules.
+  #Synt{name, literals, rules}
+
+// =============================================================================
+// PATTERN MATCHING FOR MACROS
+// =============================================================================
+
+// Match a pattern against an expression
+// Returns: #Some{bindings} or #None{}
+@omni_syntax_match = λpattern. λexpr. λliterals.
+  λ{
+    #PatV: λ&name. #Some{#CON{#Bnd{name, expr}, #NIL}}
+    #PatL: λ&sym.
+      (if (@omni_eq(expr)(sym))
+        #Some{#NIL}
+        #None{})
+    #PatS: λ&patterns.
+      (@omni_syntax_match_seq(patterns)(expr)(literals))
+    #PatE: λ&name.
+      // Ellipsis - handled specially in sequence matching
+      #Some{#CON{#Bnd{name, expr}, #NIL}}
+    _: #None{}
+  }(pattern)
+
+// Match a sequence of patterns against a list
+@omni_syntax_match_seq = λpatterns. λexprs. λliterals.
+  λ{
+    #NIL: λ{#NIL: #Some{#NIL}; _: #None{}}(exprs)
+    #CON: λ&pat. λ&rest_pats.
+      // Check for ellipsis pattern
+      λ{
+        #PatE: λ&name.
+          // Collect all remaining exprs into this binding
+          #Some{#CON{#Bnd{name, exprs}, #NIL}}
+        _:
+          // Regular pattern - match head, then rest
+          λ{
+            #NIL: #None{}
+            #CON: λ&expr. λ&rest_exprs.
+              !!&m1 = @omni_syntax_match(pat)(expr)(literals);
+              λ{
+                #Some: λ&b1.
+                  !!&m2 = @omni_syntax_match_seq(rest_pats)(rest_exprs)(literals);
+                  λ{
+                    #Some: λ&b2. #Some{@omni_append(b1)(b2)}
+                    #None: #None{}
+                  }(m2)
+                #None: #None{}
+              }(m1)
+          }(exprs)
+      }(pat)
+  }(patterns)
+
+// =============================================================================
+// TEMPLATE INSTANTIATION
+// =============================================================================
+
+// Instantiate a template with bindings
+@omni_syntax_instantiate = λtemplate. λbindings.
+  λ{
+    #TmpV: λ&name. @omni_lookup_binding(name)(bindings)
+    #TmpL: λ&expr. expr
+    #TmpE: λ&name.
+      // Splice ellipsis-bound list
+      @omni_lookup_binding(name)(bindings)
+    #TmpS: λ&templates.
+      @omni_map(λt. @omni_syntax_instantiate(t)(bindings))(templates)
+    _: template
+  }(template)
+
+// Lookup a binding by name
+@omni_lookup_binding = λname. λbindings.
+  λ{
+    #NIL: #Err{"Unbound pattern variable"}
+    #CON: λ&bnd. λ&rest.
+      λ{
+        #Bnd: λ&n. λ&v.
+          (if (@omni_eq(n)(name)) v (@omni_lookup_binding(name)(rest)))
+      }(bnd)
+  }(bindings)
+
+// =============================================================================
+// MACRO EXPANSION
+// =============================================================================
+
+// Expand a syntax macro application
+@omni_syntax_expand = λmacro. λargs.
+  λ{
+    #Synt: λ&name. λ&literals. λ&rules.
+      @omni_try_rules(rules)(args)(literals)
+  }(macro)
+
+// Try each rule until one matches
+@omni_try_rules = λrules. λargs. λliterals.
+  λ{
+    #NIL: #Err{"No matching pattern for syntax macro"}
+    #CON: λ&rule. λ&rest.
+      λ{
+        #Rule: λ&pattern. λ&template.
+          !!&m = @omni_syntax_match(pattern)(args)(literals);
+          λ{
+            #Some: λ&bindings. @omni_syntax_instantiate(template)(bindings)
+            #None: @omni_try_rules(rest)(args)(literals)
+          }(m)
+      }(rule)
+  }(rules)
+
+// =============================================================================
+// FULL EXPANSION (RECURSIVE)
+// =============================================================================
+
+// Expand all macros in an expression
+@omni_macroexpand_all = λexpr. λenv.
+  λ{
+    #CON: λ&head. λ&tail.
+      // Check if head is a syntax macro
+      !!&maybe_macro = @omni_env_get_syntax(env)(head);
+      λ{
+        #Some: λ&macro.
+          // Expand macro, then recursively expand result
+          !!&expanded = @omni_syntax_expand(macro)(tail);
+          @omni_macroexpand_all(expanded)(env)
+        #None:
+          // Not a macro - recursively expand children
+          #CON{@omni_macroexpand_all(head)(env),
+               @omni_map(λe. @omni_macroexpand_all(e)(env))(tail)}
+      }(maybe_macro)
+    _: expr  // Atoms are unchanged
+  }(expr)
+
+// Expand one level only
+@omni_macroexpand = λexpr. λenv.
+  λ{
+    #CON: λ&head. λ&tail.
+      !!&maybe_macro = @omni_env_get_syntax(env)(head);
+      λ{
+        #Some: λ&macro. @omni_syntax_expand(macro)(tail)
+        #None: expr
+      }(maybe_macro)
+    _: expr
+  }(expr)
+
+// =============================================================================
+// GENSYM (HYGIENIC SYMBOL GENERATION)
+// =============================================================================
+
+// Global counter for unique symbols
+// In HVM4, this would use a mutable cell or thread-local
+@omni_gensym_counter = #Cst{0}
+
+// Generate a unique symbol
+@omni_gensym = λprefix.
+  // Note: actual implementation needs FFI for atomic increment
+  #Sym{@omni_nick_concat(prefix)(@omni_gensym_counter)}
+
+// =============================================================================
+// STANDARD SYNTAX MACROS
+// =============================================================================
+
+// These would be defined in prelude using (define [syntax ...])
+// Shown here as HVM4 for reference
+
+// when - single-branch conditional
+// (define [syntax when]
+//   [(when test body ...)
+//    (if test (do body ...) nothing)])
+@omni_syntax_when = #Synt{
+  @omni_nick("when"),
+  #NIL,  // no literals
+  #CON{
+    #Rule{
+      #PatS{#CON{#PatL{@omni_nick("when")},
+            #CON{#PatV{@omni_nick("test")},
+            #CON{#PatE{@omni_nick("body")}, #NIL}}}},
+      #TmpS{#CON{#TmpL{@omni_nick("if")},
+            #CON{#TmpV{@omni_nick("test")},
+            #CON{#TmpS{#CON{#TmpL{@omni_nick("do")}, #TmpE{@omni_nick("body")}}},
+            #CON{#TmpL{#Noth{}}, #NIL}}}}}
+    },
+    #NIL
+  }
+}
+
+// unless - negated when
+// (define [syntax unless]
+//   [(unless test body ...)
+//    (if test nothing (do body ...))])
+@omni_syntax_unless = #Synt{
+  @omni_nick("unls"),
+  #NIL,
+  #CON{
+    #Rule{
+      #PatS{#CON{#PatL{@omni_nick("unls")},
+            #CON{#PatV{@omni_nick("test")},
+            #CON{#PatE{@omni_nick("body")}, #NIL}}}},
+      #TmpS{#CON{#TmpL{@omni_nick("if")},
+            #CON{#TmpV{@omni_nick("test")},
+            #CON{#TmpL{#Noth{}},
+            #CON{#TmpS{#CON{#TmpL{@omni_nick("do")}, #TmpE{@omni_nick("body")}}}, #NIL}}}}}
+    },
+    #NIL
+  }
+}
+
+// cond - multi-way conditional
+// (define [syntax cond]
+//   [literals else]
+//   [(cond) nothing]
+//   [(cond (else result)) result]
+//   [(cond (test result) rest ...)
+//    (if test result (cond rest ...))])
+
+// case - value dispatch
+// (define [syntax case]
+//   [literals else]
+//   [(case val) nothing]
+//   [(case val (else result)) result]
+//   [(case val (pattern result) rest ...)
+//    (if (= val pattern) result (case val rest ...))])
+
+// -> thread-first
+// (define [syntax ->]
+//   [(-> x) x]
+//   [(-> x (f args ...) rest ...)
+//    (-> (f x args ...) rest ...)]
+//   [(-> x f rest ...)
+//    (-> (f x) rest ...)])
+
+// ->> thread-last
+// (define [syntax ->>]
+//   [(->> x) x]
+//   [(->> x (f args ...) rest ...)
+//    (->> (f args ... x) rest ...)]
+//   [(->> x f rest ...)
+//    (->> (f x) rest ...)])
+
+// =============================================================================
+// SYNTAX MACRO REGISTRY
+// =============================================================================
+
+// Register a syntax macro in the environment
+@omni_register_syntax = λenv. λname. λmacro.
+  @omni_env_set_syntax(env)(name)(macro)
+
+// Check if a symbol is a syntax macro
+@omni_is_syntax = λenv. λname.
+  λ{
+    #Some: λ&_. #True{}
+    #None: #False{}
+  }(@omni_env_get_syntax(env)(name))

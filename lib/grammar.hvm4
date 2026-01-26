@@ -1,0 +1,376 @@
+// OmniLisp Grammar Runtime
+// PEG (Parsing Expression Grammar) execution
+// Grammars are defined with: (define [grammar name] [rule pattern] ...)
+
+// =============================================================================
+// Parser State
+// =============================================================================
+
+// Parser state: #Prsr{input, pos, captures}
+// Parse result: #PRes{success, value, pos}
+//   success: 1 for success, 0 for failure
+//   value: matched content or #Noth{}
+//   pos: position after match (if success) or original pos (if fail)
+
+// Create initial parser state
+@omni_parser_new = λinput.
+  #Prsr{input, 0, #NIL}
+
+// Get current position
+@omni_parser_pos = λparser.
+  λ{#Prsr: λ&_. λ&pos. λ&_. pos}(parser)
+
+// Get remaining input
+@omni_parser_rest = λparser.
+  λ{#Prsr: λ&input. λ&pos. λ&_.
+    @omni_drop(pos)(input)
+  }(parser)
+
+// Advance parser position
+@omni_parser_advance = λparser. λn.
+  λ{#Prsr: λ&input. λ&pos. λ&caps.
+    #Prsr{input, (pos + n), caps}
+  }(parser)
+
+// Add capture
+@omni_parser_capture = λparser. λname. λvalue.
+  λ{#Prsr: λ&input. λ&pos. λ&caps.
+    #Prsr{input, pos, #CON{#CON{name, #CON{value, #NIL}}, caps}}
+  }(parser)
+
+// Get all captures
+@omni_parser_captures = λparser.
+  λ{#Prsr: λ&_. λ&_. λ&caps. caps}(parser)
+
+// =============================================================================
+// Core Parsing
+// =============================================================================
+
+// Parse input with grammar, starting from specified rule
+@omni_parse_with_grammar = λgrammar. λinput. λstart_rule.
+  λ{
+    #Gram: λ&name. λ&rules.
+      !!&parser = @omni_parser_new(input);
+      @omni_parse_rule(rules)(start_rule)(parser)
+  }(grammar)
+
+// Parse using a specific rule from the rule list
+@omni_parse_rule = λrules. λrule_name. λparser.
+  !!&rule = @omni_find_rule(rules)(rule_name);
+  λ{
+    #Noth: #PRes{0, #Err{#sym_RuleNotFound, rule_name}, @omni_parser_pos(parser)}
+    #Rule: λ&_. λ&pattern.
+      @omni_parse_pattern(pattern)(rules)(parser)
+  }(rule)
+
+// Find a rule by name
+@omni_find_rule = λrules. λname.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&rule. λ&rest.
+      λ{
+        #Rule: λ&rname. λ&_.
+          λ{
+            1: rule
+            _: @omni_find_rule(rest)(name)
+          }((rname == name))
+      }(rule)
+  }(rules)
+
+// =============================================================================
+// Pattern Matching
+// =============================================================================
+
+// Parse according to a pattern
+@omni_parse_pattern = λpattern. λrules. λparser.
+  λ{
+    // String literal: #GStr{chars}
+    #GStr: λ&chars.
+      @omni_parse_string(chars)(parser)
+
+    // Character class: #GChr{chars, negated}
+    #GChr: λ&chars. λ&negated.
+      @omni_parse_char_class(chars)(negated)(parser)
+
+    // Any character: #GAny{}
+    #GAny:
+      @omni_parse_any(parser)
+
+    // Rule reference: #GRef{name}
+    #GRef: λ&name.
+      @omni_parse_rule(rules)(name)(parser)
+
+    // Sequence: #GSeq{patterns}
+    #GSeq: λ&patterns.
+      @omni_parse_sequence(patterns)(rules)(parser)
+
+    // Alternative: #GAlt{patterns}
+    #GAlt: λ&patterns.
+      @omni_parse_alternative(patterns)(rules)(parser)
+
+    // Optional: #GOpt{pattern}
+    #GOpt: λ&inner.
+      @omni_parse_optional(inner)(rules)(parser)
+
+    // Star (zero or more): #GSta{pattern}
+    #GSta: λ&inner.
+      @omni_parse_star(inner)(rules)(parser)
+
+    // Plus (one or more): #GPls{pattern}
+    #GPls: λ&inner.
+      @omni_parse_plus(inner)(rules)(parser)
+
+    // Not predicate: #GNot{pattern}
+    #GNot: λ&inner.
+      @omni_parse_not(inner)(rules)(parser)
+
+    // And predicate: #GAnd{pattern}
+    #GAnd: λ&inner.
+      @omni_parse_and(inner)(rules)(parser)
+
+    // Capture: #GCap{name, pattern}
+    #GCap: λ&name. λ&inner.
+      @omni_parse_capture(name)(inner)(rules)(parser)
+
+    _: #PRes{0, #Noth{}, @omni_parser_pos(parser)}
+  }(pattern)
+
+// =============================================================================
+// Primitive Parsers
+// =============================================================================
+
+// Parse a literal string
+@omni_parse_string = λchars. λparser.
+  !!&rest = @omni_parser_rest(parser);
+  !!&pos = @omni_parser_pos(parser);
+  @omni_parse_string_helper(chars)(rest)(parser)(pos)(#NIL)
+
+@omni_parse_string_helper = λchars. λinput. λparser. λstart_pos. λmatched.
+  λ{
+    #NIL:
+      // All chars matched
+      !!&new_parser = @omni_parser_advance(parser)(@omni_str_length(@omni_reverse(matched)));
+      #PRes{1, @omni_reverse(matched), @omni_parser_pos(new_parser)}
+    #CON: λ&expected_char. λ&rest_chars.
+      λ{
+        #NIL: #PRes{0, #Noth{}, start_pos}  // Input exhausted
+        #CON: λ&input_char. λ&rest_input.
+          λ{
+            1:
+              // Character matched, continue
+              @omni_parse_string_helper(rest_chars)(rest_input)(parser)(start_pos)(#CON{input_char, matched})
+            _:
+              // Mismatch
+              #PRes{0, #Noth{}, start_pos}
+          }(@omni_char_eq(expected_char)(input_char))
+      }(input)
+  }(chars)
+
+// Parse a character from a character class
+@omni_parse_char_class = λchars. λnegated. λparser.
+  !!&rest = @omni_parser_rest(parser);
+  !!&pos = @omni_parser_pos(parser);
+  λ{
+    #NIL: #PRes{0, #Noth{}, pos}  // Input exhausted
+    #CON: λ&ch. λ&_.
+      !!&in_class = @omni_char_in_class(ch)(chars);
+      !!&matches = λ{1: (1 - in_class); _: in_class}(negated);
+      λ{
+        1:
+          !!&new_parser = @omni_parser_advance(parser)(1);
+          #PRes{1, #CON{ch, #NIL}, @omni_parser_pos(new_parser)}
+        _: #PRes{0, #Noth{}, pos}
+      }(matches)
+  }(rest)
+
+@omni_char_in_class = λch. λchars.
+  @omni_any(λc. @omni_char_eq(c)(ch))(chars)
+
+// Parse any character
+@omni_parse_any = λparser.
+  !!&rest = @omni_parser_rest(parser);
+  !!&pos = @omni_parser_pos(parser);
+  λ{
+    #NIL: #PRes{0, #Noth{}, pos}
+    #CON: λ&ch. λ&_.
+      !!&new_parser = @omni_parser_advance(parser)(1);
+      #PRes{1, #CON{ch, #NIL}, @omni_parser_pos(new_parser)}
+  }(rest)
+
+// =============================================================================
+// Combinators
+// =============================================================================
+
+// Parse a sequence of patterns
+@omni_parse_sequence = λpatterns. λrules. λparser.
+  !!&pos = @omni_parser_pos(parser);
+  @omni_parse_seq_helper(patterns)(rules)(parser)(#NIL)(pos)
+
+@omni_parse_seq_helper = λpatterns. λrules. λparser. λaccum. λstart_pos.
+  λ{
+    #NIL:
+      // All patterns matched
+      #PRes{1, @omni_flatten(@omni_reverse(accum)), @omni_parser_pos(parser)}
+    #CON: λ&pat. λ&rest.
+      !!&result = @omni_parse_pattern(pat)(rules)(parser);
+      λ{
+        #PRes: λ&success. λ&value. λ&new_pos.
+          λ{
+            1:
+              // Pattern matched, continue with updated parser
+              !!&new_parser = λ{#Prsr: λ&inp. λ&_. λ&caps. #Prsr{inp, new_pos, caps}}(parser);
+              @omni_parse_seq_helper(rest)(rules)(new_parser)(#CON{value, accum})(start_pos)
+            _:
+              // Pattern failed, fail entire sequence
+              #PRes{0, #Noth{}, start_pos}
+          }(success)
+      }(result)
+  }(patterns)
+
+// Parse alternatives (try each until one succeeds)
+@omni_parse_alternative = λpatterns. λrules. λparser.
+  !!&pos = @omni_parser_pos(parser);
+  @omni_parse_alt_helper(patterns)(rules)(parser)(pos)
+
+@omni_parse_alt_helper = λpatterns. λrules. λparser. λstart_pos.
+  λ{
+    #NIL: #PRes{0, #Noth{}, start_pos}  // No alternative matched
+    #CON: λ&pat. λ&rest.
+      !!&result = @omni_parse_pattern(pat)(rules)(parser);
+      λ{
+        #PRes: λ&success. λ&value. λ&new_pos.
+          λ{
+            1: result  // This alternative matched
+            _: @omni_parse_alt_helper(rest)(rules)(parser)(start_pos)
+          }(success)
+      }(result)
+  }(patterns)
+
+// Parse optional (always succeeds)
+@omni_parse_optional = λpattern. λrules. λparser.
+  !!&pos = @omni_parser_pos(parser);
+  !!&result = @omni_parse_pattern(pattern)(rules)(parser);
+  λ{
+    #PRes: λ&success. λ&value. λ&new_pos.
+      λ{
+        1: result  // Matched
+        _: #PRes{1, #NIL, pos}  // Didn't match, but that's OK
+      }(success)
+  }(result)
+
+// Parse star (zero or more)
+@omni_parse_star = λpattern. λrules. λparser.
+  @omni_parse_star_helper(pattern)(rules)(parser)(#NIL)
+
+@omni_parse_star_helper = λpattern. λrules. λparser. λaccum.
+  !!&result = @omni_parse_pattern(pattern)(rules)(parser);
+  λ{
+    #PRes: λ&success. λ&value. λ&new_pos.
+      λ{
+        1:
+          // Matched, try again
+          !!&new_parser = λ{#Prsr: λ&inp. λ&_. λ&caps. #Prsr{inp, new_pos, caps}}(parser);
+          @omni_parse_star_helper(pattern)(rules)(new_parser)(#CON{value, accum})
+        _:
+          // Done, return accumulated matches
+          #PRes{1, @omni_flatten(@omni_reverse(accum)), @omni_parser_pos(parser)}
+      }(success)
+  }(result)
+
+// Parse plus (one or more)
+@omni_parse_plus = λpattern. λrules. λparser.
+  !!&pos = @omni_parser_pos(parser);
+  !!&first = @omni_parse_pattern(pattern)(rules)(parser);
+  λ{
+    #PRes: λ&success. λ&value. λ&new_pos.
+      λ{
+        1:
+          // First match succeeded, try for more
+          !!&new_parser = λ{#Prsr: λ&inp. λ&_. λ&caps. #Prsr{inp, new_pos, caps}}(parser);
+          !!&rest = @omni_parse_star(pattern)(rules)(new_parser);
+          λ{
+            #PRes: λ&_. λ&rest_value. λ&final_pos.
+              #PRes{1, @omni_concat(value)(rest_value), final_pos}
+          }(rest)
+        _:
+          // First match failed
+          #PRes{0, #Noth{}, pos}
+      }(success)
+  }(first)
+
+// Not predicate (succeeds if pattern fails, consumes nothing)
+@omni_parse_not = λpattern. λrules. λparser.
+  !!&pos = @omni_parser_pos(parser);
+  !!&result = @omni_parse_pattern(pattern)(rules)(parser);
+  λ{
+    #PRes: λ&success. λ&_. λ&_.
+      λ{
+        1: #PRes{0, #Noth{}, pos}  // Pattern matched, so NOT fails
+        _: #PRes{1, #NIL, pos}     // Pattern failed, so NOT succeeds
+      }(success)
+  }(result)
+
+// And predicate (succeeds if pattern succeeds, consumes nothing)
+@omni_parse_and = λpattern. λrules. λparser.
+  !!&pos = @omni_parser_pos(parser);
+  !!&result = @omni_parse_pattern(pattern)(rules)(parser);
+  λ{
+    #PRes: λ&success. λ&_. λ&_.
+      λ{
+        1: #PRes{1, #NIL, pos}     // Pattern matched, AND succeeds (no consume)
+        _: #PRes{0, #Noth{}, pos}  // Pattern failed, AND fails
+      }(success)
+  }(result)
+
+// Capture (name the matched content)
+@omni_parse_capture = λname. λpattern. λrules. λparser.
+  !!&result = @omni_parse_pattern(pattern)(rules)(parser);
+  λ{
+    #PRes: λ&success. λ&value. λ&new_pos.
+      λ{
+        1:
+          // Store capture in parser state
+          !!&captured_parser = @omni_parser_capture(parser)(name)(value);
+          #PRes{1, value, new_pos}
+        _: result
+      }(success)
+  }(result)
+
+// =============================================================================
+// High-Level API
+// =============================================================================
+
+// Parse and return matched string (or #Noth{})
+@omni_grammar_parse = λgrammar. λinput. λrule.
+  !!&result = @omni_parse_with_grammar(grammar)(input)(rule);
+  λ{
+    #PRes: λ&success. λ&value. λ&_.
+      λ{
+        1: value
+        _: #Noth{}
+      }(success)
+  }(result)
+
+// Check if grammar matches (returns 1 or 0)
+@omni_grammar_matches? = λgrammar. λinput. λrule.
+  !!&result = @omni_parse_with_grammar(grammar)(input)(rule);
+  λ{
+    #PRes: λ&success. λ&_. λ&_. success
+  }(result)
+
+// Parse completely (fails if input remains)
+@omni_grammar_parse_complete = λgrammar. λinput. λrule.
+  !!&result = @omni_parse_with_grammar(grammar)(input)(rule);
+  λ{
+    #PRes: λ&success. λ&value. λ&end_pos.
+      λ{
+        1:
+          !!&input_len = @omni_str_length(input);
+          λ{
+            1: value  // Complete parse
+            _: #Noth{}  // Partial parse
+          }((end_pos == input_len))
+        _: #Noth{}
+      }(success)
+  }(result)
+

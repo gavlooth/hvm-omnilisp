@@ -1,0 +1,478 @@
+// OmniLisp Standard Library (Prelude)
+// Common functions for list manipulation, I/O, and utilities
+
+// =============================================================================
+// List Operations
+// =============================================================================
+
+// Map a function over a list
+@map = λf. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{f(h), @map(f)(t)}
+  }(xs)
+
+// Filter a list by predicate
+@filter = λp. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #True: #CON{h, @filter(p)(t)}
+        _: @filter(p)(t)
+      }(p(h))
+  }(xs)
+
+// Left fold
+@foldl = λf. λacc. λxs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. @foldl(f)(f(acc)(h))(t)
+  }(xs)
+
+// Right fold
+@foldr = λf. λacc. λxs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. f(h)(@foldr(f)(acc)(t))
+  }(xs)
+
+// Length of a list
+@length = λxs.
+  @foldl(λacc. λ_. #Cst{(λ{#Cst: λ&n. n}(acc) + 1)})(#Cst{0})(xs)
+
+// Reverse a list
+@reverse = λxs.
+  @foldl(λacc. λh. #CON{h, acc})(#NIL)(xs)
+
+// Append two lists
+@append = λxs. λys.
+  λ{
+    #NIL: ys
+    #CON: λ&h. λ&t. #CON{h, @append(t)(ys)}
+  }(xs)
+
+// Concatenate a list of lists
+@concat = λxss.
+  @foldr(@append)(#NIL)(xss)
+
+// Take first n elements
+@take = λn. λxs.
+  λ{
+    0: #NIL
+    _: λ{
+      #NIL: #NIL
+      #CON: λ&h. λ&t. #CON{h, @take((n - 1))(t)}
+    }(xs)
+  }(λ{#Cst: λ&m. m}(n))
+
+// Drop first n elements
+@drop = λn. λxs.
+  λ{
+    0: xs
+    _: λ{
+      #NIL: #NIL
+      #CON: λ&h. λ&t. @drop((n - 1))(t)
+    }(xs)
+  }(λ{#Cst: λ&m. m}(n))
+
+// Get element at index
+@nth = λn. λxs.
+  λ{
+    0: λ{
+      #NIL: #Noth{}
+      #CON: λ&h. λ&t. h
+    }(xs)
+    _: λ{
+      #NIL: #Noth{}
+      #CON: λ&h. λ&t. @nth((n - 1))(t)
+    }(xs)
+  }(λ{#Cst: λ&m. m}(n))
+
+// Head of list
+@head = λxs.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t. h
+  }(xs)
+
+// Tail of list
+@tail = λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. t
+  }(xs)
+
+// Last element
+@last = λxs.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h
+        _: @last(t)
+      }(t)
+  }(xs)
+
+// Init (all but last)
+@init = λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: #NIL
+        _: #CON{h, @init(t)}
+      }(t)
+  }(xs)
+
+// Check if list is empty
+@null? = λxs.
+  λ{
+    #NIL: #True{}
+    _: #Fals{}
+  }(xs)
+
+// Check if element is in list
+@elem? = λx. λxs.
+  λ{
+    #NIL: #Fals{}
+    #CON: λ&h. λ&t.
+      λ{
+        1: #True{}
+        _: @elem?(x)(t)
+      }(@omni_values_equal(x)(h))
+  }(xs)
+
+// Zip two lists
+@zip = λxs. λys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: #NIL
+        #CON: λ&yh. λ&yt.
+          #CON{#CON{xh, #CON{yh, #NIL}}, @zip(xt)(yt)}
+      }(ys)
+  }(xs)
+
+// Zip with function
+@zipWith = λf. λxs. λys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: #NIL
+        #CON: λ&yh. λ&yt.
+          #CON{f(xh)(yh), @zipWith(f)(xt)(yt)}
+      }(ys)
+  }(xs)
+
+// Flatten (one level)
+@flatten = @concat
+
+// Range [start..end)
+@range = λstart. λend.
+  !!&s = λ{#Cst: λ&n. n}(start);
+  !!&e = λ{#Cst: λ&n. n}(end);
+  λ{
+    1: #NIL
+    _: #CON{#Cst{s}, @range(#Cst{(s + 1)})(#Cst{e})}
+  }((s >= e))
+
+// Repeat value n times
+@repeat = λn. λx.
+  λ{
+    0: #NIL
+    _: #CON{x, @repeat((n - 1))(x)}
+  }(λ{#Cst: λ&m. m}(n))
+
+// =============================================================================
+// Higher-Order Functions
+// =============================================================================
+
+// Identity
+@id = λx. x
+
+// Constant function
+@const = λx. λ_. x
+
+// Function composition
+@compose = λf. λg. λx. f(g(x))
+
+// Flip arguments
+@flip = λf. λx. λy. f(y)(x)
+
+// Apply function
+@apply = λf. λx. f(x)
+
+// Curry a function (for pairs)
+@curry = λf. λx. λy. f(#CON{x, #CON{y, #NIL}})
+
+// Uncurry a function
+@uncurry = λf. λpair.
+  λ{#CON: λ&x. λ&rest.
+    λ{#CON: λ&y. λ&_. f(x)(y)}(rest)
+  }(pair)
+
+// =============================================================================
+// Numeric Functions
+// =============================================================================
+
+// Absolute value
+@abs = λn.
+  !!&v = λ{#Cst: λ&m. m}(n);
+  λ{
+    1: #Cst{(0 - v)}
+    _: n
+  }((v < 0))
+
+// Sign
+@sign = λn.
+  !!&v = λ{#Cst: λ&m. m}(n);
+  λ{
+    1: #Cst{(0 - 1)}
+    _: λ{
+      1: #Cst{1}
+      _: #Cst{0}
+    }((v > 0))
+  }((v < 0))
+
+// Minimum
+@min = λa. λb.
+  !!&av = λ{#Cst: λ&n. n}(a);
+  !!&bv = λ{#Cst: λ&n. n}(b);
+  λ{
+    1: a
+    _: b
+  }((av < bv))
+
+// Maximum
+@max = λa. λb.
+  !!&av = λ{#Cst: λ&n. n}(a);
+  !!&bv = λ{#Cst: λ&n. n}(b);
+  λ{
+    1: a
+    _: b
+  }((av > bv))
+
+// Sum of list
+@sum = λxs.
+  @foldl(λacc. λn.
+    !!&a = λ{#Cst: λ&m. m}(acc);
+    !!&b = λ{#Cst: λ&m. m}(n);
+    #Cst{(a + b)}
+  )(#Cst{0})(xs)
+
+// Product of list
+@product = λxs.
+  @foldl(λacc. λn.
+    !!&a = λ{#Cst: λ&m. m}(acc);
+    !!&b = λ{#Cst: λ&m. m}(n);
+    #Cst{(a * b)}
+  )(#Cst{1})(xs)
+
+// =============================================================================
+// Boolean Functions
+// =============================================================================
+
+// All elements satisfy predicate
+@all? = λp. λxs.
+  λ{
+    #NIL: #True{}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: @all?(p)(t)
+        _: #Fals{}
+      }(p(h))
+  }(xs)
+
+// Any element satisfies predicate
+@any? = λp. λxs.
+  λ{
+    #NIL: #Fals{}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: #True{}
+        _: @any?(p)(t)
+      }(p(h))
+  }(xs)
+
+// None satisfy predicate
+@none? = λp. λxs.
+  @omni_not(@any?(p)(xs))
+
+// =============================================================================
+// Maybe/Option Operations
+// =============================================================================
+
+// Is value Nothing?
+@nothing? = λx.
+  λ{
+    #Noth: #True{}
+    _: #Fals{}
+  }(x)
+
+// Map over Maybe
+@maybe_map = λf. λm.
+  λ{
+    #Noth: #Noth{}
+    _: f(m)
+  }(m)
+
+// Default for Nothing
+@maybe_or = λdefault. λm.
+  λ{
+    #Noth: default
+    _: m
+  }(m)
+
+// =============================================================================
+// String Operations
+// =============================================================================
+
+// String length
+@str_length = λs.
+  @length(s)
+
+// String concatenation
+@str_concat = λa. λb.
+  @append(a)(b)
+
+// Character to string
+@char_to_str = λc.
+  #CON{c, #NIL}
+
+// =============================================================================
+// I/O Operations (via FFI)
+// =============================================================================
+
+// Print string
+@print = λs. #FFI{#puts, #CON{s, #NIL}}
+
+// Print newline
+@newline = λ_. #FFI{#putc, #CON{#Cst{10}, #NIL}}
+
+// Print string with newline
+@println = λs.
+  !!&_ = @print(s);
+  @newline(#NIL)
+
+// Print integer
+@print_int = λn.
+  // Convert int to string then print
+  #FFI{#prti, #CON{n, #NIL}}
+
+// Read character
+@read_char = λ_. #FFI{#getc, #NIL}
+
+// =============================================================================
+// Type Predicates
+// =============================================================================
+
+@int? = λv.
+  λ{
+    #Cst: λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+@float? = λv.
+  λ{
+    #Fix: λ&_. λ&_. λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+@char? = λv.
+  λ{
+    #CHR: λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+@symbol? = λv.
+  λ{
+    #Sym: λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+@list? = λv.
+  λ{
+    #CON: λ&_. λ&_. #True{}
+    #NIL: #True{}
+    _: #Fals{}
+  }(v)
+
+@function? = λv.
+  λ{
+    #Clo: λ&_. λ&_. #True{}
+    #CloR: λ&_. λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+@handle? = λv.
+  λ{
+    #Hndl: λ&_. λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+@bool? = λv.
+  λ{
+    #True: #True{}
+    #Fals: #True{}
+    _: #Fals{}
+  }(v)
+
+// =============================================================================
+// Error Handling
+// =============================================================================
+
+// Create error
+@error = λmsg.
+  #Err{msg}
+
+// Check if error
+@error? = λv.
+  λ{
+    #Err: λ&_. #True{}
+    _: #Fals{}
+  }(v)
+
+// =============================================================================
+// Comparison
+// =============================================================================
+
+// Compare two values (-1, 0, 1)
+@compare = λa. λb.
+  !!&av = λ{#Cst: λ&n. n}(a);
+  !!&bv = λ{#Cst: λ&n. n}(b);
+  λ{
+    1: #Cst{(0 - 1)}
+    _: λ{
+      1: #Cst{1}
+      _: #Cst{0}
+    }((av > bv))
+  }((av < bv))
+
+// Equal?
+@eq? = λa. λb.
+  λ{
+    1: #True{}
+    _: #Fals{}
+  }(@omni_values_equal(a)(b))
+
+// Not equal?
+@neq? = λa. λb.
+  @omni_not(@eq?(a)(b))
+
+// Less than?
+@lt? = λa. λb. @omni_lt(a)(b)
+
+// Greater than?
+@gt? = λa. λb. @omni_gt(a)(b)
+
+// Less than or equal?
+@le? = λa. λb.
+  @omni_or(@omni_lt(a)(b))(@omni_eql(a)(b))
+
+// Greater than or equal?
+@ge? = λa. λb.
+  @omni_or(@omni_gt(a)(b))(@omni_eql(a)(b))
+

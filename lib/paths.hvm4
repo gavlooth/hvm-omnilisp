@@ -1,0 +1,512 @@
+// OmniLisp Path Access and Mutation Runtime
+// Implements get, put, update, get-in, assoc-in, update-in
+//
+// Functions:
+//   (get coll key)          - Get value from collection by key
+//   (get coll key default)  - Get value with default
+//   (put coll key val)      - Functional update (returns new collection)
+//   (update coll key fn)    - Apply fn to value at key
+//   (get-in coll [k...])    - Get value at nested path
+//   (assoc-in coll [k...] v)- Set value at nested path
+//   (update-in coll [k...] fn) - Update value at nested path
+
+// =============================================================================
+// Basic Get
+// =============================================================================
+
+// Evaluate get: #Get{coll, key, default}
+@omni_eval_get = λenv. λcoll_expr. λkey_expr. λdefault_expr.
+  !!&coll = @omni_eval(env)(coll_expr);
+  !!&key = @omni_eval(env)(key_expr);
+  !!&default_val = @omni_eval(env)(default_expr);
+  !!&result = @omni_get(coll)(key);
+  @omni_get_with_default(result)(default_val)
+
+@omni_get_with_default = λresult. λdefault.
+  λ{
+    #Noth: default
+    _: result
+  }(result)
+
+// Get value from collection
+// Works with: arrays (by index), dicts (by key), lists (by index)
+@omni_get = λcoll. λkey.
+  λ{
+    // Array: get by index
+    #Arr: λ&elems.
+      @omni_list_nth(key)(elems)
+
+    // Dict: get by key
+    #Dict: λ&pairs.
+      @omni_dict_get(key)(pairs)
+
+    // List: get by index
+    #CON: λ&h. λ&t.
+      λ{
+        #Cst: λ&n. @omni_list_nth(n)(coll)
+        _: #Noth
+      }(key)
+
+    // String: get char by index
+    #Str: λ&chars.
+      λ{
+        #Cst: λ&n. @omni_list_nth(n)(chars)
+        _: #Noth
+      }(key)
+
+    _: #Noth
+  }(coll)
+
+// Get nth element from list (0-indexed)
+@omni_list_nth = λn. λlist.
+  λ{
+    0:
+      λ{
+        #CON: λ&h. λ&_. h
+        _: #Noth
+      }(list)
+    _:
+      λ{
+        #CON: λ&_. λ&t. @omni_list_nth((n - 1))(t)
+        _: #Noth
+      }(list)
+  }(n)
+
+// Get value from dict by key
+@omni_dict_get = λkey. λpairs.
+  λ{
+    #NIL: #Noth
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_tail.
+          !!&matches = @omni_key_eq(key)(k);
+          λ{
+            1:
+              λ{
+                #CON: λ&v. λ&_. v
+                _: #Noth
+              }(v_tail)
+            _: @omni_dict_get(key)(rest)
+          }(matches)
+        _: @omni_dict_get(key)(rest)
+      }(pair)
+  }(pairs)
+
+// Key equality check
+@omni_key_eq = λa. λb.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn. (an == bn)
+        _: 0
+      }(b)
+    #Sym: λ&as.
+      λ{
+        #Sym: λ&bs. (as == bs)
+        _: 0
+      }(b)
+    #CHR: λ&ac.
+      λ{
+        #CHR: λ&bc. (ac == bc)
+        _: 0
+      }(b)
+    // String comparison (for string keys)
+    #CON: λ&ah. λ&at.
+      @omni_str_eq(a)(b)
+    _: 0
+  }(a)
+
+// String equality
+@omni_str_eq = λa. λb.
+  λ{
+    #NIL:
+      λ{
+        #NIL: 1
+        _: 0
+      }(b)
+    #CON: λ&ah. λ&at.
+      λ{
+        #CON: λ&bh. λ&bt.
+          !!&h_eq = @omni_key_eq(ah)(bh);
+          λ{
+            1: @omni_str_eq(at)(bt)
+            _: 0
+          }(h_eq)
+        _: 0
+      }(b)
+    _: 0
+  }(a)
+
+// =============================================================================
+// Basic Put (Functional Update)
+// =============================================================================
+
+// Evaluate put: #Put{coll, key, val}
+@omni_eval_put = λenv. λcoll_expr. λkey_expr. λval_expr.
+  !!&coll = @omni_eval(env)(coll_expr);
+  !!&key = @omni_eval(env)(key_expr);
+  !!&val = @omni_eval(env)(val_expr);
+  @omni_put(coll)(key)(val)
+
+// Put value in collection (returns new collection)
+@omni_put = λcoll. λkey. λval.
+  λ{
+    // Array: set at index
+    #Arr: λ&elems.
+      #Arr{@omni_list_set(key)(val)(elems)}
+
+    // Dict: set by key
+    #Dict: λ&pairs.
+      #Dict{@omni_dict_put(key)(val)(pairs)}
+
+    // List: set at index (convert to proper list)
+    #CON: λ&h. λ&t.
+      λ{
+        #Cst: λ&n. @omni_list_set(n)(val)(coll)
+        _: coll
+      }(key)
+
+    #NIL:
+      // Empty collection - create dict with single entry
+      #Dict{#CON{#CON{key, #CON{val, #NIL}}, #NIL}}
+
+    _: coll
+  }(coll)
+
+// Set nth element in list
+@omni_list_set = λn. λval. λlist.
+  λ{
+    0:
+      λ{
+        #CON: λ&_. λ&t. #CON{val, t}
+        #NIL: #CON{val, #NIL}
+        _: list
+      }(list)
+    _:
+      λ{
+        #CON: λ&h. λ&t. #CON{h, @omni_list_set((n - 1))(val)(t)}
+        #NIL:
+          // Extend list with nothings if needed
+          @omni_list_extend(n)(val)
+        _: list
+      }(list)
+  }(n)
+
+// Extend list to position n with val at end
+@omni_list_extend = λn. λval.
+  λ{
+    0: #CON{val, #NIL}
+    _: #CON{#Noth, @omni_list_extend((n - 1))(val)}
+  }(n)
+
+// Put key-value pair in dict
+@omni_dict_put = λkey. λval. λpairs.
+  // Check if value is removal marker
+  λ{
+    #Noth:
+      // Remove key
+      @omni_dict_remove(key)(pairs)
+    _:
+      !!&updated = @omni_dict_update_pair(key)(val)(pairs);
+      λ{
+        #CON: updated  // Updated existing
+        _:
+          // Add new pair
+          #CON{#CON{key, #CON{val, #NIL}}, pairs}
+      }(updated)
+  }(val)
+
+// Try to update existing pair, returns NIL if key not found
+@omni_dict_update_pair = λkey. λval. λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_tail.
+          !!&matches = @omni_key_eq(key)(k);
+          λ{
+            1: #CON{#CON{key, #CON{val, #NIL}}, rest}
+            _:
+              !!&rest_updated = @omni_dict_update_pair(key)(val)(rest);
+              λ{
+                #NIL: #NIL
+                _: #CON{pair, rest_updated}
+              }(rest_updated)
+          }(matches)
+        _: @omni_dict_update_pair(key)(val)(rest)
+      }(pair)
+  }(pairs)
+
+// Remove key from dict
+@omni_dict_remove = λkey. λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&_.
+          !!&matches = @omni_key_eq(key)(k);
+          λ{
+            1: rest  // Skip this pair
+            _: #CON{pair, @omni_dict_remove(key)(rest)}
+          }(matches)
+        _: #CON{pair, @omni_dict_remove(key)(rest)}
+      }(pair)
+  }(pairs)
+
+// =============================================================================
+// Update (Apply Function)
+// =============================================================================
+
+// Evaluate update: #Updt{coll, key, fn}
+@omni_eval_update = λenv. λcoll_expr. λkey_expr. λfn_expr.
+  !!&coll = @omni_eval(env)(coll_expr);
+  !!&key = @omni_eval(env)(key_expr);
+  !!&fn = @omni_eval(env)(fn_expr);
+  @omni_update(coll)(key)(fn)
+
+// Update value at key by applying function
+@omni_update = λcoll. λkey. λfn.
+  !!&old_val = @omni_get(coll)(key);
+  !!&new_val = fn(old_val);
+  @omni_put(coll)(key)(new_val)
+
+// =============================================================================
+// Get-In (Nested Path Access)
+// =============================================================================
+
+// Evaluate get-in: #GtIn{coll, path, default}
+@omni_eval_get_in = λenv. λcoll_expr. λpath_expr. λdefault_expr.
+  !!&coll = @omni_eval(env)(coll_expr);
+  !!&path = @omni_eval(env)(path_expr);
+  !!&default_val = @omni_eval(env)(default_expr);
+  !!&result = @omni_get_in(coll)(path);
+  @omni_get_with_default(result)(default_val)
+
+// Get value at nested path
+@omni_get_in = λcoll. λpath.
+  λ{
+    // Array path
+    #Arr: λ&elems. @omni_get_in_list(coll)(elems)
+    // List path
+    #CON: λ&h. λ&t. @omni_get_in_list(coll)(path)
+    // Empty path
+    #NIL: coll
+    _: #Noth
+  }(path)
+
+@omni_get_in_list = λcoll. λpath.
+  λ{
+    #NIL: coll
+    #CON: λ&key. λ&rest.
+      !!&next = @omni_get(coll)(key);
+      λ{
+        #Noth: #Noth
+        _: @omni_get_in_list(next)(rest)
+      }(next)
+  }(path)
+
+// =============================================================================
+// Assoc-In (Nested Path Update)
+// =============================================================================
+
+// Evaluate assoc-in: #AsIn{coll, path, val}
+@omni_eval_assoc_in = λenv. λcoll_expr. λpath_expr. λval_expr.
+  !!&coll = @omni_eval(env)(coll_expr);
+  !!&path = @omni_eval(env)(path_expr);
+  !!&val = @omni_eval(env)(val_expr);
+  @omni_assoc_in(coll)(path)(val)
+
+// Set value at nested path
+@omni_assoc_in = λcoll. λpath. λval.
+  λ{
+    #Arr: λ&elems. @omni_assoc_in_list(coll)(elems)(val)
+    #CON: λ&h. λ&t. @omni_assoc_in_list(coll)(path)(val)
+    #NIL: val  // Empty path means replace entirely
+    _: coll
+  }(path)
+
+@omni_assoc_in_list = λcoll. λpath. λval.
+  λ{
+    #NIL: val
+    #CON: λ&key. λ&rest.
+      λ{
+        #NIL:
+          // Last key in path
+          @omni_put(coll)(key)(val)
+        _:
+          // More keys - recurse
+          !!&existing = @omni_get(coll)(key);
+          !!&sub_coll = @omni_ensure_coll(existing);
+          !!&updated = @omni_assoc_in_list(sub_coll)(rest)(val);
+          @omni_put(coll)(key)(updated)
+      }(rest)
+  }(path)
+
+// Ensure we have a collection to descend into
+@omni_ensure_coll = λval.
+  λ{
+    #Noth: #Dict{#NIL}  // Create empty dict
+    #NIL: #Dict{#NIL}
+    _: val
+  }(val)
+
+// =============================================================================
+// Update-In (Nested Path Function Application)
+// =============================================================================
+
+// Evaluate update-in: #UpIn{coll, path, fn}
+@omni_eval_update_in = λenv. λcoll_expr. λpath_expr. λfn_expr.
+  !!&coll = @omni_eval(env)(coll_expr);
+  !!&path = @omni_eval(env)(path_expr);
+  !!&fn = @omni_eval(env)(fn_expr);
+  @omni_update_in(coll)(path)(fn)
+
+// Update value at nested path by applying function
+@omni_update_in = λcoll. λpath. λfn.
+  λ{
+    #Arr: λ&elems. @omni_update_in_list(coll)(elems)(fn)
+    #CON: λ&h. λ&t. @omni_update_in_list(coll)(path)(fn)
+    #NIL: fn(coll)  // Empty path means apply to entire collection
+    _: coll
+  }(path)
+
+@omni_update_in_list = λcoll. λpath. λfn.
+  λ{
+    #NIL: fn(coll)
+    #CON: λ&key. λ&rest.
+      λ{
+        #NIL:
+          // Last key in path
+          @omni_update(coll)(key)(fn)
+        _:
+          // More keys - recurse
+          !!&existing = @omni_get(coll)(key);
+          !!&sub_coll = @omni_ensure_coll(existing);
+          !!&updated = @omni_update_in_list(sub_coll)(rest)(fn);
+          @omni_put(coll)(key)(updated)
+      }(rest)
+  }(path)
+
+// =============================================================================
+// Additional Path Utilities
+// =============================================================================
+
+// Check if key exists in collection
+@omni_contains? = λcoll. λkey.
+  !!&val = @omni_get(coll)(key);
+  λ{
+    #Noth: 0
+    _: 1
+  }(val)
+
+// Get all keys from a dict
+@omni_keys = λcoll.
+  λ{
+    #Dict: λ&pairs. @omni_dict_keys(pairs)
+    _: #NIL
+  }(coll)
+
+@omni_dict_keys = λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&_. #CON{k, @omni_dict_keys(rest)}
+        _: @omni_dict_keys(rest)
+      }(pair)
+  }(pairs)
+
+// Get all values from a dict
+@omni_vals = λcoll.
+  λ{
+    #Dict: λ&pairs. @omni_dict_vals(pairs)
+    _: #NIL
+  }(coll)
+
+@omni_dict_vals = λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&_. λ&v_tail.
+          λ{
+            #CON: λ&v. λ&_. #CON{v, @omni_dict_vals(rest)}
+            _: @omni_dict_vals(rest)
+          }(v_tail)
+        _: @omni_dict_vals(rest)
+      }(pair)
+  }(pairs)
+
+// Merge two dicts (second wins on conflicts)
+@omni_merge = λa. λb.
+  λ{
+    #Dict: λ&a_pairs.
+      λ{
+        #Dict: λ&b_pairs.
+          #Dict{@omni_dict_merge(a_pairs)(b_pairs)}
+        _: a
+      }(b)
+    _:
+      λ{
+        #Dict: b
+        _: a
+      }(b)
+  }(a)
+
+@omni_dict_merge = λa_pairs. λb_pairs.
+  // Add all b_pairs, then add a_pairs that aren't in b
+  λ{
+    #NIL: a_pairs
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_tail.
+          λ{
+            #CON: λ&v. λ&_.
+              #CON{#CON{k, #CON{v, #NIL}}, @omni_dict_merge(@omni_dict_remove(k)(a_pairs))(rest)}
+            _: @omni_dict_merge(a_pairs)(rest)
+          }(v_tail)
+        _: @omni_dict_merge(a_pairs)(rest)
+      }(pair)
+  }(b_pairs)
+
+// Select subset of keys from dict
+@omni_select_keys = λcoll. λkeys.
+  λ{
+    #Dict: λ&pairs.
+      #Dict{@omni_select_keys_list(pairs)(keys)}
+    _: coll
+  }(coll)
+
+@omni_select_keys_list = λpairs. λkeys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&key. λ&rest.
+      !!&val = @omni_dict_get(key)(pairs);
+      λ{
+        #Noth: @omni_select_keys_list(pairs)(rest)
+        _: #CON{#CON{key, #CON{val, #NIL}}, @omni_select_keys_list(pairs)(rest)}
+      }(val)
+  }(keys)
+
+// Rename keys in dict
+@omni_rename_keys = λcoll. λkeymap.
+  λ{
+    #Dict: λ&pairs.
+      #Dict{@omni_rename_keys_list(pairs)(keymap)}
+    _: coll
+  }(coll)
+
+@omni_rename_keys_list = λpairs. λkeymap.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_tail.
+          !!&new_key = @omni_dict_get(k)(keymap);
+          !!&final_key = λ{#Noth: k; _: new_key}(new_key);
+          #CON{#CON{final_key, v_tail}, @omni_rename_keys_list(rest)(keymap)}
+        _: @omni_rename_keys_list(rest)(keymap)
+      }(pair)
+  }(pairs)
+
+

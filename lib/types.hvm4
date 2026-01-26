@@ -1,0 +1,685 @@
+// OmniLisp Type System Library
+// Type descriptors, multiple dispatch, and runtime type checking
+
+// =============================================================================
+// Type Descriptors
+// =============================================================================
+
+// Type descriptor format: #TDsc{name, parent, fields}
+// - name: nick-encoded type name
+// - parent: parent type descriptor (or #NIL for root types)
+// - fields: list of field descriptors
+
+// Built-in type descriptors
+@type_Any     = #TDsc{#sym_Any, #NIL, #NIL}
+@type_Nothing = #TDsc{#sym_Nothing, @type_Any, #NIL}
+@type_Int     = #TDsc{#sym_Int, @type_Any, #NIL}
+@type_Float   = #TDsc{#sym_Float, @type_Any, #NIL}
+@type_Bool    = #TDsc{#sym_Bool, @type_Any, #NIL}
+@type_Char    = #TDsc{#sym_Char, @type_Any, #NIL}
+@type_Symbol  = #TDsc{#sym_Symbol, @type_Any, #NIL}
+@type_String  = #TDsc{#sym_String, @type_Any, #NIL}
+@type_List    = #TDsc{#sym_List, @type_Any, #NIL}
+@type_Function = #TDsc{#sym_Function, @type_Any, #NIL}
+@type_Handle  = #TDsc{#sym_Handle, @type_Any, #NIL}
+
+// =============================================================================
+// Type Hierarchy
+// =============================================================================
+
+// Check if type A is subtype of type B
+@subtype? = λtype_a. λtype_b.
+  λ{
+    #TDsc: λ&name_a. λ&parent_a. λ&fields_a.
+      λ{
+        #TDsc: λ&name_b. λ&parent_b. λ&fields_b.
+          // Same type?
+          λ{
+            1: #True{}
+            _:
+              // Check parent
+              λ{
+                #NIL: #Fals{}
+                _: @subtype?(parent_a)(type_b)
+              }(parent_a)
+          }((name_a == name_b))
+      }(type_b)
+  }(type_a)
+
+// Get type name from descriptor
+@type_name = λtype.
+  λ{
+    #TDsc: λ&name. λ&parent. λ&fields. name
+    _: #sym_Unknown
+  }(type)
+
+// Get parent type
+@type_parent = λtype.
+  λ{
+    #TDsc: λ&name. λ&parent. λ&fields. parent
+    _: #NIL
+  }(type)
+
+// Get type fields
+@type_fields = λtype.
+  λ{
+    #TDsc: λ&name. λ&parent. λ&fields. fields
+    _: #NIL
+  }(type)
+
+// =============================================================================
+// Runtime Type Inference
+// =============================================================================
+
+// Infer the type descriptor from a runtime value
+@infer_type = λval.
+  λ{
+    #Cst: λ&n. @type_Int
+    #Fix: λ&hi. λ&lo. λ&scale. @type_Float
+    #CHR: λ&c. @type_Char
+    #Sym: λ&s. @type_Symbol
+    #CON: λ&h. λ&t. @type_List
+    #NIL: @type_List
+    #Clo: λ&e. λ&b. @type_Function
+    #CloR: λ&e. λ&b. @type_Function
+    #Hndl: λ&idx. λ&gen. @type_Handle
+    #True: @type_Bool
+    #Fals: @type_Bool
+    #Noth: @type_Nothing
+    _: @type_Any
+  }(val)
+
+// Check if value has given type
+@has_type? = λval. λtype.
+  !!&inferred = @infer_type(val);
+  @subtype?(inferred)(type)
+
+// =============================================================================
+// Multiple Dispatch
+// =============================================================================
+
+// Method table: list of #Meth{name, sig, impl}
+// - name: method name (symbol)
+// - sig: list of parameter types
+// - impl: implementation function
+
+// Global method registry (would be populated by define-method)
+// For now, this is a stub that would be extended at runtime
+
+// Find most specific method for given types
+@dispatch_find = λname. λarg_types. λmethods.
+  λ{
+    #NIL: #Noth{}  // No matching method
+    #CON: λ&meth. λ&rest.
+      λ{
+        #Meth: λ&mname. λ&msig. λ&mimpl.
+          λ{
+            1:
+              // Check if signature matches
+              !!&matches = @sig_matches?(arg_types)(msig);
+              λ{
+                #True:
+                  // Found a match - check if it's more specific than rest
+                  !!&rest_match = @dispatch_find(name)(arg_types)(rest);
+                  λ{
+                    #Noth: meth
+                    _:
+                      // Compare specificity
+                      !!&more_specific = @more_specific?(msig)(λ{#Meth: λ&n. λ&s. λ&i. s}(rest_match));
+                      λ{
+                        #True: meth
+                        _: rest_match
+                      }(more_specific)
+                  }(rest_match)
+                _: @dispatch_find(name)(arg_types)(rest)
+              }(matches)
+            _: @dispatch_find(name)(arg_types)(rest)
+          }((mname == name))
+      }(meth)
+  }(methods)
+
+// Check if argument types match signature
+@sig_matches? = λarg_types. λsig.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #True{}
+        _: #Fals{}
+      }(sig)
+    #CON: λ&ah. λ&at.
+      λ{
+        #NIL: #Fals{}
+        #CON: λ&sh. λ&st.
+          λ{
+            #True: @sig_matches?(at)(st)
+            _: #Fals{}
+          }(@subtype?(ah)(sh))
+      }(sig)
+  }(arg_types)
+
+// Check if sig_a is more specific than sig_b
+@more_specific? = λsig_a. λsig_b.
+  λ{
+    #NIL: #Fals{}  // Empty signature - not more specific
+    #CON: λ&ah. λ&at.
+      λ{
+        #NIL: #Fals{}
+        #CON: λ&bh. λ&bt.
+          λ{
+            #True: #True{}  // ah is subtype of bh - more specific
+            _: @more_specific?(at)(bt)  // Check rest
+          }(@subtype?(ah)(bh))
+      }(sig_b)
+  }(sig_a)
+
+// Invoke a method by name with arguments
+@invoke_method = λname. λargs. λmethods.
+  !!&arg_types = @map(@infer_type)(args);
+  !!&meth = @dispatch_find(name)(arg_types)(methods);
+  λ{
+    #Noth: #Err{#sym_nomethod, name}
+    #Meth: λ&mname. λ&msig. λ&impl.
+      @apply_args(impl)(args)
+  }(meth)
+
+// Apply function to list of arguments
+@apply_args = λf. λargs.
+  λ{
+    #NIL: f
+    #CON: λ&h. λ&t. @apply_args(f(h))(t)
+  }(args)
+
+// =============================================================================
+// Type Constructors
+// =============================================================================
+
+// Create a new type descriptor
+@make_type = λname. λparent. λfields.
+  #TDsc{name, parent, fields}
+
+// Create a method descriptor
+@make_method = λname. λsig. λimpl.
+  #Meth{name, sig, impl}
+
+// =============================================================================
+// Generic Function Helpers
+// =============================================================================
+
+// Create a generic function (multi-method dispatcher)
+@make_generic = λname.
+  λmethods. λargs.
+    @invoke_method(name)(args)(methods)
+
+// Add a method to a generic function's method list
+@add_method = λmethods. λname. λsig. λimpl.
+  #CON{#Meth{name, sig, impl}, methods}
+
+// =============================================================================
+// OmniLisp Dispatch Runtime (Compiler Integration)
+// =============================================================================
+
+// Global method registry - maps function names to method lists
+// In a real implementation, this would be a hash table or ref cell
+// For now, methods are stored directly in the #GFun node
+
+// Create a generic function from a method list (compiler entrypoint)
+// Returns a callable that dispatches based on argument types
+@omni_make_generic = λname. λmethods.
+  #GFun{name, methods}
+
+// Main dispatch function (compiler entrypoint)
+// Takes a generic function and argument list, finds best method and invokes
+@omni_dispatch = λgfun. λargs.
+  λ{
+    #GFun: λ&name. λ&methods.
+      !!&arg_types = @omni_infer_arg_types(args);
+      !!&meth = @dispatch_find(name)(arg_types)(methods);
+      λ{
+        #Noth: #Err{#sym_NoMethod, #CON{name, args}}
+        #Meth: λ&mname. λ&msig. λ&impl.
+          @omni_apply_list(impl)(args)
+      }(meth)
+    _: #Err{#sym_NotGeneric, gfun}
+  }(gfun)
+
+// Infer types of arguments (for dispatch)
+@omni_infer_arg_types = λargs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{@infer_type(h), @omni_infer_arg_types(t)}
+  }(args)
+
+// Apply function to list of arguments
+@omni_apply_list = λf. λargs.
+  λ{
+    #NIL: f
+    #CON: λ&h. λ&t. @omni_apply_list(f(h))(t)
+  }(args)
+
+// Convenience: Call a generic function by name (for interpreted dispatch)
+@omni_call_generic = λgfun. λarg1.
+  @omni_dispatch(gfun)(#CON{arg1, #NIL})
+
+@omni_call_generic2 = λgfun. λarg1. λarg2.
+  @omni_dispatch(gfun)(#CON{arg1, #CON{arg2, #NIL}})
+
+@omni_call_generic3 = λgfun. λarg1. λarg2. λarg3.
+  @omni_dispatch(gfun)(#CON{arg1, #CON{arg2, #CON{arg3, #NIL}}})
+
+// =============================================================================
+// Type Annotations (for compiler)
+// =============================================================================
+
+// Type annotation marker (erased at runtime)
+// #TAnn{expr, type} - type annotation on expression
+// Used by compiler for dispatch optimization
+
+// Extract expression from annotation
+@tann_expr = λtann.
+  λ{
+    #TAnn: λ&expr. λ&type. expr
+    _: tann
+  }(tann)
+
+// Extract type from annotation
+@tann_type = λtann.
+  λ{
+    #TAnn: λ&expr. λ&type. type
+    _: @type_Any
+  }(tann)
+
+// =============================================================================
+// Parameterized Types
+// =============================================================================
+
+// Type application: #TApp{base, params}
+// e.g., List<Int> = #TApp{@type_List, #CON{@type_Int, #NIL}}
+
+@make_type_app = λbase. λparams.
+  #TApp{base, params}
+
+@type_app_base = λtapp.
+  λ{
+    #TApp: λ&base. λ&params. base
+    _: tapp
+  }(tapp)
+
+@type_app_params = λtapp.
+  λ{
+    #TApp: λ&base. λ&params. params
+    _: #NIL
+  }(tapp)
+
+// =============================================================================
+// Function Types
+// =============================================================================
+
+// Function type: #TFun{arg_types, ret_type}
+@make_fun_type = λarg_types. λret_type.
+  #TFun{arg_types, ret_type}
+
+@fun_type_args = λtfun.
+  λ{
+    #TFun: λ&args. λ&ret. args
+    _: #NIL
+  }(tfun)
+
+@fun_type_ret = λtfun.
+  λ{
+    #TFun: λ&args. λ&ret. ret
+    _: @type_Any
+  }(tfun)
+
+// =============================================================================
+// Type Variables
+// =============================================================================
+
+// Type variable: #TVar{name}
+// Used for polymorphic types
+
+@make_type_var = λname.
+  #TVar{name}
+
+@type_var_name = λtvar.
+  λ{
+    #TVar: λ&name. name
+    _: #sym_Unknown
+  }(tvar)
+
+// Check if type is a type variable
+@type_var? = λtype.
+  λ{
+    #TVar: λ&_. #True{}
+    _: #Fals{}
+  }(type)
+
+// =============================================================================
+// Type Substitution
+// =============================================================================
+
+// Apply type substitution: subst is list of #CON{tvar, type}
+@subst_type = λsubst. λtype.
+  λ{
+    #TVar: λ&name.
+      @lookup_subst(name)(subst)
+
+    #TApp: λ&base. λ&params.
+      #TApp{@subst_type(subst)(base), @map(@subst_type(subst))(params)}
+
+    #TFun: λ&args. λ&ret.
+      #TFun{@map(@subst_type(subst))(args), @subst_type(subst)(ret)}
+
+    _: type
+  }(type)
+
+@lookup_subst = λname. λsubst.
+  λ{
+    #NIL: #TVar{name}  // Not found - return original var
+    #CON: λ&h. λ&t.
+      λ{
+        #CON: λ&var. λ&rest.
+          λ{
+            #CON: λ&type. λ&_.
+              λ{
+                1: type
+                _: @lookup_subst(name)(t)
+              }((λ{#TVar: λ&n. n}(var) == name))
+          }(rest)
+      }(h)
+  }(subst)
+
+// =============================================================================
+// Protocol/Interface Support
+// =============================================================================
+
+// Protocol: #Prot{name, methods}
+// - name: protocol name
+// - methods: list of #PMeth{name, sig}
+
+@make_protocol = λname. λmethods.
+  #Prot{name, methods}
+
+// Check if type implements protocol
+@implements? = λtype. λprotocol. λmethod_registry.
+  λ{
+    #Prot: λ&pname. λ&pmethods.
+      @all_methods_present?(type)(pmethods)(method_registry)
+  }(protocol)
+
+@all_methods_present? = λtype. λpmethods. λregistry.
+  λ{
+    #NIL: #True{}
+    #CON: λ&pm. λ&rest.
+      λ{
+        #PMeth: λ&mname. λ&msig.
+          !!&found = @find_method_for_type(mname)(type)(registry);
+          λ{
+            #Noth: #Fals{}
+            _: @all_methods_present?(type)(rest)(registry)
+          }(found)
+      }(pm)
+  }(pmethods)
+
+@find_method_for_type = λname. λtype. λmethods.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&meth. λ&rest.
+      λ{
+        #Meth: λ&mname. λ&msig. λ&mimpl.
+          λ{
+            1:
+              // Check if first param type matches
+              λ{
+                #NIL: @find_method_for_type(name)(type)(rest)
+                #CON: λ&first_type. λ&_.
+                  λ{
+                    #True: meth
+                    _: @find_method_for_type(name)(type)(rest)
+                  }(@subtype?(type)(first_type))
+              }(msig)
+            _: @find_method_for_type(name)(type)(rest)
+          }((mname == name))
+      }(meth)
+  }(methods)
+
+// =============================================================================
+// Type Registration (Runtime)
+// =============================================================================
+
+// Global type registry - list of registered types
+// In practice, this would be a mutable ref cell or use HVM4 duplication
+@type_registry = #NIL
+
+// Register an abstract type: (define {abstract Name}) or (define {abstract Name Parent})
+// Returns the type descriptor for use in type annotations
+@omni_register_abstract = λname. λparent.
+  !!&parent_type = λ{
+    #NIL: @type_Any
+    _: parent
+  }(parent);
+  #TDsc{name, parent_type, #NIL}
+
+// Register a struct type: (define {struct Name} [field1 {Type1}] [field2 {Type2}] ...)
+// fields is a list of #TFld{name, type} descriptors
+@omni_register_struct = λname. λparent. λfields. λmutable.
+  !!&parent_type = λ{
+    #NIL: @type_Any
+    _: parent
+  }(parent);
+  #TStr{name, parent_type, fields, mutable}
+
+// Register an enum type: (define {enum Name} Variant1 (Variant2 [field {Type}]) ...)
+// variants is a list of #TVrn{name, fields} descriptors
+@omni_register_enum = λname. λvariants.
+  #TEnm{name, variants}
+
+// Register a union type: (define {Name} (union [{Type1} {Type2}]))
+// types is a list of type descriptors
+@omni_register_union = λname. λtypes.
+  #TUni{name, types}
+
+// =============================================================================
+// Struct Field Operations
+// =============================================================================
+
+// Create a field descriptor
+@make_field = λname. λtype.
+  #TFld{name, type}
+
+// Get field name
+@field_name = λfield.
+  λ{
+    #TFld: λ&name. λ&type. name
+    _: #sym_Unknown
+  }(field)
+
+// Get field type
+@field_type = λfield.
+  λ{
+    #TFld: λ&name. λ&type. type
+    _: @type_Any
+  }(field)
+
+// Find field by name in struct type
+@find_field = λstruct_type. λfield_name.
+  λ{
+    #TStr: λ&name. λ&parent. λ&fields. λ&mutable.
+      @find_in_fields(fields)(field_name)
+    #TDsc: λ&name. λ&parent. λ&fields.
+      @find_in_fields(fields)(field_name)
+    _: #Noth{}
+  }(struct_type)
+
+@find_in_fields = λfields. λname.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&field. λ&rest.
+      λ{
+        #TFld: λ&fname. λ&ftype.
+          λ{
+            1: field
+            _: @find_in_fields(rest)(name)
+          }((fname == name))
+      }(field)
+  }(fields)
+
+// =============================================================================
+// Enum Variant Operations
+// =============================================================================
+
+// Create an enum variant descriptor
+@make_variant = λname. λfields.
+  #TVrn{name, fields}
+
+// Get variant name
+@variant_name = λvariant.
+  λ{
+    #TVrn: λ&name. λ&fields. name
+    _: #sym_Unknown
+  }(variant)
+
+// Get variant fields
+@variant_fields = λvariant.
+  λ{
+    #TVrn: λ&name. λ&fields. fields
+    _: #NIL
+  }(variant)
+
+// Find variant by name in enum type
+@find_variant = λenum_type. λvariant_name.
+  λ{
+    #TEnm: λ&name. λ&variants.
+      @find_in_variants(variants)(variant_name)
+    _: #Noth{}
+  }(enum_type)
+
+@find_in_variants = λvariants. λname.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&variant. λ&rest.
+      λ{
+        #TVrn: λ&vname. λ&vfields.
+          λ{
+            1: variant
+            _: @find_in_variants(rest)(name)
+          }((vname == name))
+      }(variant)
+  }(variants)
+
+// =============================================================================
+// Union Type Operations
+// =============================================================================
+
+// Check if value matches any type in union
+@union_matches? = λval. λunion_type.
+  λ{
+    #TUni: λ&name. λ&types.
+      @any_type_matches?(val)(types)
+    _: #Fals{}
+  }(union_type)
+
+@any_type_matches? = λval. λtypes.
+  λ{
+    #NIL: #Fals{}
+    #CON: λ&type. λ&rest.
+      λ{
+        #True: #True{}
+        _: @any_type_matches?(val)(rest)
+      }(@has_type?(val)(type))
+  }(types)
+
+// =============================================================================
+// Type Checking Utilities
+// =============================================================================
+
+// Check if a type is an abstract type
+@abstract_type? = λtype.
+  λ{
+    #TDsc: λ&name. λ&parent. λ&fields.
+      λ{
+        #NIL: #True{}  // No fields = abstract
+        _: #Fals{}
+      }(fields)
+    _: #Fals{}
+  }(type)
+
+// Check if a type is a struct type
+@struct_type? = λtype.
+  λ{
+    #TStr: λ&_. λ&_. λ&_. λ&_. #True{}
+    _: #Fals{}
+  }(type)
+
+// Check if a type is an enum type
+@enum_type? = λtype.
+  λ{
+    #TEnm: λ&_. λ&_. #True{}
+    _: #Fals{}
+  }(type)
+
+// Check if a type is a union type
+@union_type? = λtype.
+  λ{
+    #TUni: λ&_. λ&_. #True{}
+    _: #Fals{}
+  }(type)
+
+// Check if a struct type is mutable
+@mutable_struct? = λtype.
+  λ{
+    #TStr: λ&name. λ&parent. λ&fields. λ&mutable.
+      λ{
+        #True: #True{}
+        _: #Fals{}
+      }(mutable)
+    _: #Fals{}
+  }(type)
+
+// =============================================================================
+// Parametric Type Support
+// =============================================================================
+
+// Instantiate a parametric type with concrete type arguments
+// type_params is list of #TVar names, type_args is list of concrete types
+@instantiate_type = λbase_type. λtype_params. λtype_args.
+  !!&subst = @build_subst(type_params)(type_args);
+  @subst_type_deep(subst)(base_type)
+
+@build_subst = λparams. λargs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&param. λ&rest_params.
+      λ{
+        #NIL: #NIL
+        #CON: λ&arg. λ&rest_args.
+          #CON{#CON{param, #CON{arg, #NIL}}, @build_subst(rest_params)(rest_args)}
+      }(args)
+  }(params)
+
+// Deep substitution in all nested types
+@subst_type_deep = λsubst. λtype.
+  λ{
+    #TVar: λ&name.
+      @lookup_subst(name)(subst)
+
+    #TApp: λ&base. λ&params.
+      #TApp{@subst_type_deep(subst)(base), @map(@subst_type_deep(subst))(params)}
+
+    #TFun: λ&args. λ&ret.
+      #TFun{@map(@subst_type_deep(subst))(args), @subst_type_deep(subst)(ret)}
+
+    #TStr: λ&name. λ&parent. λ&fields. λ&mutable.
+      #TStr{name, @subst_type_deep(subst)(parent), @map(@subst_field(subst))(fields), mutable}
+
+    #TDsc: λ&name. λ&parent. λ&fields.
+      #TDsc{name, @subst_type_deep(subst)(parent), @map(@subst_field(subst))(fields)}
+
+    _: type
+  }(type)
+
+@subst_field = λsubst. λfield.
+  λ{
+    #TFld: λ&name. λ&type.
+      #TFld{name, @subst_type_deep(subst)(type)}
+  }(field)
+

@@ -1,0 +1,638 @@
+// OmniLisp Collections Runtime
+// Operations on lists, arrays, dicts, and sets
+
+// =============================================================================
+// List Operations
+// =============================================================================
+
+// Map a function over a list
+@omni_map = λf. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{f(h), @omni_map(f)(t)}
+  }(xs)
+
+// Filter elements satisfying predicate
+@omni_filter = λp. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        1: #CON{h, @omni_filter(p)(t)}
+        _: @omni_filter(p)(t)
+      }(p(h))
+  }(xs)
+
+// Left fold
+@omni_foldl = λf. λacc. λxs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. @omni_foldl(f)(f(acc)(h))(t)
+  }(xs)
+
+// Right fold
+@omni_foldr = λf. λacc. λxs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. f(h)(@omni_foldr(f)(acc)(t))
+  }(xs)
+
+// Reduce (fold with first element as accumulator)
+@omni_reduce = λf. λxs.
+  λ{
+    #NIL: #Err{#sym_EmptyList, #sym_reduce}
+    #CON: λ&h. λ&t. @omni_foldl(f)(h)(t)
+  }(xs)
+
+// Take first n elements
+@omni_take = λn. λxs.
+  λ{
+    0: #NIL
+    _:
+      λ{
+        #NIL: #NIL
+        #CON: λ&h. λ&t. #CON{h, @omni_take((n - 1))(t)}
+      }(xs)
+  }(n)
+
+// Drop first n elements
+@omni_drop = λn. λxs.
+  λ{
+    0: xs
+    _:
+      λ{
+        #NIL: #NIL
+        #CON: λ&_. λ&t. @omni_drop((n - 1))(t)
+      }(xs)
+  }(n)
+
+// Reverse a list
+@omni_reverse = λxs.
+  @omni_foldl(λacc. λx. #CON{x, acc})(#NIL)(xs)
+
+// List length
+@omni_length = λxs.
+  @omni_foldl(λacc. λ_. (acc + 1))(0)(xs)
+
+// Check if list is empty
+@omni_empty? = λxs.
+  λ{
+    #NIL: 1
+    _: 0
+  }(xs)
+
+// Find first element satisfying predicate
+@omni_find = λp. λxs.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        1: h
+        _: @omni_find(p)(t)
+      }(p(h))
+  }(xs)
+
+// Find index of first match
+@omni_index_of = λval. λxs.
+  @omni_index_of_helper(val)(xs)(0)
+
+@omni_index_of_helper = λval. λxs. λidx.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        1: idx
+        _: @omni_index_of_helper(val)(t)((idx + 1))
+      }((h == val))
+  }(xs)
+
+// Check if any element satisfies predicate
+@omni_any = λp. λxs.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t.
+      λ{
+        1: 1
+        _: @omni_any(p)(t)
+      }(p(h))
+  }(xs)
+
+// Check if all elements satisfy predicate
+@omni_all = λp. λxs.
+  λ{
+    #NIL: 1
+    #CON: λ&h. λ&t.
+      λ{
+        0: 0
+        _: @omni_all(p)(t)
+      }(p(h))
+  }(xs)
+
+// Check if list contains value
+@omni_contains = λval. λxs.
+  @omni_any(λx. (x == val))(xs)
+
+// Get nth element (0-indexed)
+@omni_nth = λn. λxs.
+  λ{
+    #NIL: #Err{#sym_IndexOutOfBounds, n}
+    #CON: λ&h. λ&t.
+      λ{
+        0: h
+        _: @omni_nth((n - 1))(t)
+      }(n)
+  }(xs)
+
+// Concatenate two lists
+@omni_concat = λxs. λys.
+  λ{
+    #NIL: ys
+    #CON: λ&h. λ&t. #CON{h, @omni_concat(t)(ys)}
+  }(xs)
+
+// Flatten nested list (one level)
+@omni_flatten = λxss.
+  @omni_foldr(@omni_concat)(#NIL)(xss)
+
+// Deep flatten
+@omni_flatten_deep = λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #CON: λ&_. λ&_. @omni_concat(@omni_flatten_deep(h))(@omni_flatten_deep(t))
+        #NIL: @omni_flatten_deep(t)
+        _: #CON{h, @omni_flatten_deep(t)}
+      }(h)
+  }(xs)
+
+// Zip two lists together
+@omni_zip = λxs. λys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: #NIL
+        #CON: λ&yh. λ&yt.
+          #CON{#CON{xh, #CON{yh, #NIL}}, @omni_zip(xt)(yt)}
+      }(ys)
+  }(xs)
+
+// Zip with function
+@omni_zip_with = λf. λxs. λys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: #NIL
+        #CON: λ&yh. λ&yt.
+          #CON{f(xh)(yh), @omni_zip_with(f)(xt)(yt)}
+      }(ys)
+  }(xs)
+
+// Unzip list of pairs
+@omni_unzip = λxs.
+  λ{
+    #NIL: #CON{#NIL, #CON{#NIL, #NIL}}
+    #CON: λ&h. λ&t.
+      !!&rest = @omni_unzip(t);
+      λ{
+        #CON: λ&a. λ&b_cell.
+          λ{#CON: λ&b. λ&_.
+            λ{#CON: λ&as. λ&bs_cell.
+              λ{#CON: λ&bs. λ&_.
+                #CON{#CON{a, as}, #CON{#CON{b, bs}, #NIL}}
+              }(bs_cell)
+            }(rest)
+          }(b_cell)
+      }(h)
+  }(xs)
+
+// Group by key function
+@omni_group_by = λkey_fn. λxs.
+  @omni_foldl(@omni_group_by_insert(key_fn))(#NIL)(xs)
+
+@omni_group_by_insert = λkey_fn. λgroups. λx.
+  !!&k = key_fn(x);
+  @omni_group_by_add(k)(x)(groups)
+
+@omni_group_by_add = λk. λx. λgroups.
+  λ{
+    #NIL: #CON{#CON{k, #CON{#CON{x, #NIL}, #NIL}}, #NIL}
+    #CON: λ&group. λ&rest.
+      λ{
+        #CON: λ&gk. λ&gv_cell.
+          λ{
+            1:
+              λ{#CON: λ&gv. λ&_.
+                #CON{#CON{gk, #CON{#CON{x, gv}, #NIL}}, rest}
+              }(gv_cell)
+            _: #CON{group, @omni_group_by_add(k)(x)(rest)}
+          }((gk == k))
+      }(group)
+  }(groups)
+
+// Partition by predicate
+@omni_partition = λp. λxs.
+  @omni_foldl(λacc. λx.
+    λ{#CON: λ&yes. λ&no_cell.
+      λ{#CON: λ&no. λ&_.
+        λ{
+          1: #CON{#CON{x, yes}, #CON{no, #NIL}}
+          _: #CON{yes, #CON{#CON{x, no}, #NIL}}
+        }(p(x))
+      }(no_cell)
+    }(acc)
+  )(#CON{#NIL, #CON{#NIL, #NIL}})(xs)
+
+// Slice list from start to end (exclusive)
+@omni_slice = λstart. λend. λxs.
+  @omni_take((end - start))(@omni_drop(start)(xs))
+
+// Range of integers
+@omni_range = λstart. λend.
+  λ{
+    1: #NIL
+    _: #CON{start, @omni_range((start + 1))(end)}
+  }((start >= end))
+
+// Range with step
+@omni_range_step = λstart. λend. λstep.
+  λ{
+    1: #NIL
+    _: #CON{start, @omni_range_step((start + step))(end)(step)}
+  }((start >= end))
+
+// =============================================================================
+// Sorting (Merge Sort)
+// =============================================================================
+
+// Sort with comparator function
+// cmp returns: negative if a < b, 0 if a == b, positive if a > b
+@omni_sort = λcmp. λxs.
+  !!&len = @omni_length(xs);
+  λ{
+    0: xs
+    1: xs
+    _:
+      !!&mid = (len / 2);
+      !!&left = @omni_take(mid)(xs);
+      !!&right = @omni_drop(mid)(xs);
+      @omni_merge(cmp)(@omni_sort(cmp)(left))(@omni_sort(cmp)(right))
+  }(len)
+
+// Merge two sorted lists
+@omni_merge = λcmp. λxs. λys.
+  λ{
+    #NIL: ys
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: xs
+        #CON: λ&yh. λ&yt.
+          !!&c = cmp(xh)(yh);
+          λ{
+            1: #CON{xh, @omni_merge(cmp)(xt)(ys)}  // xh <= yh
+            _: #CON{yh, @omni_merge(cmp)(xs)(yt)}
+          }((c <= 0))
+      }(ys)
+  }(xs)
+
+// Sort ascending (for numbers)
+@omni_sort_asc = λxs.
+  @omni_sort(λa. λb. (a - b))(xs)
+
+// Sort descending
+@omni_sort_desc = λxs.
+  @omni_sort(λa. λb. (b - a))(xs)
+
+// Sort by key function
+@omni_sort_by = λkey_fn. λxs.
+  @omni_sort(λa. λb. (key_fn(a) - key_fn(b)))(xs)
+
+// =============================================================================
+// Set Operations (Lists as Sets)
+// =============================================================================
+
+// Create set from list (remove duplicates)
+@omni_set_from_list = λxs.
+  @omni_foldl(λacc. λx.
+    λ{
+      1: acc  // Already in set
+      _: #CON{x, acc}
+    }(@omni_contains(x)(acc))
+  )(#NIL)(xs)
+
+// Set union
+@omni_set_union = λxs. λys.
+  @omni_foldl(λacc. λx.
+    λ{
+      1: acc
+      _: #CON{x, acc}
+    }(@omni_contains(x)(acc))
+  )(ys)(xs)
+
+// Set intersection
+@omni_set_intersection = λxs. λys.
+  @omni_filter(λx. @omni_contains(x)(ys))(xs)
+
+// Set difference (xs - ys)
+@omni_set_difference = λxs. λys.
+  @omni_filter(λx.
+    λ{1: 0; _: 1}(@omni_contains(x)(ys))
+  )(xs)
+
+// Symmetric difference
+@omni_set_symmetric_difference = λxs. λys.
+  @omni_set_union(@omni_set_difference(xs)(ys))(@omni_set_difference(ys)(xs))
+
+// =============================================================================
+// Dictionary Operations (Association Lists)
+// =============================================================================
+
+// Lookup key in dict
+@omni_dict_get = λkey. λdict.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&entry. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_cell.
+          λ{
+            1: λ{#CON: λ&v. λ&_. v}(v_cell)
+            _: @omni_dict_get(key)(rest)
+          }((k == key))
+      }(entry)
+  }(dict)
+
+// Get with default
+@omni_dict_get_or = λkey. λdefault. λdict.
+  !!&result = @omni_dict_get(key)(dict);
+  λ{
+    #Noth: default
+    _: result
+  }(result)
+
+// Insert/update key
+@omni_dict_assoc = λkey. λval. λdict.
+  λ{
+    #NIL: #CON{#CON{key, #CON{val, #NIL}}, #NIL}
+    #CON: λ&entry. λ&rest.
+      λ{
+        #CON: λ&k. λ&_.
+          λ{
+            1: #CON{#CON{key, #CON{val, #NIL}}, rest}  // Replace
+            _: #CON{entry, @omni_dict_assoc(key)(val)(rest)}
+          }((k == key))
+      }(entry)
+  }(dict)
+
+// Remove key
+@omni_dict_dissoc = λkey. λdict.
+  @omni_filter(λentry.
+    λ{#CON: λ&k. λ&_. (k != key)}(entry)
+  )(dict)
+
+// Get all keys
+@omni_dict_keys = λdict.
+  @omni_map(λentry.
+    λ{#CON: λ&k. λ&_. k}(entry)
+  )(dict)
+
+// Get all values
+@omni_dict_vals = λdict.
+  @omni_map(λentry.
+    λ{#CON: λ&_. λ&v_cell. λ{#CON: λ&v. λ&_. v}(v_cell)}(entry)
+  )(dict)
+
+// Get all entries as pairs
+@omni_dict_entries = λdict. dict
+
+// Merge dictionaries (later values override earlier)
+@omni_dict_merge = λd1. λd2.
+  @omni_foldl(λacc. λentry.
+    λ{#CON: λ&k. λ&v_cell.
+      λ{#CON: λ&v. λ&_. @omni_dict_assoc(k)(v)(acc)}(v_cell)
+    }(entry)
+  )(d1)(d2)
+
+// Update value at key with function
+@omni_dict_update = λkey. λf. λdict.
+  !!&old = @omni_dict_get(key)(dict);
+  λ{
+    #Noth: dict
+    _: @omni_dict_assoc(key)(f(old))(dict)
+  }(old)
+
+// Check if key exists
+@omni_dict_has_key = λkey. λdict.
+  !!&result = @omni_dict_get(key)(dict);
+  λ{
+    #Noth: 0
+    _: 1
+  }(result)
+
+// Map over values
+@omni_dict_map_vals = λf. λdict.
+  @omni_map(λentry.
+    λ{#CON: λ&k. λ&v_cell.
+      λ{#CON: λ&v. λ&_. #CON{k, #CON{f(v), #NIL}}}(v_cell)
+    }(entry)
+  )(dict)
+
+// Filter entries
+@omni_dict_filter = λp. λdict.
+  @omni_filter(λentry.
+    λ{#CON: λ&k. λ&v_cell.
+      λ{#CON: λ&v. λ&_. p(k)(v)}(v_cell)
+    }(entry)
+  )(dict)
+
+// =============================================================================
+// Array Operations (HVM4 Arrays)
+// =============================================================================
+
+// Create array from list
+@omni_array_from_list = λxs.
+  #Arr{@omni_length(xs), xs}
+
+// Convert array to list
+@omni_array_to_list = λarr.
+  λ{
+    #Arr: λ&_. λ&elems. elems
+    _: #NIL
+  }(arr)
+
+// Array length
+@omni_array_length = λarr.
+  λ{
+    #Arr: λ&len. λ&_. len
+    _: 0
+  }(arr)
+
+// Get element at index
+@omni_array_get = λidx. λarr.
+  λ{
+    #Arr: λ&len. λ&elems.
+      λ{
+        1: #Err{#sym_IndexOutOfBounds, idx}
+        _: @omni_nth(idx)(elems)
+      }((idx >= len))
+  }(arr)
+
+// Set element at index (returns new array)
+@omni_array_set = λidx. λval. λarr.
+  λ{
+    #Arr: λ&len. λ&elems.
+      λ{
+        1: arr  // Out of bounds, return unchanged
+        _:
+          !!&new_elems = @omni_list_set(idx)(val)(elems);
+          #Arr{len, new_elems}
+      }((idx >= len))
+  }(arr)
+
+@omni_list_set = λidx. λval. λxs.
+  λ{
+    0:
+      λ{
+        #CON: λ&_. λ&t. #CON{val, t}
+        _: xs
+      }(xs)
+    _:
+      λ{
+        #CON: λ&h. λ&t. #CON{h, @omni_list_set((idx - 1))(val)(t)}
+        _: xs
+      }(xs)
+  }(idx)
+
+// Array slice
+@omni_array_slice = λstart. λend. λarr.
+  λ{
+    #Arr: λ&_. λ&elems.
+      !!&sliced = @omni_slice(start)(end)(elems);
+      #Arr{@omni_length(sliced), sliced}
+  }(arr)
+
+// Map over array
+@omni_array_map = λf. λarr.
+  λ{
+    #Arr: λ&len. λ&elems.
+      #Arr{len, @omni_map(f)(elems)}
+  }(arr)
+
+// Filter array
+@omni_array_filter = λp. λarr.
+  λ{
+    #Arr: λ&_. λ&elems.
+      !!&filtered = @omni_filter(p)(elems);
+      #Arr{@omni_length(filtered), filtered}
+  }(arr)
+
+// =============================================================================
+// Utility Functions
+// =============================================================================
+
+// Identity function
+@omni_identity = λx. x
+
+// Constant function
+@omni_const = λx. λ_. x
+
+// Compose two functions
+@omni_compose = λf. λg. λx. f(g(x))
+
+// Apply function to argument
+@omni_apply = λf. λx. f(x)
+
+// Flip argument order
+@omni_flip = λf. λa. λb. f(b)(a)
+
+// Create a pair
+@omni_pair = λa. λb. #CON{a, #CON{b, #NIL}}
+
+// First of pair
+@omni_fst = λp.
+  λ{#CON: λ&a. λ&_. a}(p)
+
+// Second of pair
+@omni_snd = λp.
+  λ{#CON: λ&_. λ&b_cell. λ{#CON: λ&b. λ&_. b}(b_cell)}(p)
+
+// Repeat value n times
+@omni_repeat = λn. λval.
+  λ{
+    0: #NIL
+    _: #CON{val, @omni_repeat((n - 1))(val)}
+  }(n)
+
+// Iterate function n times from seed
+@omni_iterate = λn. λf. λseed.
+  λ{
+    0: #NIL
+    _: #CON{seed, @omni_iterate((n - 1))(f)(f(seed))}
+  }(n)
+
+// Sum a list of numbers
+@omni_sum = λxs. @omni_foldl(λa. λb. (a + b))(0)(xs)
+
+// Product of a list of numbers
+@omni_product = λxs. @omni_foldl(λa. λb. (a * b))(1)(xs)
+
+// Maximum in list
+@omni_maximum = λxs.
+  λ{
+    #NIL: #Err{#sym_EmptyList, #sym_maximum}
+    #CON: λ&h. λ&t.
+      @omni_foldl(λacc. λx. λ{1: x; _: acc}((x > acc)))(h)(t)
+  }(xs)
+
+// Minimum in list
+@omni_minimum = λxs.
+  λ{
+    #NIL: #Err{#sym_EmptyList, #sym_minimum}
+    #CON: λ&h. λ&t.
+      @omni_foldl(λacc. λx. λ{1: x; _: acc}((x < acc)))(h)(t)
+  }(xs)
+
+// Intersperse element between list elements
+@omni_intersperse = λsep. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: #CON{h, #NIL}
+        _: #CON{h, #CON{sep, @omni_intersperse(sep)(t)}}
+      }(t)
+  }(xs)
+
+// Take while predicate holds
+@omni_take_while = λp. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        1: #CON{h, @omni_take_while(p)(t)}
+        _: #NIL
+      }(p(h))
+  }(xs)
+
+// Drop while predicate holds
+@omni_drop_while = λp. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        1: @omni_drop_while(p)(t)
+        _: xs
+      }(p(h))
+  }(xs)
+
+// Unique elements (preserving order)
+@omni_unique = λxs.
+  @omni_reverse(@omni_set_from_list(@omni_reverse(xs)))
+
+// Count occurrences
+@omni_count = λp. λxs.
+  @omni_foldl(λacc. λx.
+    λ{1: (acc + 1); _: acc}(p(x))
+  )(0)(xs)
+

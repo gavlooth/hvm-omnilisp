@@ -1,0 +1,404 @@
+// OmniLisp Regex Runtime
+// Pattern-based regular expression matching
+// Syntax: #r"pattern"flags
+// Flags: i (case-insensitive), g (global), m (multiline)
+
+// =============================================================================
+// Regex Data Types
+// =============================================================================
+
+// Regex: #Regx{pattern, flags}
+// Match result: #RMRs{matched, groups, start, end}
+// No match: #Noth{}
+
+// =============================================================================
+// Core Matching Functions
+// =============================================================================
+
+// Test if regex matches string (returns 1 or 0)
+@omni_regex_test = λregex. λstr.
+  !!&result = @omni_regex_match(regex)(str);
+  λ{
+    #Noth: 0
+    #RMRs: λ&_. λ&_. λ&_. λ&_. 1
+  }(result)
+
+// Find first match, return match result or #Noth{}
+@omni_regex_match = λregex. λstr.
+  λ{
+    #Regx: λ&pattern. λ&flags.
+      !!&case_i = @omni_regex_has_flag(#CHR{105})(flags);  // 'i' flag
+      @omni_regex_match_at(pattern)(str)(0)(case_i)
+  }(regex)
+
+// Match starting at position, trying each position
+@omni_regex_match_at = λpattern. λstr. λpos. λcase_i.
+  !!&slen = @omni_str_length(str);
+  λ{
+    1: #Noth{}  // Past end of string
+    _:
+      !!&substr = @omni_drop(pos)(str);
+      !!&result = @omni_regex_try_match(pattern)(substr)(case_i)(#NIL);
+      λ{
+        #Noth: @omni_regex_match_at(pattern)(str)((pos + 1))(case_i)
+        _:
+          // Wrap result with position info
+          λ{
+            #RMRs: λ&matched. λ&groups. λ&_. λ&end.
+              #RMRs{matched, groups, pos, (pos + end)}
+          }(result)
+      }(result)
+  }((pos > slen))
+
+// Try to match pattern at current position
+// Returns #RMRs{matched, groups, 0, end} or #Noth{}
+@omni_regex_try_match = λpattern. λstr. λcase_i. λgroups.
+  λ{
+    #NIL: #RMRs{#NIL, @omni_reverse(groups), 0, 0}  // Empty pattern matches
+    #CON: λ&ph. λ&pt.
+      @omni_regex_match_elem(ph)(pt)(str)(case_i)(groups)
+  }(pattern)
+
+// Match a single pattern element
+@omni_regex_match_elem = λelem. λrest. λstr. λcase_i. λgroups.
+  λ{
+    #CHR: λ&cp.
+      // Literal character
+      λ{
+        #NIL: #Noth{}  // No more string
+        #CON: λ&sh. λ&st.
+          λ{
+            1:
+              // Character matched, continue with rest
+              !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+              λ{
+                #Noth: #Noth{}
+                #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                  #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+              }(sub_result)
+            _: #Noth{}
+          }(@omni_regex_char_match(cp)(sh)(case_i))
+      }(str)
+    _:
+      // Check for special patterns
+      @omni_regex_match_special(elem)(rest)(str)(case_i)(groups)
+  }(elem)
+
+// Match special regex elements (., ^, $, etc.)
+@omni_regex_match_special = λelem. λrest. λstr. λcase_i. λgroups.
+  λ{
+    #CHR: λ&cp.
+      λ{
+        // . matches any character
+        46:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+              λ{
+                #Noth: #Noth{}
+                #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                  #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+              }(sub_result)
+          }(str)
+
+        // ^ matches start (handled by caller)
+        94: @omni_regex_try_match(rest)(str)(case_i)(groups)
+
+        // $ matches end
+        36:
+          λ{
+            #NIL: @omni_regex_try_match(rest)(str)(case_i)(groups)
+            _: #Noth{}
+          }(str)
+
+        // Backslash for escape sequences
+        92:
+          λ{
+            #NIL: #Noth{}  // Dangling backslash
+            #CON: λ&escape. λ&rest2.
+              @omni_regex_match_escape(escape)(rest2)(str)(case_i)(groups)
+          }(rest)
+
+        // Treat as literal
+        _: @omni_regex_match_literal(cp)(rest)(str)(case_i)(groups)
+      }(cp)
+    _: #Noth{}  // Unknown element type
+  }(elem)
+
+// Match escaped characters (\d, \w, \s, etc.)
+@omni_regex_match_escape = λescape. λrest. λstr. λcase_i. λgroups.
+  λ{
+    #CHR: λ&esc_cp.
+      λ{
+        // \d - digit
+        100:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              λ{
+                1:
+                  !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+                  λ{
+                    #Noth: #Noth{}
+                    #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                      #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+                  }(sub_result)
+                _: #Noth{}
+              }(@omni_char_digit?(sh))
+          }(str)
+
+        // \D - non-digit
+        68:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              λ{
+                0:
+                  !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+                  λ{
+                    #Noth: #Noth{}
+                    #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                      #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+                  }(sub_result)
+                _: #Noth{}
+              }(@omni_char_digit?(sh))
+          }(str)
+
+        // \w - word character (alphanumeric + _)
+        119:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              λ{
+                1:
+                  !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+                  λ{
+                    #Noth: #Noth{}
+                    #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                      #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+                  }(sub_result)
+                _: #Noth{}
+              }(@omni_regex_is_word_char(sh))
+          }(str)
+
+        // \W - non-word character
+        87:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              λ{
+                0:
+                  !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+                  λ{
+                    #Noth: #Noth{}
+                    #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                      #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+                  }(sub_result)
+                _: #Noth{}
+              }(@omni_regex_is_word_char(sh))
+          }(str)
+
+        // \s - whitespace
+        115:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              λ{
+                1:
+                  !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+                  λ{
+                    #Noth: #Noth{}
+                    #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                      #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+                  }(sub_result)
+                _: #Noth{}
+              }(@omni_char_whitespace?(sh))
+          }(str)
+
+        // \S - non-whitespace
+        83:
+          λ{
+            #NIL: #Noth{}
+            #CON: λ&sh. λ&st.
+              λ{
+                0:
+                  !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+                  λ{
+                    #Noth: #Noth{}
+                    #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+                      #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+                  }(sub_result)
+                _: #Noth{}
+              }(@omni_char_whitespace?(sh))
+          }(str)
+
+        // Literal escape (\\, \., etc.)
+        _: @omni_regex_match_literal(esc_cp)(rest)(str)(case_i)(groups)
+      }(esc_cp)
+  }(escape)
+
+// Match a literal character
+@omni_regex_match_literal = λcp. λrest. λstr. λcase_i. λgroups.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&sh. λ&st.
+      λ{
+        1:
+          !!&sub_result = @omni_regex_try_match(rest)(st)(case_i)(groups);
+          λ{
+            #Noth: #Noth{}
+            #RMRs: λ&matched. λ&grps. λ&_. λ&end.
+              #RMRs{#CON{sh, matched}, grps, 0, (end + 1)}
+          }(sub_result)
+        _: #Noth{}
+      }(@omni_regex_char_match(cp)(sh)(case_i))
+  }(str)
+
+// Check if character matches (with optional case-insensitivity)
+@omni_regex_char_match = λpattern_cp. λstr_char. λcase_i.
+  λ{
+    #CHR: λ&str_cp.
+      λ{
+        1:
+          // Case-insensitive: compare lowercase
+          !!&p_lower = @omni_regex_to_lower(pattern_cp);
+          !!&s_lower = @omni_regex_to_lower(str_cp);
+          (p_lower == s_lower)
+        _: (pattern_cp == str_cp)
+      }(case_i)
+    _: 0
+  }(str_char)
+
+// Convert to lowercase (ASCII only)
+@omni_regex_to_lower = λcp.
+  λ{
+    1: (cp + 32)  // A-Z -> a-z
+    _: cp
+  }(((cp >= 65) * (cp <= 90)))
+
+// Check if character is a word character
+@omni_regex_is_word_char = λc.
+  λ{
+    #CHR: λ&cp.
+      (((@omni_char_alnum?(c)) + (cp == 95)))  // alnum or underscore
+    _: 0
+  }(c)
+
+// Check if flags contain a specific flag
+@omni_regex_has_flag = λflag. λflags.
+  @omni_any(λf. @omni_char_eq(f)(flag))(flags)
+
+// =============================================================================
+// High-Level Regex Functions
+// =============================================================================
+
+// Find all matches (global)
+@omni_regex_find_all = λregex. λstr.
+  λ{
+    #Regx: λ&pattern. λ&flags.
+      !!&case_i = @omni_regex_has_flag(#CHR{105})(flags);
+      @omni_regex_find_all_helper(pattern)(str)(0)(case_i)
+  }(regex)
+
+@omni_regex_find_all_helper = λpattern. λstr. λpos. λcase_i.
+  !!&slen = @omni_str_length(str);
+  λ{
+    1: #NIL  // Past end
+    _:
+      !!&substr = @omni_drop(pos)(str);
+      !!&result = @omni_regex_match_at(pattern)(str)(pos)(case_i);
+      λ{
+        #Noth: @omni_regex_find_all_helper(pattern)(str)((pos + 1))(case_i)
+        #RMRs: λ&matched. λ&groups. λ&start. λ&end.
+          !!&next_pos = λ{1: (end + 1); _: end}((end == start));  // Avoid infinite loop
+          #CON{result, @omni_regex_find_all_helper(pattern)(str)(next_pos)(case_i)}
+      }(result)
+  }((pos > slen))
+
+// Replace first match
+@omni_regex_replace = λregex. λstr. λreplacement.
+  !!&result = @omni_regex_match(regex)(str);
+  λ{
+    #Noth: str  // No match, return unchanged
+    #RMRs: λ&_. λ&_. λ&start. λ&end.
+      !!&before = @omni_take(start)(str);
+      !!&after = @omni_drop(end)(str);
+      @omni_concat(before)(@omni_concat(replacement)(after))
+  }(result)
+
+// Replace all matches
+@omni_regex_replace_all = λregex. λstr. λreplacement.
+  λ{
+    #Regx: λ&pattern. λ&flags.
+      !!&case_i = @omni_regex_has_flag(#CHR{105})(flags);
+      @omni_regex_replace_all_helper(pattern)(str)(replacement)(case_i)
+  }(regex)
+
+@omni_regex_replace_all_helper = λpattern. λstr. λreplacement. λcase_i.
+  !!&result = @omni_regex_match_at(pattern)(str)(0)(case_i);
+  λ{
+    #Noth: str  // No more matches
+    #RMRs: λ&_. λ&_. λ&start. λ&end.
+      !!&before = @omni_take(start)(str);
+      !!&after = @omni_drop(end)(str);
+      !!&replaced_after = @omni_regex_replace_all_helper(pattern)(after)(replacement)(case_i);
+      @omni_concat(before)(@omni_concat(replacement)(replaced_after))
+  }(result)
+
+// Split by regex
+@omni_regex_split = λregex. λstr.
+  λ{
+    #Regx: λ&pattern. λ&flags.
+      !!&case_i = @omni_regex_has_flag(#CHR{105})(flags);
+      @omni_regex_split_helper(pattern)(str)(case_i)
+  }(regex)
+
+@omni_regex_split_helper = λpattern. λstr. λcase_i.
+  !!&result = @omni_regex_match_at(pattern)(str)(0)(case_i);
+  λ{
+    #Noth: #CON{str, #NIL}  // No match, return whole string
+    #RMRs: λ&_. λ&_. λ&start. λ&end.
+      λ{
+        1:
+          // Match at start, skip empty segment
+          !!&after = @omni_drop(end)(str);
+          λ{
+            #NIL: #NIL  // Nothing left
+            _: @omni_regex_split_helper(pattern)(after)(case_i)
+          }(after)
+        _:
+          !!&before = @omni_take(start)(str);
+          !!&after = @omni_drop(end)(str);
+          #CON{before, @omni_regex_split_helper(pattern)(after)(case_i)}
+      }((start == 0))
+  }(result)
+
+// Extract matched text from result
+@omni_regex_matched = λresult.
+  λ{
+    #Noth: #NIL
+    #RMRs: λ&matched. λ&_. λ&_. λ&_. matched
+  }(result)
+
+// Get capture groups from result
+@omni_regex_groups = λresult.
+  λ{
+    #Noth: #NIL
+    #RMRs: λ&_. λ&groups. λ&_. λ&_. groups
+  }(result)
+
+// Get start position
+@omni_regex_start = λresult.
+  λ{
+    #Noth: #Noth{}
+    #RMRs: λ&_. λ&_. λ&start. λ&_. start
+  }(result)
+
+// Get end position
+@omni_regex_end = λresult.
+  λ{
+    #Noth: #Noth{}
+    #RMRs: λ&_. λ&_. λ&_. λ&end. end
+  }(result)
+

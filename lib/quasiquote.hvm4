@@ -1,0 +1,264 @@
+// OmniLisp Quasiquote Runtime
+// Implements evaluation of quasiquoted expressions
+// Syntax:
+//   `expr        - quasiquote: returns expr as data with unquotes evaluated
+//   ,expr        - unquote: evaluate expr within quasiquote
+//   ,@expr       - unquote-splicing: evaluate expr and splice list into parent
+
+// =============================================================================
+// Quasiquote Expansion
+// =============================================================================
+
+// Evaluate a quasiquoted expression with given environment
+// env is an association list of (name, value) bindings
+@omni_qq_eval = λenv. λexpr.
+  λ{
+    // Quasiquote: recursively process
+    #QQ: λ&inner.
+      @omni_qq_process(env)(inner)
+
+    // Already processed, return as-is
+    _: expr
+  }(expr)
+
+// Process a quasiquoted expression (the inner part)
+@omni_qq_process = λenv. λexpr.
+  λ{
+    // Unquote: evaluate the expression
+    #UQ: λ&inner.
+      @omni_qq_expand_unquote(env)(inner)
+
+    // Unquote-splicing at top level: error
+    #UQS: λ&inner.
+      #Err{#sym_SplicingAtTopLevel, inner}
+
+    // List: process elements, handling splicing
+    #CON: λ&h. λ&t.
+      @omni_qq_process_list(env)(expr)
+
+    // Array: process elements
+    #Arr: λ&elems.
+      #Arr{@omni_qq_process_list_elements(env)(elems)}
+
+    // Symbol: return as-is (quoted)
+    #Sym: λ&_. expr
+
+    // Literal: return as-is
+    #Lit: λ&_. expr
+    #Cst: expr
+
+    // Character: return as-is
+    #CHR: λ&_. expr
+
+    // Dictionary: process key-value pairs
+    #Dict: λ&pairs.
+      #Dict{@omni_qq_process_pairs(env)(pairs)}
+
+    // Other: return as-is
+    _: expr
+  }(expr)
+
+// Expand an unquoted expression
+@omni_qq_expand_unquote = λenv. λexpr.
+  // Evaluate the expression in the environment
+  @omni_qq_eval_in_env(env)(expr)
+
+// Simple evaluation in environment (looks up variables)
+@omni_qq_eval_in_env = λenv. λexpr.
+  λ{
+    // Variable reference: look up in environment
+    #Var: λ&idx.
+      @omni_qq_env_get(env)(idx)
+
+    // Symbol: look up by name
+    #Sym: λ&name.
+      @omni_qq_env_lookup(env)(name)
+
+    // Application: evaluate and apply
+    #App: λ&fn. λ&arg.
+      !!&fn_val = @omni_qq_eval_in_env(env)(fn);
+      !!&arg_val = @omni_qq_eval_in_env(env)(arg);
+      @omni_qq_apply(fn_val)(arg_val)
+
+    // Lambda: create closure
+    #Lam: λ&body.
+      #Clo{env, body}
+
+    // Let: evaluate binding and extend env
+    #Let: λ&val. λ&body.
+      !!&val_evald = @omni_qq_eval_in_env(env)(val);
+      !!&new_env = #CON{val_evald, env};
+      @omni_qq_eval_in_env(new_env)(body)
+
+    // List constructor
+    #CON: λ&h. λ&t.
+      #CON{@omni_qq_eval_in_env(env)(h), @omni_qq_eval_in_env(env)(t)}
+
+    // Already a value
+    _: expr
+  }(expr)
+
+// Get nth element from environment (de Bruijn indexing)
+@omni_qq_env_get = λenv. λidx.
+  λ{
+    0:
+      λ{
+        #CON: λ&h. λ&_. h
+        _: #Err{#sym_UnboundVar, idx}
+      }(env)
+    _:
+      λ{
+        #CON: λ&_. λ&t. @omni_qq_env_get(t)((idx - 1))
+        _: #Err{#sym_UnboundVar, idx}
+      }(env)
+  }(idx)
+
+// Look up by name in environment (for symbols)
+@omni_qq_env_lookup = λenv. λname.
+  // This would require a named environment; for now, return symbol as-is
+  #Sym{name}
+
+// Apply a function value to an argument
+@omni_qq_apply = λfn. λarg.
+  λ{
+    #Clo: λ&clo_env. λ&body.
+      !!&new_env = #CON{arg, clo_env};
+      @omni_qq_eval_in_env(new_env)(body)
+    _: #Err{#sym_NotAFunction, fn}
+  }(fn)
+
+// =============================================================================
+// List Processing with Splicing
+// =============================================================================
+
+// Process a list, handling unquote-splicing
+@omni_qq_process_list = λenv. λlist.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&processed_tail = @omni_qq_process_list(env)(t);
+      @omni_qq_handle_element(env)(h)(processed_tail)
+  }(list)
+
+// Handle a single list element (may splice)
+@omni_qq_handle_element = λenv. λelem. λtail.
+  λ{
+    // Unquote-splicing: evaluate and splice
+    #UQS: λ&inner.
+      !!&splice_val = @omni_qq_expand_unquote(env)(inner);
+      // splice_val should be a list, concatenate with tail
+      @omni_qq_splice(splice_val)(tail)
+
+    // Regular element: process and cons
+    _:
+      !!&processed = @omni_qq_process(env)(elem);
+      #CON{processed, tail}
+  }(elem)
+
+// Splice a list into another list
+@omni_qq_splice = λsrc. λdst.
+  λ{
+    #NIL: dst
+    #CON: λ&h. λ&t. #CON{h, @omni_qq_splice(t)(dst)}
+    _:
+      // Not a list, error
+      #Err{#sym_SplicingNonList, src}
+  }(src)
+
+// Process list elements (for arrays)
+@omni_qq_process_list_elements = λenv. λelems.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&processed_tail = @omni_qq_process_list_elements(env)(t);
+      @omni_qq_handle_element(env)(h)(processed_tail)
+  }(elems)
+
+// Process dictionary pairs
+@omni_qq_process_pairs = λenv. λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      !!&processed_rest = @omni_qq_process_pairs(env)(rest);
+      λ{
+        #CON: λ&k. λ&v.
+          !!&pk = @omni_qq_process(env)(k);
+          !!&pv = @omni_qq_process(env)(v);
+          #CON{#CON{pk, pv}, processed_rest}
+      }(pair)
+  }(pairs)
+
+// =============================================================================
+// Convenience Functions
+// =============================================================================
+
+// Quasiquote with empty environment
+@omni_quasiquote = λexpr.
+  @omni_qq_eval(#NIL)(#QQ{expr})
+
+// Quasiquote with bindings
+@omni_quasiquote_with = λbindings. λexpr.
+  @omni_qq_eval(bindings)(#QQ{expr})
+
+// Create a binding list from names and values
+@omni_qq_make_bindings = λnames. λvalues.
+  @omni_zip(names)(values)
+
+// =============================================================================
+// Template Filling
+// =============================================================================
+
+// Fill a template with values from a dictionary
+// Replaces #{name} patterns with corresponding values
+@omni_fill_template = λtemplate. λdict.
+  @omni_qq_fill(dict)(template)
+
+@omni_qq_fill = λdict. λtemplate.
+  λ{
+    // Symbol: look up in dict
+    #Sym: λ&name.
+      !!&val = @omni_dict_get(name)(dict);
+      λ{
+        #Noth: template  // Not found, keep as-is
+        _: val
+      }(val)
+
+    // List: process recursively
+    #CON: λ&h. λ&t.
+      #CON{@omni_qq_fill(dict)(h), @omni_qq_fill(dict)(t)}
+
+    // Array: process elements
+    #Arr: λ&elems.
+      #Arr{@omni_qq_fill_list(dict)(elems)}
+
+    // Other: return as-is
+    _: template
+  }(template)
+
+@omni_qq_fill_list = λdict. λlist.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{@omni_qq_fill(dict)(h), @omni_qq_fill_list(dict)(t)}
+  }(list)
+
+// =============================================================================
+// Code Generation Helpers
+// =============================================================================
+
+// Build a list literal from values
+@omni_build_list = λ_. #NIL
+
+@omni_build_list_1 = λa. #CON{a, #NIL}
+@omni_build_list_2 = λa. λb. #CON{a, #CON{b, #NIL}}
+@omni_build_list_3 = λa. λb. λc. #CON{a, #CON{b, #CON{c, #NIL}}}
+
+// Build a cons cell
+@omni_build_cons = λh. λt. #CON{h, t}
+
+// Build a symbol
+@omni_build_sym = λname. #Sym{name}
+
+// Build a literal
+@omni_build_lit = λval. #Lit{val}
+

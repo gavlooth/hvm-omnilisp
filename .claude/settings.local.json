@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(xargs:*)",
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(/home/heefoo/Documents/code/purple/purple /home/heefoo/Documents/code/purple/test/cases/char_match.purple)",
+      "Bash(/home/heefoo/Documents/code/purple/purple:*)"
+    ]
+  }
+}

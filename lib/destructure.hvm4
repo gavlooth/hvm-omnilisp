@@ -1,0 +1,410 @@
+// OmniLisp Destructuring Runtime
+// Implements pattern matching and binding extraction for destructuring
+// Used in: let bindings, function parameters, match expressions
+
+// =============================================================================
+// Pattern Data Types
+// =============================================================================
+
+// Patterns:
+//   #PCtr{name, args}  - Constructor pattern (including array patterns)
+//   #PLit{value}       - Literal pattern (number, bool, nothing)
+//   #PWld              - Wildcard pattern (_)
+//   #PVar{index}       - Variable pattern (binds value to de Bruijn index)
+//   #PAs{name, inner}  - As pattern (pattern as name)
+//   #PRst{index}       - Rest pattern (binds remaining elements)
+//   #PGrd{pat, cond}   - Guard pattern (pattern :when condition)
+
+// Match result:
+//   #MOk{bindings}     - Match succeeded with extracted bindings
+//   #MFl              - Match failed
+
+// =============================================================================
+// Core Pattern Matching
+// =============================================================================
+
+// Match a value against a pattern, returning match result
+// Returns #MOk{bindings} where bindings is a list of bound values, or #MFl
+@omni_destruct_match = λpattern. λvalue.
+  λ{
+    // Wildcard: always matches, no bindings
+    #PWld: #MOk{#NIL}
+
+    // Variable: always matches, binds value
+    #PVar: λ&idx.
+      #MOk{#CON{value, #NIL}}
+
+    // Literal: match exact value
+    #PLit: λ&lit_val.
+      λ{
+        1: #MOk{#NIL}
+        _: #MFl
+      }(@omni_destruct_eq(lit_val)(value))
+
+    // Constructor pattern (including arrays): match tag and args
+    #PCtr: λ&name. λ&arg_patterns.
+      @omni_destruct_match_ctr(name)(arg_patterns)(value)
+
+    // As pattern: match inner and bind whole value to name
+    #PAs: λ&name. λ&inner.
+      !!&inner_result = @omni_destruct_match(inner)(value);
+      λ{
+        #MOk: λ&binds.
+          // Prepend the whole value to bindings
+          #MOk{#CON{value, binds}}
+        #MFl: #MFl
+      }(inner_result)
+
+    // Rest pattern: handled by array matcher, but at top level just binds
+    #PRst: λ&idx.
+      #MOk{#CON{value, #NIL}}
+
+    // Guard pattern: match inner then check condition
+    #PGrd: λ&inner. λ&cond_fn.
+      !!&inner_result = @omni_destruct_match(inner)(value);
+      λ{
+        #MOk: λ&binds.
+          // Apply condition function (TODO: needs environment)
+          λ{
+            1: inner_result
+            _: #MFl
+          }(cond_fn)
+        #MFl: #MFl
+      }(inner_result)
+
+    // Unknown pattern type
+    _: #MFl
+  }(pattern)
+
+// Match a constructor pattern
+@omni_destruct_match_ctr = λname. λarg_patterns. λvalue.
+  // Get the constructor tag of the value
+  !!&val_tag = @ctr_tag(value);
+  λ{
+    1:
+      // Tags match, now match arguments
+      !!&val_args = @omni_destruct_get_ctr_args(value);
+      @omni_destruct_match_args(arg_patterns)(val_args)
+    _:
+      // Tags don't match
+      #MFl
+  }((val_tag == name))
+
+// Match a list of patterns against a list of values
+@omni_destruct_match_args = λpatterns. λvalues.
+  λ{
+    #NIL:
+      // No more patterns, check if values are exhausted
+      λ{
+        #NIL: #MOk{#NIL}
+        _: #MFl  // Extra values
+      }(values)
+    #CON: λ&pat. λ&rest_pats.
+      // Check for rest pattern
+      λ{
+        #PRst: λ&idx.
+          // Rest pattern: bind remaining values
+          #MOk{#CON{values, #NIL}}
+        _:
+          // Regular pattern: match head and recurse
+          λ{
+            #NIL: #MFl  // Not enough values
+            #CON: λ&val. λ&rest_vals.
+              !!&head_result = @omni_destruct_match(pat)(val);
+              λ{
+                #MOk: λ&head_binds.
+                  !!&tail_result = @omni_destruct_match_args(rest_pats)(rest_vals);
+                  λ{
+                    #MOk: λ&tail_binds.
+                      #MOk{@omni_concat(head_binds)(tail_binds)}
+                    #MFl: #MFl
+                  }(tail_result)
+                #MFl: #MFl
+              }(head_result)
+          }(values)
+      }(pat)
+  }(patterns)
+
+// =============================================================================
+// Destructuring Let Evaluation
+// =============================================================================
+
+// Evaluate a destructuring let: #DLet{pattern, value, body}
+// Returns the body with pattern variables bound to extracted values
+@omni_eval_dlet = λenv. λpattern. λvalue_expr. λbody.
+  // First evaluate the value expression
+  !!&value = @omni_eval(env)(value_expr);
+  // Match against pattern
+  !!&match_result = @omni_destruct_match(pattern)(value);
+  λ{
+    #MOk: λ&bindings.
+      // Extend environment with bindings and evaluate body
+      !!&new_env = @omni_destruct_extend_env(env)(bindings);
+      @omni_eval(new_env)(body)
+    #MFl:
+      // Pattern match failed - error
+      #Err{#sym_DestructMatchFailed, value}
+  }(match_result)
+
+// Extend environment with a list of bindings
+@omni_destruct_extend_env = λenv. λbindings.
+  λ{
+    #NIL: env
+    #CON: λ&bind. λ&rest.
+      @omni_destruct_extend_env(#CON{bind, env})(rest)
+  }(bindings)
+
+// =============================================================================
+// Destructuring Lambda Evaluation
+// =============================================================================
+
+// Apply a destructuring lambda: #DLam{pattern, body}
+// When called with an argument, matches arg against pattern and evaluates body
+@omni_apply_dlam = λenv. λpattern. λbody. λarg.
+  // Match argument against pattern
+  !!&match_result = @omni_destruct_match(pattern)(arg);
+  λ{
+    #MOk: λ&bindings.
+      // Extend environment with bindings and evaluate body
+      !!&new_env = @omni_destruct_extend_env(env)(bindings);
+      @omni_eval(new_env)(body)
+    #MFl:
+      // Pattern match failed - error
+      #Err{#sym_DestructMatchFailed, arg}
+  }(match_result)
+
+// Create a destructuring closure
+@omni_destruct_closure = λenv. λpattern. λbody.
+  #DClo{env, pattern, body}
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+// Get constructor tag from a term
+@ctr_tag = λterm.
+  // Extract the constructor name/tag from term
+  // In HVM4, this would use native term inspection
+  // For now, pattern match on known types
+  λ{
+    #CON: λ&_. λ&_. #sym_CON
+    #NIL: #sym_NIL
+    #Arr: λ&_. #sym_Arr
+    #Dict: λ&_. #sym_Dict
+    #Cst: λ&_. #sym_Cst
+    #CHR: λ&_. #sym_CHR
+    #Sym: λ&_. #sym_Sym
+    #Noth: #sym_Noth
+    _: #sym_Unknown
+  }(term)
+
+// Get constructor arguments as a list
+@omni_destruct_get_ctr_args = λterm.
+  λ{
+    // Array pattern: convert to list of elements
+    #Arr: λ&elems. elems
+
+    // List (cons cell): head and tail
+    #CON: λ&h. λ&t. #CON{h, #CON{t, #NIL}}
+
+    // Empty list: no args
+    #NIL: #NIL
+
+    // Dict: convert to key-value pairs
+    #Dict: λ&pairs. pairs
+
+    // Single-value constructors
+    #Cst: λ&n. #CON{n, #NIL}
+    #CHR: λ&c. #CON{c, #NIL}
+    #Sym: λ&s. #CON{s, #NIL}
+
+    // No args
+    #Noth: #NIL
+
+    _: #NIL
+  }(term)
+
+// Equality check for pattern matching
+@omni_destruct_eq = λa. λb.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn. (an == bn)
+        _: 0
+      }(b)
+    #CHR: λ&ac.
+      λ{
+        #CHR: λ&bc. (ac == bc)
+        _: 0
+      }(b)
+    #Sym: λ&as.
+      λ{
+        #Sym: λ&bs. (as == bs)
+        _: 0
+      }(b)
+    #Noth:
+      λ{
+        #Noth: 1
+        _: 0
+      }(b)
+    #NIL:
+      λ{
+        #NIL: 1
+        _: 0
+      }(b)
+    // For true/false (represented as #Cst{1}/#Cst{0})
+    _: 0
+  }(a)
+
+// =============================================================================
+// Array Destructuring Utilities
+// =============================================================================
+
+// Destructure an array with a specific pattern
+// Example: [a b .. rest] matches [1 2 3 4 5] with a=1, b=2, rest=[3 4 5]
+@omni_destruct_array = λpatterns. λarray.
+  λ{
+    #Arr: λ&elems.
+      @omni_destruct_match_args(patterns)(elems)
+    // Also support list destructuring
+    #CON: λ&h. λ&t.
+      @omni_destruct_list(patterns)(#CON{h, t})
+    #NIL:
+      @omni_destruct_match_args(patterns)(#NIL)
+    _:
+      #MFl
+  }(array)
+
+// Destructure a list (cons cells)
+@omni_destruct_list = λpatterns. λlist.
+  @omni_destruct_match_args(patterns)(@omni_list_to_list(list))
+
+// Convert cons list to proper list for pattern matching
+@omni_list_to_list = λlist.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{h, @omni_list_to_list(t)}
+    _: #CON{list, #NIL}  // Improper list tail
+  }(list)
+
+// =============================================================================
+// Named Field Destructuring (for structs/records)
+// =============================================================================
+
+// Destructure a struct/record by field names
+// Pattern: #{:name name_var :age age_var}
+@omni_destruct_fields = λfield_patterns. λstruct.
+  λ{
+    #Dict: λ&pairs.
+      @omni_destruct_field_list(field_patterns)(pairs)
+    _: #MFl
+  }(struct)
+
+// Match field patterns against key-value pairs
+@omni_destruct_field_list = λpatterns. λpairs.
+  λ{
+    #NIL: #MOk{#NIL}
+    #CON: λ&pat. λ&rest_pats.
+      // pat is (field_name, pattern)
+      λ{
+        #CON: λ&fname. λ&fpat_tail.
+          λ{
+            #CON: λ&fpat. λ&_.
+              !!&field_val = @omni_dict_get(fname)(pairs);
+              λ{
+                #Noth: #MFl  // Field not found
+                _:
+                  !!&field_match = @omni_destruct_match(fpat)(field_val);
+                  λ{
+                    #MOk: λ&field_binds.
+                      !!&rest_match = @omni_destruct_field_list(rest_pats)(pairs);
+                      λ{
+                        #MOk: λ&rest_binds.
+                          #MOk{@omni_concat(field_binds)(rest_binds)}
+                        #MFl: #MFl
+                      }(rest_match)
+                    #MFl: #MFl
+                  }(field_match)
+              }(field_val)
+          }(fpat_tail)
+      }(pat)
+  }(patterns)
+
+// Get value from dict by key
+@omni_dict_get = λkey. λpairs.
+  λ{
+    #NIL: #Noth
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_tail.
+          λ{
+            #CON: λ&v. λ&_.
+              λ{
+                1: v
+                _: @omni_dict_get(key)(rest)
+              }(@omni_destruct_eq(key)(k))
+          }(v_tail)
+      }(pair)
+  }(pairs)
+
+// =============================================================================
+// Convenience Functions
+// =============================================================================
+
+// Simple array destructure - extract elements by position
+// (destruct-array arr 0) -> first element
+// (destruct-array arr 1) -> second element
+@omni_array_nth = λarr. λn.
+  λ{
+    #Arr: λ&elems. @omni_nth(n)(elems)
+    _: #Noth
+  }(arr)
+
+// Get nth element from list
+@omni_nth = λn. λlist.
+  λ{
+    0:
+      λ{
+        #CON: λ&h. λ&_. h
+        _: #Noth
+      }(list)
+    _:
+      λ{
+        #CON: λ&_. λ&t. @omni_nth((n - 1))(t)
+        _: #Noth
+      }(list)
+  }(n)
+
+// Concat two lists
+@omni_concat = λa. λb.
+  λ{
+    #NIL: b
+    #CON: λ&h. λ&t. #CON{h, @omni_concat(t)(b)}
+  }(a)
+
+// =============================================================================
+// Pattern Compilation (for optimization)
+// =============================================================================
+
+// Compile a pattern into a more efficient matching function
+// This can be used to pre-compile patterns for repeated use
+@omni_compile_pattern = λpattern.
+  λ{
+    // Wildcard: always succeed
+    #PWld: λval. #MOk{#NIL}
+
+    // Variable: always succeed with binding
+    #PVar: λ&idx. λval. #MOk{#CON{val, #NIL}}
+
+    // Literal: compare equality
+    #PLit: λ&lit_val. λval.
+      λ{
+        1: #MOk{#NIL}
+        _: #MFl
+      }(@omni_destruct_eq(lit_val)(val))
+
+    // Other patterns: fall back to interpreter
+    _: λval. @omni_destruct_match(pattern)(val)
+  }(pattern)
+

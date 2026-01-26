@@ -1,0 +1,509 @@
+// OmniLisp Iterator Runtime
+// Implements lazy sequences with range, map, filter, take, drop, collect
+//
+// Iterator Protocol:
+//   Every iterator is a function that returns either:
+//   - #CON{value, next_iter}  - Value and continuation
+//   - #Done                   - End of sequence
+//
+// Forms:
+//   (range end)           - Lazy sequence 0..end-1
+//   (range start end)     - Lazy sequence start..end-1
+//   (range start end step)- Lazy sequence with step
+//   (iter-map fn iter)    - Transform elements lazily
+//   (iter-filter pred iter)- Filter elements lazily
+//   (take n iter)         - Take first n elements
+//   (drop n iter)         - Skip first n elements
+//   (collect-list iter)   - Realize into list
+//   (collect-array iter)  - Realize into array
+//   (iterate fn init)     - Infinite sequence: init, fn(init), fn(fn(init)), ...
+//   (repeat val)          - Infinite sequence of val
+//   (cycle coll)          - Infinite cycle through collection
+
+// =============================================================================
+// Iterator Core
+// =============================================================================
+
+// Evaluate range: #Rang{start, end, step}
+@omni_eval_range = λenv. λstart_expr. λend_expr. λstep_expr.
+  !!&start = @omni_eval(env)(start_expr);
+  !!&end = @omni_eval(env)(end_expr);
+  !!&step = @omni_eval(env)(step_expr);
+  @omni_range(start)(end)(step)
+
+// Create a range iterator
+// Returns a function that yields (value, next_iterator) or #Done
+@omni_range = λstart. λend. λstep.
+  λ{
+    #Cst: λ&s.
+      λ{
+        #Cst: λ&e.
+          λ{
+            #Cst: λ&st.
+              @omni_range_iter(s)(e)(st)
+            _: @omni_range_iter(s)(e)(1)
+          }(step)
+        _: #Done
+      }(end)
+    _: #Done
+  }(start)
+
+@omni_range_iter = λcurrent. λend. λstep.
+  λ{
+    1:
+      // Exhausted
+      #Done
+    _:
+      // More elements
+      #CON{#Cst{current}, @omni_range_iter((current + step))(end)(step)}
+  }(@omni_range_done(current)(end)(step))
+
+@omni_range_done = λcurrent. λend. λstep.
+  λ{
+    1:
+      // Step > 0, check current >= end
+      (current >= end)
+    _:
+      λ{
+        0:
+          // Step == 0, infinite (but we'll limit)
+          0
+        _:
+          // Step < 0, check current <= end
+          (current <= end)
+      }((step == 0))
+  }((step > 0))
+
+// =============================================================================
+// Iterator Map
+// =============================================================================
+
+// Evaluate iter-map: #IMap{iter, fn}
+@omni_eval_imap = λenv. λiter_expr. λfn_expr.
+  !!&iter = @omni_eval(env)(iter_expr);
+  !!&fn = @omni_eval(env)(fn_expr);
+  @omni_iter_map(fn)(iter)
+
+// Transform each element with function
+@omni_iter_map = λfn. λiter.
+  λ{
+    #Done: #Done
+    #CON: λ&val. λ&next.
+      !!&mapped = fn(val);
+      #CON{mapped, @omni_iter_map(fn)(next)}
+    // If iter is already an iterator wrapper, unwrap
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_iter_map(fn)(@omni_range_iter(s)(e)(st))
+    #IMap: λ&inner. λ&inner_fn.
+      // Compose maps
+      @omni_iter_map(λx. fn(inner_fn(x)))(inner)
+    _: #Done
+  }(iter)
+
+// =============================================================================
+// Iterator Filter
+// =============================================================================
+
+// Evaluate iter-filter: #IFlt{iter, pred}
+@omni_eval_iflt = λenv. λiter_expr. λpred_expr.
+  !!&iter = @omni_eval(env)(iter_expr);
+  !!&pred = @omni_eval(env)(pred_expr);
+  @omni_iter_filter(pred)(iter)
+
+// Filter elements by predicate
+@omni_iter_filter = λpred. λiter.
+  λ{
+    #Done: #Done
+    #CON: λ&val. λ&next.
+      !!&passes = pred(val);
+      !!&truthy = @omni_truthy(passes);
+      λ{
+        1: #CON{val, @omni_iter_filter(pred)(next)}
+        _: @omni_iter_filter(pred)(next)
+      }(truthy)
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_iter_filter(pred)(@omni_range_iter(s)(e)(st))
+    _: #Done
+  }(iter)
+
+// Truthy check
+@omni_truthy = λval.
+  λ{
+    #Cst: λ&n.
+      λ{
+        0: 0
+        _: 1
+      }(n)
+    #Noth: 0
+    #NIL: 0
+    #Done: 0
+    _: 1
+  }(val)
+
+// =============================================================================
+// Take
+// =============================================================================
+
+// Evaluate take: #ITkn{iter, n}
+@omni_eval_take = λenv. λiter_expr. λn_expr.
+  !!&iter = @omni_eval(env)(iter_expr);
+  !!&n = @omni_eval(env)(n_expr);
+  @omni_iter_take(n)(iter)
+
+// Take first n elements
+@omni_iter_take = λn. λiter.
+  λ{
+    #Cst: λ&count.
+      λ{
+        0: #Done
+        _:
+          λ{
+            #Done: #Done
+            #CON: λ&val. λ&next.
+              #CON{val, @omni_iter_take(#Cst{(count - 1)})(next)}
+            #Rang: λ&s. λ&e. λ&st.
+              @omni_iter_take(#Cst{count})(@omni_range_iter(s)(e)(st))
+            _: #Done
+          }(iter)
+      }(count)
+    _: iter
+  }(n)
+
+// =============================================================================
+// Drop
+// =============================================================================
+
+// Evaluate drop: #IDrp{iter, n}
+@omni_eval_drop = λenv. λiter_expr. λn_expr.
+  !!&iter = @omni_eval(env)(iter_expr);
+  !!&n = @omni_eval(env)(n_expr);
+  @omni_iter_drop(n)(iter)
+
+// Drop first n elements
+@omni_iter_drop = λn. λiter.
+  λ{
+    #Cst: λ&count.
+      λ{
+        0: iter
+        _:
+          λ{
+            #Done: #Done
+            #CON: λ&_. λ&next.
+              @omni_iter_drop(#Cst{(count - 1)})(next)
+            #Rang: λ&s. λ&e. λ&st.
+              @omni_iter_drop(#Cst{count})(@omni_range_iter(s)(e)(st))
+            _: #Done
+          }(iter)
+      }(count)
+    _: iter
+  }(n)
+
+// =============================================================================
+// Take While / Drop While
+// =============================================================================
+
+// Take while predicate is true
+@omni_iter_take_while = λpred. λiter.
+  λ{
+    #Done: #Done
+    #CON: λ&val. λ&next.
+      !!&passes = pred(val);
+      !!&truthy = @omni_truthy(passes);
+      λ{
+        1: #CON{val, @omni_iter_take_while(pred)(next)}
+        _: #Done
+      }(truthy)
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_iter_take_while(pred)(@omni_range_iter(s)(e)(st))
+    _: #Done
+  }(iter)
+
+// Drop while predicate is true
+@omni_iter_drop_while = λpred. λiter.
+  λ{
+    #Done: #Done
+    #CON: λ&val. λ&next.
+      !!&passes = pred(val);
+      !!&truthy = @omni_truthy(passes);
+      λ{
+        1: @omni_iter_drop_while(pred)(next)
+        _: #CON{val, next}
+      }(truthy)
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_iter_drop_while(pred)(@omni_range_iter(s)(e)(st))
+    _: #Done
+  }(iter)
+
+// =============================================================================
+// Collect (Realize Iterator)
+// =============================================================================
+
+// Collect iterator into list
+@omni_collect_list = λiter.
+  @omni_collect_list_acc(iter)(#NIL)
+
+@omni_collect_list_acc = λiter. λacc.
+  λ{
+    #Done: @omni_reverse(acc)
+    #CON: λ&val. λ&next.
+      @omni_collect_list_acc(next)(#CON{val, acc})
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_collect_list_acc(@omni_range_iter(s)(e)(st))(acc)
+    #IMap: λ&inner. λ&fn.
+      @omni_collect_list(@omni_iter_map(fn)(inner))
+    #IFlt: λ&inner. λ&pred.
+      @omni_collect_list(@omni_iter_filter(pred)(inner))
+    #ITkn: λ&inner. λ&n.
+      @omni_collect_list(@omni_iter_take(n)(inner))
+    #IDrp: λ&inner. λ&n.
+      @omni_collect_list(@omni_iter_drop(n)(inner))
+    _: @omni_reverse(acc)
+  }(iter)
+
+// Reverse a list
+@omni_reverse = λlist.
+  @omni_reverse_acc(list)(#NIL)
+
+@omni_reverse_acc = λlist. λacc.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. @omni_reverse_acc(t)(#CON{h, acc})
+    _: acc
+  }(list)
+
+// Collect iterator into array
+@omni_collect_array = λiter.
+  !!&list = @omni_collect_list(iter);
+  #Arr{list}
+
+// =============================================================================
+// Iterate (Infinite Generator)
+// =============================================================================
+
+// Evaluate iterate: #Iter{init, fn}
+@omni_eval_iterate = λenv. λinit_expr. λfn_expr.
+  !!&init = @omni_eval(env)(init_expr);
+  !!&fn = @omni_eval(env)(fn_expr);
+  @omni_iterate(fn)(init)
+
+// Create infinite iterator from function
+@omni_iterate = λfn. λstate.
+  #CON{state, @omni_iterate(fn)(fn(state))}
+
+// =============================================================================
+// Repeat
+// =============================================================================
+
+// Infinite repetition of value
+@omni_repeat = λval.
+  #CON{val, @omni_repeat(val)}
+
+// Repeat n times
+@omni_repeat_n = λn. λval.
+  @omni_iter_take(#Cst{n})(@omni_repeat(val))
+
+// =============================================================================
+// Cycle
+// =============================================================================
+
+// Cycle through collection infinitely
+@omni_cycle = λcoll.
+  @omni_cycle_iter(coll)(coll)
+
+@omni_cycle_iter = λoriginal. λcurrent.
+  λ{
+    #NIL: @omni_cycle_iter(original)(original)
+    #CON: λ&h. λ&t.
+      #CON{h, @omni_cycle_iter(original)(t)}
+    #Arr: λ&elems. @omni_cycle_iter(elems)(elems)
+    _: #Done
+  }(current)
+
+// =============================================================================
+// Additional Iterator Operations
+// =============================================================================
+
+// Concatenate iterators
+@omni_iter_concat = λiter1. λiter2.
+  λ{
+    #Done: iter2
+    #CON: λ&val. λ&next.
+      #CON{val, @omni_iter_concat(next)(iter2)}
+    _: iter2
+  }(iter1)
+
+// Flatten iterator of iterators
+@omni_iter_flatten = λiter_of_iters.
+  λ{
+    #Done: #Done
+    #CON: λ&inner_iter. λ&next_outer.
+      @omni_iter_concat(inner_iter)(@omni_iter_flatten(next_outer))
+    _: #Done
+  }(iter_of_iters)
+
+// FlatMap (map then flatten)
+@omni_iter_flatmap = λfn. λiter.
+  @omni_iter_flatten(@omni_iter_map(fn)(iter))
+
+// Zip two iterators
+@omni_iter_zip = λiter1. λiter2.
+  λ{
+    #Done: #Done
+    #CON: λ&val1. λ&next1.
+      λ{
+        #Done: #Done
+        #CON: λ&val2. λ&next2.
+          #CON{#CON{val1, #CON{val2, #NIL}}, @omni_iter_zip(next1)(next2)}
+        _: #Done
+      }(iter2)
+    _: #Done
+  }(iter1)
+
+// Zip with function
+@omni_iter_zip_with = λfn. λiter1. λiter2.
+  λ{
+    #Done: #Done
+    #CON: λ&val1. λ&next1.
+      λ{
+        #Done: #Done
+        #CON: λ&val2. λ&next2.
+          !!&combined = fn(val1)(val2);
+          #CON{combined, @omni_iter_zip_with(fn)(next1)(next2)}
+        _: #Done
+      }(iter2)
+    _: #Done
+  }(iter1)
+
+// Enumerate (add indices)
+@omni_iter_enumerate = λiter.
+  @omni_iter_enumerate_from(0)(iter)
+
+@omni_iter_enumerate_from = λidx. λiter.
+  λ{
+    #Done: #Done
+    #CON: λ&val. λ&next.
+      #CON{#CON{#Cst{idx}, #CON{val, #NIL}}, @omni_iter_enumerate_from((idx + 1))(next)}
+    _: #Done
+  }(iter)
+
+// =============================================================================
+// Reduction Operations
+// =============================================================================
+
+// Reduce iterator with function
+@omni_iter_reduce = λfn. λinit. λiter.
+  λ{
+    #Done: init
+    #CON: λ&val. λ&next.
+      !!&new_acc = fn(init)(val);
+      @omni_iter_reduce(fn)(new_acc)(next)
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_iter_reduce(fn)(init)(@omni_range_iter(s)(e)(st))
+    _: init
+  }(iter)
+
+// Sum all elements
+@omni_iter_sum = λiter.
+  @omni_iter_reduce(λacc. λx.
+    λ{
+      #Cst: λ&a.
+        λ{
+          #Cst: λ&b. #Cst{(a + b)}
+          _: acc
+        }(x)
+      _: acc
+    }(acc)
+  )(#Cst{0})(iter)
+
+// Product of all elements
+@omni_iter_product = λiter.
+  @omni_iter_reduce(λacc. λx.
+    λ{
+      #Cst: λ&a.
+        λ{
+          #Cst: λ&b. #Cst{(a * b)}
+          _: acc
+        }(x)
+      _: acc
+    }(acc)
+  )(#Cst{1})(iter)
+
+// Count elements
+@omni_iter_count = λiter.
+  @omni_iter_reduce(λacc. λ_.
+    λ{
+      #Cst: λ&n. #Cst{(n + 1)}
+      _: #Cst{1}
+    }(acc)
+  )(#Cst{0})(iter)
+
+// Find first element matching predicate
+@omni_iter_find = λpred. λiter.
+  λ{
+    #Done: #Noth
+    #CON: λ&val. λ&next.
+      !!&passes = pred(val);
+      !!&truthy = @omni_truthy(passes);
+      λ{
+        1: val
+        _: @omni_iter_find(pred)(next)
+      }(truthy)
+    _: #Noth
+  }(iter)
+
+// Check if any element matches predicate
+@omni_iter_any = λpred. λiter.
+  λ{
+    #Done: 0
+    #CON: λ&val. λ&next.
+      !!&passes = pred(val);
+      !!&truthy = @omni_truthy(passes);
+      λ{
+        1: 1
+        _: @omni_iter_any(pred)(next)
+      }(truthy)
+    _: 0
+  }(iter)
+
+// Check if all elements match predicate
+@omni_iter_all = λpred. λiter.
+  λ{
+    #Done: 1
+    #CON: λ&val. λ&next.
+      !!&passes = pred(val);
+      !!&truthy = @omni_truthy(passes);
+      λ{
+        0: 0
+        _: @omni_iter_all(pred)(next)
+      }(truthy)
+    _: 1
+  }(iter)
+
+// =============================================================================
+// Convert Collections to Iterators
+// =============================================================================
+
+// List to iterator
+@omni_list_iter = λlist.
+  λ{
+    #NIL: #Done
+    #CON: λ&h. λ&t. #CON{h, @omni_list_iter(t)}
+    _: #Done
+  }(list)
+
+// Array to iterator
+@omni_array_iter = λarr.
+  λ{
+    #Arr: λ&elems. @omni_list_iter(elems)
+    _: #Done
+  }(arr)
+
+// String to char iterator
+@omni_string_iter = λstr.
+  λ{
+    #CON: λ&h. λ&t. #CON{h, @omni_string_iter(t)}
+    #NIL: #Done
+    _: #Done
+  }(str)
+
+

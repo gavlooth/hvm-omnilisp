@@ -1,0 +1,548 @@
+// OmniLisp Tower/Meta-programming Library Runtime
+// Implements multi-stage evaluation and meta-circular interpretation
+//
+// The Tower Model:
+//   Level 0: Base runtime (native HVM4)
+//   Level 1: First meta-level (interpreted OmniLisp)
+//   Level 2: Second meta-level (interpreter's interpreter)
+//   ...and so on
+//
+// Each level has access to:
+//   - Its own environment (bindings)
+//   - A reference to its parent level (lazy)
+//   - The ability to evaluate expressions at its level
+//
+// Key Operations:
+//   (lift expr)        - Move expression to meta-level (quote + stage)
+//   (run expr)         - Execute meta-level code, get result
+//   (EM expr)          - Eval-Meta: jump to parent level
+//   (clambda p body)   - Compiled lambda (staged)
+//   (stage n expr)     - Stage expression at level n
+//   (splice expr)      - Splice code into current stage
+//   (reflect val)      - Turn value into code representation
+//   (reify code)       - Turn code into value (execute)
+//   (meta-level)       - Get current meta-level number
+//
+// Meta-Environment Structure:
+//   #MEnv{env, handlers, effects, parent_lazy, level}
+//
+// This enables:
+//   - Multi-stage compilation
+//   - Partial evaluation
+//   - Runtime code generation
+//   - Tower of interpreters
+
+// =============================================================================
+// Meta-Environment Structure
+// =============================================================================
+
+// Create a new meta-environment
+// env: the variable bindings
+// parent: lazy reference to parent level (or #Noth for base)
+// level: integer level number (0 = base)
+@meta_env_new = λenv. λparent. λlevel.
+  #MEnv{env, #NIL, #NIL, parent, level}
+
+// Create base meta-environment (level 0)
+@meta_env_base = λenv.
+  @meta_env_new(env)(#Noth)(#Cst{0})
+
+// Create child meta-environment
+@meta_env_child = λparent_env.
+  λ{
+    #MEnv: λ&env. λ&handlers. λ&effects. λ&parent. λ&level.
+      λ{
+        #Cst: λ&lv.
+          @meta_env_new(env)(#LPar{parent_env})(#Cst{(lv + 1)})
+        _: @meta_env_new(env)(#LPar{parent_env})(#Cst{1})
+      }(level)
+    _: @meta_env_new(#NIL)(#LPar{parent_env})(#Cst{1})
+  }(parent_env)
+
+// Get environment bindings
+@meta_env_get_bindings = λmenv.
+  λ{
+    #MEnv: λ&env. λ&_. λ&_. λ&_. λ&_. env
+    _: #NIL
+  }(menv)
+
+// Get parent reference
+@meta_env_get_parent = λmenv.
+  λ{
+    #MEnv: λ&_. λ&_. λ&_. λ&parent. λ&_. parent
+    _: #Noth
+  }(menv)
+
+// Get level number
+@meta_env_get_level = λmenv.
+  λ{
+    #MEnv: λ&_. λ&_. λ&_. λ&_. λ&level. level
+    _: #Cst{0}
+  }(menv)
+
+// Force lazy parent
+@meta_env_force_parent = λparent.
+  λ{
+    #LPar: λ&thunk. thunk
+    _: parent
+  }(parent)
+
+// =============================================================================
+// Lift - Move to Meta-Level
+// =============================================================================
+
+// Evaluate lift: #Lift{expr}
+// Lifting means creating a code representation that can be manipulated
+// at the meta-level before being evaluated
+@omni_eval_lift = λmenv. λexpr.
+  // Lift creates a quoted version staged at the next level
+  #Stag{#Cst{1}, expr}
+
+// Pure lift (without eval)
+@omni_lift = λval.
+  // Create code representation of value
+  λ{
+    #Cst: λ&n. #Lit{n}
+    #Sym: λ&s. #Sym{s}
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{@omni_lift(h), @omni_lift(t)}
+    #Arr: λ&elems.
+      #Arr{@omni_lift_list(elems)}
+    #Dict: λ&pairs.
+      #Dict{@omni_lift_pairs(pairs)}
+    #Clo: λ&env. λ&body.
+      // Closures are opaque at meta-level
+      #Clo{env, body}
+    _: val  // Other values lift as themselves
+  }(val)
+
+// Lift a list of values
+@omni_lift_list = λlist.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{@omni_lift(h), @omni_lift_list(t)}
+    _: list
+  }(list)
+
+// Lift dictionary pairs
+@omni_lift_pairs = λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_list.
+          #CON{#CON{@omni_lift(k), λ{
+            #CON: λ&v. λ&_. #CON{@omni_lift(v), #NIL}
+            _: v_list
+          }(v_list)}, @omni_lift_pairs(rest)}
+        _: @omni_lift_pairs(rest)
+      }(pair)
+    _: pairs
+  }(pairs)
+
+// =============================================================================
+// Run - Execute Meta-Level Code
+// =============================================================================
+
+// Evaluate run: #Run{expr}
+// Run executes code and returns the result
+@omni_eval_run = λmenv. λexpr.
+  // First evaluate to get code
+  !!&code = @omni_eval(menv)(expr);
+  // Then execute the code
+  @omni_reify(menv)(code)
+
+// =============================================================================
+// EM (Eval Meta) - Jump to Parent Level
+// =============================================================================
+
+// Evaluate EM: #EM{expr}
+// EM evaluates an expression at the parent meta-level
+@omni_eval_em = λmenv. λexpr.
+  !!&parent = @meta_env_get_parent(menv);
+  λ{
+    #Noth:
+      // At base level, just evaluate normally
+      @omni_eval(menv)(expr)
+    #LPar: λ&parent_thunk.
+      // Force parent and evaluate there
+      !!&parent_env = parent_thunk;
+      @omni_eval(parent_env)(expr)
+    _:
+      @omni_eval(parent)(expr)
+  }(parent)
+
+// =============================================================================
+// CLambda - Compiled/Staged Lambda
+// =============================================================================
+
+// Evaluate clambda: #CLam{params, body}
+// Creates a staged function that can be partially evaluated
+@omni_eval_clambda = λmenv. λparams. λbody.
+  // A compiled lambda captures its environment and can be staged
+  #CLam{menv, params, body}
+
+// Apply a compiled lambda
+@omni_apply_clambda = λclam. λargs.
+  λ{
+    #CLam: λ&env. λ&params. λ&body.
+      // Bind arguments to parameters in environment
+      !!&new_env = @clambda_bind_args(env)(params)(args);
+      // Evaluate body in new environment
+      @omni_eval(new_env)(body)
+    _: #Noth
+  }(clam)
+
+// Bind arguments to parameters
+@clambda_bind_args = λenv. λparams. λargs.
+  λ{
+    #NIL: env
+    #CON: λ&param. λ&rest_params.
+      λ{
+        #CON: λ&arg. λ&rest_args.
+          !!&new_env = @env_extend(env)(param)(arg);
+          @clambda_bind_args(new_env)(rest_params)(rest_args)
+        _: env  // No more arguments
+      }(args)
+    _: env  // No more parameters
+  }(params)
+
+// Extend environment with binding
+@env_extend = λenv. λname. λval.
+  λ{
+    #MEnv: λ&bindings. λ&handlers. λ&effects. λ&parent. λ&level.
+      #MEnv{#CON{#CON{name, val}, bindings}, handlers, effects, parent, level}
+    _: #MEnv{#CON{#CON{name, val}, #NIL}, #NIL, #NIL, #Noth, #Cst{0}}
+  }(env)
+
+// =============================================================================
+// Stage - Stage Expression at Specific Level
+// =============================================================================
+
+// Evaluate stage: #Stag{level, expr}
+// Stage delays evaluation to a specific meta-level
+@omni_eval_stage = λmenv. λlevel. λexpr.
+  !!&current_level = @meta_env_get_level(menv);
+  λ{
+    #Cst: λ&target.
+      λ{
+        #Cst: λ&current.
+          λ{
+            1:  // target <= current: evaluate now
+              @omni_eval(menv)(expr)
+            _:  // target > current: keep staged
+              #Stag{level, expr}
+          }((target <= current))
+        _: #Stag{level, expr}
+      }(current_level)
+    _: #Stag{level, expr}
+  }(level)
+
+// =============================================================================
+// Splice - Splice Code into Current Stage
+// =============================================================================
+
+// Evaluate splice: #Spli{expr}
+// Splice evaluates the expression and inserts the result as code
+@omni_eval_splice = λmenv. λexpr.
+  // Evaluate the expression
+  !!&code = @omni_eval(menv)(expr);
+  // The result should be code, which gets "spliced in"
+  // In a real multi-stage system, this would be more complex
+  code
+
+// =============================================================================
+// Reflect - Value to Code
+// =============================================================================
+
+// Evaluate reflect: #Refl{val}
+// Reflect turns a runtime value into its code representation
+@omni_eval_reflect = λmenv. λval_expr.
+  !!&val = @omni_eval(menv)(val_expr);
+  @omni_reflect(val)
+
+// Convert value to code representation
+@omni_reflect = λval.
+  λ{
+    #Cst: λ&n. #Lit{n}
+    #CHR: λ&c. #CHR{c}
+    #Sym: λ&s. #Sym{s}
+    #NIL: #QQ{#NIL}
+    #CON: λ&h. λ&t.
+      // Check if string
+      λ{
+        #CHR: λ&_. #QQ{val}  // Quote strings as-is
+        _: #QQ{#CON{@omni_reflect(h), @omni_reflect(t)}}
+      }(h)
+    #Arr: λ&elems.
+      #QQ{#Arr{@reflect_list(elems)}}
+    #Dict: λ&pairs.
+      #QQ{#Dict{@reflect_pairs(pairs)}}
+    #Clo: λ&env. λ&body.
+      // Closures reflect as their body code
+      body
+    #CLam: λ&env. λ&params. λ&body.
+      #CLam{env, params, body}
+    _: #QQ{val}
+  }(val)
+
+@reflect_list = λlist.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{@omni_reflect(h), @reflect_list(t)}
+    _: list
+  }(list)
+
+@reflect_pairs = λpairs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v.
+          #CON{#CON{@omni_reflect(k), @omni_reflect(v)}, @reflect_pairs(rest)}
+        _: @reflect_pairs(rest)
+      }(pair)
+    _: pairs
+  }(pairs)
+
+// =============================================================================
+// Reify - Code to Value
+// =============================================================================
+
+// Evaluate reify: #Reif{code}
+// Reify evaluates code representation to get value
+@omni_eval_reify = λmenv. λcode_expr.
+  !!&code = @omni_eval(menv)(code_expr);
+  @omni_reify(menv)(code)
+
+// Execute code representation
+@omni_reify = λmenv. λcode.
+  λ{
+    #Lit: λ&n. #Cst{n}
+    #QQ: λ&inner. @omni_reify(menv)(inner)
+    #Stag: λ&level. λ&expr.
+      // Force staged code to evaluate
+      @omni_eval(menv)(expr)
+    #CLam: λ&env. λ&params. λ&body.
+      // Compiled lambda becomes regular closure
+      #Clo{env, body}
+    _:
+      // For other code, try to evaluate it
+      @omni_eval(menv)(code)
+  }(code)
+
+// =============================================================================
+// Meta-Level - Get Current Level
+// =============================================================================
+
+// Evaluate meta-level: #MLvl{}
+@omni_eval_meta_level = λmenv.
+  @meta_env_get_level(menv)
+
+// =============================================================================
+// Tower Utilities
+// =============================================================================
+
+// Check if at base level
+@at_base_level? = λmenv.
+  !!&level = @meta_env_get_level(menv);
+  λ{
+    #Cst: λ&n. (n == 0)
+    _: 1  // Assume base if unknown
+  }(level)
+
+// Get level number as integer
+@get_level_number = λmenv.
+  !!&level = @meta_env_get_level(menv);
+  λ{
+    #Cst: λ&n. n
+    _: 0
+  }(level)
+
+// Create interpreter at next level
+@make_meta_interpreter = λmenv.
+  @meta_env_child(menv)
+
+// =============================================================================
+// Staged Computation Helpers
+// =============================================================================
+
+// Create staged addition
+@staged_add = λa. λb.
+  #Stag{#Cst{0}, #Add{a, b}}
+
+// Create staged multiplication
+@staged_mul = λa. λb.
+  #Stag{#Cst{0}, #Mul{a, b}}
+
+// Create staged if
+@staged_if = λcond. λthen_br. λelse_br.
+  #Stag{#Cst{0}, #If{cond, then_br, else_br}}
+
+// Create staged let
+@staged_let = λname. λval. λbody.
+  #Stag{#Cst{0}, #Let{name, val, body}}
+
+// Create staged lambda
+@staged_lambda = λparam. λbody.
+  #Stag{#Cst{0}, #Lam{param, body}}
+
+// =============================================================================
+// Partial Evaluation
+// =============================================================================
+
+// Partially evaluate an expression
+// Known values are computed, unknown stay symbolic
+@partial_eval = λmenv. λexpr.
+  λ{
+    #Lit: λ&n. #Cst{n}  // Literals evaluate to themselves
+
+    #Add: λ&a. λ&b.
+      !!&av = @partial_eval(menv)(a);
+      !!&bv = @partial_eval(menv)(b);
+      @partial_add(av)(bv)
+
+    #Mul: λ&a. λ&b.
+      !!&av = @partial_eval(menv)(a);
+      !!&bv = @partial_eval(menv)(b);
+      @partial_mul(av)(bv)
+
+    #If: λ&cond. λ&then_br. λ&else_br.
+      !!&cv = @partial_eval(menv)(cond);
+      @partial_if(menv)(cv)(then_br)(else_br)
+
+    #Var: λ&idx.
+      // Look up variable - if bound to constant, use it
+      !!&val = @env_lookup(menv)(idx);
+      λ{
+        #Cst: λ&_. val  // Known value
+        _: expr         // Unknown, keep symbolic
+      }(val)
+
+    #Lam: λ&param. λ&body.
+      // Lambdas stay as code
+      #Lam{param, body}
+
+    #App: λ&fn. λ&arg.
+      !!&fv = @partial_eval(menv)(fn);
+      !!&av = @partial_eval(menv)(arg);
+      @partial_app(menv)(fv)(av)
+
+    _: expr  // Default: keep expression
+  }(expr)
+
+// Partial addition
+@partial_add = λa. λb.
+  λ{
+    #Cst: λ&av.
+      λ{
+        #Cst: λ&bv. #Cst{(av + bv)}  // Both known
+        _: #Add{a, b}                  // b unknown
+      }(b)
+    _:
+      λ{
+        #Cst: λ&bv.
+          λ{
+            0: a  // a + 0 = a
+            _: #Add{a, b}
+          }(bv)
+        _: #Add{a, b}  // Both unknown
+      }(b)
+  }(a)
+
+// Partial multiplication
+@partial_mul = λa. λb.
+  λ{
+    #Cst: λ&av.
+      λ{
+        #Cst: λ&bv. #Cst{(av * bv)}  // Both known
+        _:
+          λ{
+            0: #Cst{0}  // 0 * b = 0
+            1: b        // 1 * b = b
+            _: #Mul{a, b}
+          }(av)
+      }(b)
+    _:
+      λ{
+        #Cst: λ&bv.
+          λ{
+            0: #Cst{0}  // a * 0 = 0
+            1: a        // a * 1 = a
+            _: #Mul{a, b}
+          }(bv)
+        _: #Mul{a, b}
+      }(b)
+  }(a)
+
+// Partial if
+@partial_if = λmenv. λcond. λthen_br. λelse_br.
+  λ{
+    #Cst: λ&c.
+      λ{
+        0: @partial_eval(menv)(else_br)
+        _: @partial_eval(menv)(then_br)
+      }(c)
+    _: #If{cond, @partial_eval(menv)(then_br), @partial_eval(menv)(else_br)}
+  }(cond)
+
+// Partial application
+@partial_app = λmenv. λfn. λarg.
+  λ{
+    #Lam: λ&param. λ&body.
+      // If we can inline, do so
+      @partial_eval(@env_extend(menv)(param)(arg))(body)
+    _: #App{fn, arg}
+  }(fn)
+
+// Environment lookup (simplified)
+@env_lookup = λmenv. λidx.
+  λ{
+    #MEnv: λ&bindings. λ&_. λ&_. λ&_. λ&_.
+      @list_nth(bindings)(idx)
+    _: #Noth
+  }(menv)
+
+// Get nth element of list
+@list_nth = λlist. λn.
+  λ{
+    #NIL: #Noth
+    #CON: λ&h. λ&t.
+      λ{
+        0: λ{
+          #CON: λ&_. λ&val. val
+          _: h
+        }(h)
+        _: @list_nth(t)((n - 1))
+      }(n)
+    _: #Noth
+  }(list)
+
+// =============================================================================
+// Code Generation Utilities
+// =============================================================================
+
+// Generate code for a function that computes power
+@gen_power_code = λn.
+  λ{
+    0: #Lit{1}
+    1: #Var{0}  // x
+    _:
+      !!&half = (n / 2);
+      !!&half_code = @gen_power_code(half);
+      !!&squared = #Mul{half_code, half_code};
+      λ{
+        0: squared
+        _: #Mul{squared, #Var{0}}
+      }((n % 2))
+  }(n)
+
+// Generate unrolled loop
+@gen_unrolled_loop = λn. λbody.
+  λ{
+    0: #NIL
+    _: #Do{body, @gen_unrolled_loop((n - 1))(body)}
+  }(n)
+
+
