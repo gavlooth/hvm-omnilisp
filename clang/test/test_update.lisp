@@ -1,0 +1,39 @@
+;; test_update.lisp - Tests for update (apply function to value)
+
+;; Update applies a function to a value at key
+(define update [coll] [key] [f]
+  (let [current (dict-get coll key nil)]
+    (dict-set coll key (f current))))
+
+;; TEST: update increments value
+;; EXPECT: #{"count" 2}
+(update #{"count" 1} "count" (lambda [x] (+ x 1)))
+
+;; TEST: update with doubling
+;; EXPECT: #{"val" 20}
+(update #{"val" 10} "val" (lambda [x] (* x 2)))
+
+;; TEST: update nil value (key doesn't exist)
+;; EXPECT: #{"new" 1}
+(update #{} "new" (lambda [x] (if (nil? x) 1 (+ x 1))))
+
+;; TEST: update preserves other keys
+;; EXPECT: #{"a" 1 "b" 100}
+(update #{"a" 1 "b" 50} "b" (lambda [x] (* x 2)))
+
+;; Update with default value
+(define update-or [coll] [key] [default] [f]
+  (let [current (dict-get coll key default)]
+    (dict-set coll key (f current))))
+
+;; TEST: update-or with default
+;; EXPECT: #{"count" 1}
+(update-or #{} "count" 0 (lambda [x] (+ x 1)))
+
+;; TEST: update-or existing
+;; EXPECT: #{"count" 6}
+(update-or #{"count" 5} "count" 0 (lambda [x] (+ x 1)))
+
+;; TEST: chained updates
+;; EXPECT-FINAL: #{"x" 5}
+(update (update (update #{"x" 2} "x" (lambda [n] (+ n 1))) "x" (lambda [n] (+ n 1))) "x" (lambda [n] (+ n 1)))

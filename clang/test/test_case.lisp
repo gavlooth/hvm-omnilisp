@@ -1,0 +1,62 @@
+;; test_case.lisp - Tests for case value dispatch
+
+;; Basic case dispatch
+(define day-name [n]
+  (case n
+    0  "Sunday"
+    1  "Monday"
+    2  "Tuesday"
+    3  "Wednesday"
+    4  "Thursday"
+    5  "Friday"
+    6  "Saturday"
+    _  "Invalid"))
+
+;; TEST: case 0
+;; EXPECT: "Sunday"
+(day-name 0)
+
+;; TEST: case 3
+;; EXPECT: "Wednesday"
+(day-name 3)
+
+;; TEST: case 6
+;; EXPECT: "Saturday"
+(day-name 6)
+
+;; TEST: case default
+;; EXPECT: "Invalid"
+(day-name 7)
+
+;; Case with else
+(define category [x]
+  (case x
+    0     "zero"
+    1     "one"
+    2     "two"
+    else  "many"))
+
+;; TEST: case with else - matched
+;; EXPECT: "one"
+(category 1)
+
+;; TEST: case with else - else branch
+;; EXPECT: "many"
+(category 100)
+
+;; Case for dispatch
+(define operator [op] [a] [b]
+  (case op
+    :add  (+ a b)
+    :sub  (- a b)
+    :mul  (* a b)
+    :div  (/ a b)
+    _     0))
+
+;; TEST: operator dispatch add
+;; EXPECT: 8
+(operator :add 3 5)
+
+;; TEST: operator dispatch mul
+;; EXPECT-FINAL: 15
+(operator :mul 3 5)

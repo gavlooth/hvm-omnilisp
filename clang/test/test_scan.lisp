@@ -1,0 +1,55 @@
+;; test_scan.lisp - Tests for scan (reductions)
+
+;; Scan returns intermediate reduction values
+(define scan [f] [init] [lst]
+  (let helper [l lst] [acc init] [result '()]
+    (match l
+      ()       (reverse (cons acc result))
+      (h .. t) (helper t (f acc h) (cons acc result)))))
+
+;; TEST: scan addition
+;; EXPECT: (0 1 3 6 10)
+(scan (lambda [acc x] (+ acc x)) 0 '(1 2 3 4))
+
+;; TEST: scan multiplication
+;; EXPECT: (1 2 6 24 120)
+(scan (lambda [acc x] (* acc x)) 1 '(2 3 4 5))
+
+;; TEST: scan empty
+;; EXPECT: (0)
+(scan (lambda [acc x] (+ acc x)) 0 '())
+
+;; TEST: scan single
+;; EXPECT: (0 1)
+(scan (lambda [acc x] (+ acc x)) 0 '(1))
+
+;; TEST: scan with max
+;; EXPECT: (0 3 3 7 7 7)
+(scan (lambda [acc x] (max acc x)) 0 '(3 1 7 2 5))
+
+;; Reductions is alias
+(define reductions [f] [init] [lst]
+  (scan f init lst))
+
+;; TEST: reductions
+;; EXPECT: (0 1 3 6)
+(reductions (lambda [acc x] (+ acc x)) 0 '(1 2 3))
+
+;; Running totals
+;; TEST: running sum
+;; EXPECT: (100 90 120 70)
+(scan (lambda [acc x] (+ acc x)) 100 '(-10 30 -50))
+
+;; Scan without initial (uses first element)
+(define scan1 [f] [lst]
+  (match lst
+    ()       '()
+    (h .. t) (scan f h t)))
+
+;; TEST: scan1
+;; EXPECT: (1 3 6 10)
+(scan1 (lambda [acc x] (+ acc x)) '(1 2 3 4))
+
+;; TEST: scan for prefix max
+;; EXPECT-FINAL: (1 2 3 3 3 5)
+(scan1 (lambda [acc x] (max acc x)) '(1 2 3 1 2 5))

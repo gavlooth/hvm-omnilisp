@@ -1,0 +1,58 @@
+;; test_re_anchors.lisp - Tests for regex anchors
+
+;; Anchors match positions, not characters
+;; TEST: start anchor
+;; EXPECT: true
+(re-test #"^hello" "hello world")
+
+;; TEST: start anchor fails
+;; EXPECT: false
+(re-test #"^world" "hello world")
+
+;; TEST: end anchor
+;; EXPECT: true
+(re-test #"world$" "hello world")
+
+;; TEST: end anchor fails
+;; EXPECT: false
+(re-test #"hello$" "hello world")
+
+;; TEST: both anchors
+;; EXPECT: true
+(re-test #"^exact$" "exact")
+
+;; TEST: word boundary
+;; EXPECT: true
+(re-test #"\bword\b" "a word here")
+
+;; TEST: word boundary fails
+;; EXPECT: false
+(re-test #"\bword\b" "awordhere")
+
+;; TEST: non-word boundary
+;; EXPECT: true
+(re-test #"\Bword" "aword")
+
+;; TEST: multiline start
+;; EXPECT: true
+(re-test #"(?m)^line" "first\nline two")
+
+;; TEST: multiline end
+;; EXPECT: true
+(re-test #"(?m)end$" "line end\nnext")
+
+;; TEST: lookahead
+;; EXPECT: true
+(re-test #"foo(?=bar)" "foobar")
+
+;; TEST: negative lookahead
+;; EXPECT: true
+(re-test #"foo(?!baz)" "foobar")
+
+;; TEST: lookbehind
+;; EXPECT: true
+(re-test #"(?<=foo)bar" "foobar")
+
+;; TEST: negative lookbehind
+;; EXPECT-FINAL: true
+(re-test #"(?<!foo)bar" "bazbar")

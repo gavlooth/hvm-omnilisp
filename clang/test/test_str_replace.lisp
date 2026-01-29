@@ -1,0 +1,51 @@
+;; test_str_replace.lisp - Tests for string replacement
+
+;; Str-replace replaces first occurrence
+;; TEST: replace first
+;; EXPECT: "heylo world"
+(str-replace "hello world" "el" "ey")
+
+;; TEST: replace nothing found
+;; EXPECT: "hello"
+(str-replace "hello" "xyz" "abc")
+
+;; TEST: replace empty
+;; EXPECT: "hello"
+(str-replace "hello" "" "x")
+
+;; TEST: replace with empty
+;; EXPECT: "hlo"
+(str-replace "hello" "el" "")
+
+;; TEST: replace whole string
+;; EXPECT: "goodbye"
+(str-replace "hello" "hello" "goodbye")
+
+;; Str-replace-all replaces all occurrences
+;; TEST: replace-all multiple
+;; EXPECT: "heyyo"
+(str-replace-all "hello" "l" "y")
+
+;; TEST: replace-all none found
+;; EXPECT: "hello"
+(str-replace-all "hello" "x" "y")
+
+;; TEST: replace-all overlapping pattern
+;; EXPECT: "aaa"
+(str-replace-all "aaa" "aa" "a")
+
+;; TEST: replace-all with longer
+;; EXPECT: "heXXoworXd"
+(str-replace-all "helloworld" "l" "X")
+
+;; TEST: replace-all whole
+;; EXPECT: "bb"
+(str-replace-all "aa" "a" "b")
+
+;; TEST: replace-all empty result
+;; EXPECT: ""
+(str-replace-all "xxx" "x" "")
+
+;; TEST: replace-all preserves non-matches
+;; EXPECT-FINAL: "1-2-3"
+(str-replace-all "1,2,3" "," "-")

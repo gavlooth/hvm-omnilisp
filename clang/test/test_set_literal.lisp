@@ -1,0 +1,29 @@
+;; test_set_literal.lisp - Tests for set literal syntax
+
+;; Sets use #{} syntax (same as dicts but single values)
+;; A set is represented as a dict with values as keys mapping to true
+
+;; TEST: empty set
+;; EXPECT: #{}
+#{}
+
+;; TEST: singleton set
+;; EXPECT: #{1 true}
+#{1}
+
+;; TEST: multiple elements
+;; EXPECT: #{1 true 2 true 3 true}
+#{1 2 3}
+
+;; TEST: set with symbols
+;; EXPECT: #{:a true :b true :c true}
+#{:a :b :c}
+
+;; TEST: set deduplicates
+;; (duplicate elements should collapse)
+;; EXPECT: #{1 true 2 true}
+#{1 2 1 2 1}
+
+;; TEST: set with mixed types
+;; EXPECT-FINAL: #{1 true "hello" true :sym true}
+#{1 "hello" :sym}

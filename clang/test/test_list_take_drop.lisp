@@ -1,0 +1,54 @@
+;; test_list_take_drop.lisp - Tests for take and drop
+
+;; Take first n elements
+(define take [n] [lst]
+  (if (<= n 0)
+    '()
+    (match lst
+      ()       '()
+      (h .. t) (cons h (take (- n 1) t)))))
+
+;; TEST: take 3 from list
+;; EXPECT: (1 2 3)
+(take 3 '(1 2 3 4 5))
+
+;; TEST: take 0
+;; EXPECT: ()
+(take 0 '(1 2 3 4 5))
+
+;; TEST: take more than length
+;; EXPECT: (1 2 3)
+(take 10 '(1 2 3))
+
+;; TEST: take from empty
+;; EXPECT: ()
+(take 5 '())
+
+;; Drop first n elements
+(define drop [n] [lst]
+  (if (<= n 0)
+    lst
+    (match lst
+      ()       '()
+      (_ .. t) (drop (- n 1) t))))
+
+;; TEST: drop 2 from list
+;; EXPECT: (3 4 5)
+(drop 2 '(1 2 3 4 5))
+
+;; TEST: drop 0
+;; EXPECT: (1 2 3 4 5)
+(drop 0 '(1 2 3 4 5))
+
+;; TEST: drop more than length
+;; EXPECT: ()
+(drop 10 '(1 2 3))
+
+;; TEST: drop from empty
+;; EXPECT: ()
+(drop 5 '())
+
+;; Combine take and drop
+;; TEST: take and drop are complementary
+;; EXPECT-FINAL: (1 2 3 4 5)
+(append (take 2 '(1 2 3 4 5)) (drop 2 '(1 2 3 4 5)))

@@ -1,0 +1,50 @@
+;; test_list_nth.lisp - Tests for nth, first, second, third
+
+;; Nth element (0-indexed)
+(define nth [n] [lst]
+  (match lst
+    ()       nothing
+    (h .. t) (if (= n 0) h (nth (- n 1) t))))
+
+;; TEST: nth 0 (first)
+;; EXPECT: 10
+(nth 0 '(10 20 30 40 50))
+
+;; TEST: nth 2 (third)
+;; EXPECT: 30
+(nth 2 '(10 20 30 40 50))
+
+;; TEST: nth 4 (last)
+;; EXPECT: 50
+(nth 4 '(10 20 30 40 50))
+
+;; First, second, third helpers
+(define first [lst] (nth 0 lst))
+(define second [lst] (nth 1 lst))
+(define third [lst] (nth 2 lst))
+
+;; TEST: first
+;; EXPECT: 1
+(first '(1 2 3 4 5))
+
+;; TEST: second
+;; EXPECT: 2
+(second '(1 2 3 4 5))
+
+;; TEST: third
+;; EXPECT: 3
+(third '(1 2 3 4 5))
+
+;; Nth with pattern matching
+(define safe-nth [n] [lst]
+  (match (nth n lst)
+    nothing  0
+    x        x))
+
+;; TEST: safe-nth in bounds
+;; EXPECT: 30
+(safe-nth 2 '(10 20 30))
+
+;; TEST: safe-nth out of bounds returns default
+;; EXPECT-FINAL: 0
+(safe-nth 10 '(10 20 30))

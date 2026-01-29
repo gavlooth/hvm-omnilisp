@@ -1,0 +1,48 @@
+;; test_group_by.lisp - Tests for group-by and frequencies
+
+;; Group-by groups elements by key function result
+(define group-by-helper [f] [lst] [groups]
+  (match lst
+    ()       groups
+    (h .. t)
+      (let [key (f h)]
+        (let [existing (dict-get groups key '())]
+          (group-by-helper f t (dict-set groups key (cons h existing)))))))
+
+(define group-by [f] [lst]
+  (group-by-helper f lst #{}))
+
+;; TEST: group by even/odd
+;; EXPECT: #{0 (6 4 2) 1 (5 3 1)}
+(group-by (lambda [x] (% x 2)) '(1 2 3 4 5 6))
+
+;; TEST: group by first letter (using identity as placeholder)
+;; EXPECT: #{1 (1 1 1) 2 (2 2) 3 (3)}
+(group-by (lambda [x] x) '(1 1 2 1 2 3))
+
+;; TEST: group empty
+;; EXPECT: #{}
+(group-by (lambda [x] x) '())
+
+;; Frequencies counts occurrences
+(define frequencies-helper [lst] [counts]
+  (match lst
+    ()       counts
+    (h .. t)
+      (let [count (dict-get counts h 0)]
+        (frequencies-helper t (dict-set counts h (+ count 1))))))
+
+(define frequencies [lst]
+  (frequencies-helper lst #{}))
+
+;; TEST: frequencies basic
+;; EXPECT: #{1 3 2 2 3 1}
+(frequencies '(1 1 2 1 2 3))
+
+;; TEST: frequencies all same
+;; EXPECT: #{5 4}
+(frequencies '(5 5 5 5))
+
+;; TEST: frequencies all different
+;; EXPECT-FINAL: #{1 1 2 1 3 1}
+(frequencies '(1 2 3))

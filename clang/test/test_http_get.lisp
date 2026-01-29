@@ -1,0 +1,64 @@
+;; test_http_get.lisp - Tests for HTTP GET requests
+
+;; HTTP GET request
+;; TEST: http-get returns response
+;; EXPECT: true
+(with-mock-http
+  (response? (http-get "http://example.com")))
+
+;; TEST: http-get body
+;; EXPECT: "<html>Hello</html>"
+(with-mock-http :body "<html>Hello</html>"
+  (response-body (http-get "http://example.com")))
+
+;; TEST: http-get status
+;; EXPECT: 200
+(with-mock-http :status 200
+  (response-status (http-get "http://example.com")))
+
+;; TEST: http-get 404
+;; EXPECT: 404
+(with-mock-http :status 404
+  (response-status (http-get "http://example.com/notfound")))
+
+;; TEST: http-get headers
+;; EXPECT: "application/json"
+(with-mock-http :headers #{"Content-Type" "application/json"}
+  (response-header (http-get "http://example.com") "Content-Type"))
+
+;; Request with headers
+;; TEST: http-get with headers
+;; EXPECT: 200
+(with-mock-http
+  (response-status
+    (http-get "http://example.com"
+              :headers #{"Accept" "application/json"})))
+
+;; TEST: http-get with auth
+;; EXPECT: 200
+(with-mock-http :require-auth
+  (response-status
+    (http-get "http://example.com"
+              :headers #{"Authorization" "Bearer token123"})))
+
+;; Query parameters
+;; TEST: http-get with query
+;; EXPECT: 200
+(with-mock-http
+  (response-status
+    (http-get "http://example.com"
+              :query #{"q" "search" "page" "1"})))
+
+;; Timeout
+;; TEST: http-get timeout
+;; EXPECT: "timeout"
+(with-mock-http :delay 10000
+  (handle
+    (http-get "http://example.com" :timeout 100)
+    (Timeout [_ resume] "timeout")))
+
+;; JSON response
+;; TEST: http-get json
+;; EXPECT-FINAL: #{"name" "test"}
+(with-mock-http :body "{\"name\": \"test\"}"
+  (json-parse (response-body (http-get "http://example.com"))))

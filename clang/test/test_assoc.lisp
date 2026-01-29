@@ -1,0 +1,49 @@
+;; test_assoc.lisp - Tests for assoc (set value)
+
+;; Assoc sets a value in a collection
+;; For dicts: sets key-value
+;; For lists/arrays: sets at index
+
+(define assoc-list [lst] [idx] [val]
+  (let build [l lst] [i 0] [acc '()]
+    (match l
+      () (reverse acc)
+      (h .. t)
+        (if (= i idx)
+          (build t (+ i 1) (cons val acc))
+          (build t (+ i 1) (cons h acc))))))
+
+(define assoc [coll] [key] [val]
+  (cond
+    (dict? coll)  (dict-set coll key val)
+    (list? coll)  (assoc-list coll key val)
+    (array? coll) (arr-set coll key val)
+    _             coll))
+
+;; TEST: assoc into dict
+;; EXPECT: #{"a" 1 "b" 2}
+(assoc #{"a" 1} "b" 2)
+
+;; TEST: assoc overwrites existing
+;; EXPECT: #{"a" 99}
+(assoc #{"a" 1} "a" 99)
+
+;; TEST: assoc into empty dict
+;; EXPECT: #{"key" "value"}
+(assoc #{} "key" "value")
+
+;; TEST: assoc into list at index
+;; EXPECT: (1 99 3)
+(assoc '(1 2 3) 1 99)
+
+;; TEST: assoc first element
+;; EXPECT: (0 2 3)
+(assoc '(1 2 3) 0 0)
+
+;; TEST: assoc last element
+;; EXPECT: (1 2 100)
+(assoc '(1 2 3) 2 100)
+
+;; TEST: chained assoc
+;; EXPECT-FINAL: #{"a" 1 "b" 2 "c" 3}
+(assoc (assoc (assoc #{} "a" 1) "b" 2) "c" 3)

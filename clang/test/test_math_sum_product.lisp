@@ -1,0 +1,41 @@
+;; test_math_sum_product.lisp - Tests for sum and product of lists
+
+;; Define sum over lists
+(define list-sum [lst]
+  (match lst
+    ()       0
+    (h .. t) (+ h (list-sum t))))
+
+;; TEST: sum empty list
+;; EXPECT: 0
+(list-sum '())
+
+;; TEST: sum single element
+;; EXPECT: 5
+(list-sum '(5))
+
+;; TEST: sum multiple elements
+;; EXPECT: 15
+(list-sum '(1 2 3 4 5))
+
+;; Define product over lists
+(define list-product [lst]
+  (match lst
+    ()       1
+    (h .. t) (* h (list-product t))))
+
+;; TEST: product empty list (identity = 1)
+;; EXPECT: 1
+(list-product '())
+
+;; TEST: product single element
+;; EXPECT: 5
+(list-product '(5))
+
+;; TEST: product multiple elements
+;; EXPECT: 120
+(list-product '(1 2 3 4 5))
+
+;; TEST: product with zero
+;; EXPECT-FINAL: 0
+(list-product '(1 2 0 4 5))

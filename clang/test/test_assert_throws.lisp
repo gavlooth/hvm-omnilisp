@@ -1,0 +1,55 @@
+;; test_assert_throws.lisp - Tests for exception assertion
+
+;; Assert-throws verifies exception is raised
+;; TEST: catches expected effect
+;; EXPECT: true
+(assert-throws Error
+  (perform Error "test error"))
+
+;; TEST: catches specific effect type
+;; EXPECT: true
+(assert-throws DivisionError
+  (/ 1 0))
+
+;; TEST: fails if no exception
+;; EXPECT: :failed
+(handle
+  (assert-throws Error (+ 1 2))
+  (AssertionError [e k] :failed))
+
+;; TEST: fails if wrong exception
+;; EXPECT: :failed
+(handle
+  (assert-throws TypeError
+    (perform ValueError "wrong"))
+  (AssertionError [e k] :failed))
+
+;; TEST: assert-throws with message check
+;; EXPECT: true
+(assert-throws Error "test"
+  (perform Error "test error"))
+
+;; TEST: assert-not-throws
+;; EXPECT: true
+(assert-not-throws (+ 1 2))
+
+;; TEST: assert-not-throws fails on exception
+;; EXPECT: :failed
+(handle
+  (assert-not-throws (/ 1 0))
+  (AssertionError [e k] :failed))
+
+;; TEST: capture thrown value
+;; EXPECT: "my message"
+(let [thrown (catch-exception (perform Error "my message"))]
+  (get thrown :message))
+
+;; TEST: assert-throws any
+;; EXPECT: true
+(assert-throws-any
+  (perform Error "something"))
+
+;; TEST: assert-throws returns exception
+;; EXPECT-FINAL: true
+(let [ex (assert-throws Error (perform Error "test"))]
+  (error? ex))

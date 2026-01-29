@@ -1,0 +1,47 @@
+;; test_repeat.lisp - Tests for repeat and repeat-n
+
+;; Repeat-n creates list of n copies
+(define repeat-n [x] [n]
+  (let build [count n] [acc '()]
+    (if (<= count 0)
+      acc
+      (build (- count 1) (cons x acc)))))
+
+;; TEST: repeat-n basic
+;; EXPECT: (42 42 42 42 42)
+(repeat-n 42 5)
+
+;; TEST: repeat-n string
+;; EXPECT: ("x" "x" "x")
+(repeat-n "x" 3)
+
+;; TEST: repeat-n zero times
+;; EXPECT: ()
+(repeat-n 42 0)
+
+;; TEST: repeat-n once
+;; EXPECT: (1)
+(repeat-n 1 1)
+
+;; TEST: repeat-n list
+;; EXPECT: ((1 2) (1 2) (1 2))
+(repeat-n '(1 2) 3)
+
+;; Replicate is alias
+(define replicate [n] [x] (repeat-n x n))
+
+;; TEST: replicate
+;; EXPECT: (0 0 0 0 0)
+(replicate 5 0)
+
+;; Use repeat for initialization
+(define zeros [n] (repeat-n 0 n))
+(define ones [n] (repeat-n 1 n))
+
+;; TEST: zeros
+;; EXPECT: (0 0 0 0)
+(zeros 4)
+
+;; TEST: ones
+;; EXPECT-FINAL: (1 1 1)
+(ones 3)

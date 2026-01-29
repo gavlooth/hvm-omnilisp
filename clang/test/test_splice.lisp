@@ -1,0 +1,57 @@
+;; test_splice.lisp - Tests for unquote-splicing
+
+;; Splice inserts list elements
+;; TEST: basic splice
+;; EXPECT: (1 2 3 4 5)
+(let [middle '(2 3 4)]
+  `(1 ,@middle 5))
+
+;; TEST: splice empty list
+;; EXPECT: (1 5)
+(let [empty '()]
+  `(1 ,@empty 5))
+
+;; TEST: splice single element
+;; EXPECT: (1 2 3)
+(let [single '(2)]
+  `(1 ,@single 3))
+
+;; TEST: multiple splices
+;; EXPECT: (1 2 3 4)
+(let [a '(1 2)] [b '(3 4)]
+  `(,@a ,@b))
+
+;; TEST: splice at beginning
+;; EXPECT: (a b c x)
+`(,@'(a b c) x)
+
+;; TEST: splice at end
+;; EXPECT: (x a b c)
+`(x ,@'(a b c))
+
+;; Splice with computed list
+;; TEST: splice computed
+;; EXPECT: (items 2 4 6)
+`(items ,@(map (lambda [x] (* x 2)) '(1 2 3)))
+
+;; Splice preserves order
+;; TEST: splice order
+;; EXPECT: (1 2 3 4 5 6 7 8 9)
+(let [a '(1 2 3)] [b '(4 5 6)] [c '(7 8 9)]
+  `(,@a ,@b ,@c))
+
+;; Splice in nested context
+;; TEST: nested splice
+;; EXPECT: ((a b c))
+`((,@'(a b c)))
+
+;; Mix unquote and splice
+;; TEST: unquote then splice
+;; EXPECT: (x 1 2 3)
+(let [first 'x] [rest '(1 2 3)]
+  `(,first ,@rest))
+
+;; TEST: splice then unquote
+;; EXPECT-FINAL: (1 2 3 x)
+(let [start '(1 2 3)] [last 'x]
+  `(,@start ,last))

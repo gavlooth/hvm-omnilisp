@@ -1,0 +1,50 @@
+;; test_file_delete.lisp - Tests for file deletion
+
+;; File-delete removes a file
+;; TEST: delete existing file
+;; EXPECT: true
+(with-temp-file "to-delete.txt" "contents"
+  (lambda [path]
+    (let [result (file-delete path)]
+      (and result (not (file-exists? path))))))
+
+;; TEST: delete returns false for non-existent
+;; EXPECT: false
+(file-delete "/nonexistent/path/file.txt")
+
+;; TEST: delete-if-exists (safe delete)
+;; EXPECT: true
+(delete-if-exists "/nonexistent/file.txt")
+
+;; TEST: delete directory (non-recursive fails)
+;; EXPECT: false
+(with-temp-dir "testdir"
+  (lambda [path]
+    (file-delete path)))
+
+;; TEST: delete-recursive removes directory
+;; EXPECT: true
+(with-temp-dir "testdir"
+  (lambda [path]
+    (file-write (str path "/file.txt") "data")
+    (let [result (delete-recursive path)]
+      (and result (not (file-exists? path))))))
+
+;; TEST: delete multiple files
+;; EXPECT: (true true true)
+(with-temp-dir "multi"
+  (lambda [dir]
+    (let [f1 (str dir "/a.txt")]
+    (let [f2 (str dir "/b.txt")]
+    (let [f3 (str dir "/c.txt")]
+      (file-write f1 "a")
+      (file-write f2 "b")
+      (file-write f3 "c")
+      (map file-delete (list f1 f2 f3)))))))
+
+;; TEST: delete returns error info on failure
+;; EXPECT-FINAL: :error
+(let [result (file-delete-with-error "/root/protected.txt")]
+  (if (map? result)
+    (get result :status)
+    :unexpected))

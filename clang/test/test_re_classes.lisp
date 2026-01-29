@@ -1,0 +1,58 @@
+;; test_re_classes.lisp - Tests for regex character classes
+
+;; Character classes match sets of characters
+;; TEST: digit class
+;; EXPECT: true
+(re-test #"\d" "5")
+
+;; TEST: digit class no match
+;; EXPECT: false
+(re-test #"\d" "a")
+
+;; TEST: word character
+;; EXPECT: true
+(re-test #"\w+" "hello_123")
+
+;; TEST: whitespace
+;; EXPECT: true
+(re-test #"\s" " ")
+
+;; TEST: non-digit
+;; EXPECT: true
+(re-test #"\D" "a")
+
+;; TEST: non-word
+;; EXPECT: true
+(re-test #"\W" "!")
+
+;; TEST: non-whitespace
+;; EXPECT: true
+(re-test #"\S" "x")
+
+;; TEST: custom class
+;; EXPECT: true
+(re-test #"[aeiou]" "e")
+
+;; TEST: negated class
+;; EXPECT: true
+(re-test #"[^aeiou]" "b")
+
+;; TEST: range in class
+;; EXPECT: true
+(re-test #"[a-z]" "m")
+
+;; TEST: multiple ranges
+;; EXPECT: true
+(re-test #"[a-zA-Z0-9]" "Z")
+
+;; TEST: class with special chars
+;; EXPECT: true
+(re-test #"[.+*?]" "+")
+
+;; TEST: hyphen at end
+;; EXPECT: true
+(re-test #"[a-]" "-")
+
+;; TEST: caret not at start
+;; EXPECT-FINAL: true
+(re-test #"[a^b]" "^")

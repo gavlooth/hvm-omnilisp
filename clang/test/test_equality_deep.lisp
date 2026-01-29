@@ -1,0 +1,41 @@
+;; test_equality_deep.lisp - Tests for deep structural equality
+
+;; List equality
+;; TEST: equal empty lists
+;; EXPECT: true
+(= '() '())
+
+;; TEST: equal non-empty lists
+;; EXPECT: true
+(= '(1 2 3) '(1 2 3))
+
+;; TEST: unequal lists (different elements)
+;; EXPECT: false
+(= '(1 2 3) '(1 2 4))
+
+;; TEST: unequal lists (different lengths)
+;; EXPECT: false
+(= '(1 2) '(1 2 3))
+
+;; Nested structure equality
+;; TEST: equal nested lists
+;; EXPECT: true
+(= '((1 2) (3 4)) '((1 2) (3 4)))
+
+;; TEST: unequal nested lists
+;; EXPECT: false
+(= '((1 2) (3 4)) '((1 2) (3 5)))
+
+;; Array equality
+;; TEST: equal arrays
+;; EXPECT: true
+(= [1 2 3] [1 2 3])
+
+;; TEST: unequal arrays
+;; EXPECT: false
+(= [1 2 3] [1 2 4])
+
+;; Mixed type equality
+;; TEST: list vs array (different types)
+;; EXPECT-FINAL: false
+(= '(1 2 3) [1 2 3])

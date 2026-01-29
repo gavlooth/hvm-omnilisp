@@ -1,0 +1,58 @@
+;; test_file_read.lisp - Tests for file reading
+
+;; Read-file reads entire file
+;; TEST: read file content
+;; EXPECT: "hello world"
+(with-temp-file "test.txt" "hello world"
+  (read-file "test.txt"))
+
+;; TEST: read file with newlines
+;; EXPECT: "line1\nline2\nline3"
+(with-temp-file "multi.txt" "line1\nline2\nline3"
+  (read-file "multi.txt"))
+
+;; TEST: read empty file
+;; EXPECT: ""
+(with-temp-file "empty.txt" ""
+  (read-file "empty.txt"))
+
+;; Read-lines returns list of lines
+;; TEST: read-lines
+;; EXPECT: ("line1" "line2" "line3")
+(with-temp-file "lines.txt" "line1\nline2\nline3"
+  (read-lines "lines.txt"))
+
+;; TEST: read-lines single
+;; EXPECT: ("only line")
+(with-temp-file "single.txt" "only line"
+  (read-lines "single.txt"))
+
+;; Read-bytes for binary
+;; TEST: read-bytes
+;; EXPECT: true
+(with-temp-file "bin.dat" "abc"
+  (bytes? (read-bytes "bin.dat")))
+
+;; Slurp is alias
+;; TEST: slurp
+;; EXPECT: "content"
+(with-temp-file "slurp.txt" "content"
+  (slurp "slurp.txt"))
+
+;; Read with encoding
+;; TEST: read-file utf8
+;; EXPECT: "hello"
+(with-temp-file "utf8.txt" "hello"
+  (read-file "utf8.txt" :encoding "utf-8"))
+
+;; Partial read
+;; TEST: read first n bytes
+;; EXPECT: "hello"
+(with-temp-file "partial.txt" "hello world"
+  (read-file "partial.txt" :limit 5))
+
+;; TEST: file not found
+;; EXPECT-FINAL: nil
+(handle
+  (read-file "nonexistent.txt")
+  (FileNotFound [_ resume] nil))

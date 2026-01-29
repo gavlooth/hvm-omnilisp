@@ -1,0 +1,45 @@
+;; test_list_append.lisp - Tests for append and concat
+
+;; Append two lists
+(define append [xs] [ys]
+  (match xs
+    ()       ys
+    (h .. t) (cons h (append t ys))))
+
+;; TEST: append two non-empty lists
+;; EXPECT: (1 2 3 4 5 6)
+(append '(1 2 3) '(4 5 6))
+
+;; TEST: append empty to non-empty
+;; EXPECT: (1 2 3)
+(append '() '(1 2 3))
+
+;; TEST: append non-empty to empty
+;; EXPECT: (1 2 3)
+(append '(1 2 3) '())
+
+;; TEST: append both empty
+;; EXPECT: ()
+(append '() '())
+
+;; Concat multiple lists
+(define concat [lists]
+  (match lists
+    ()       '()
+    (l .. rest) (append l (concat rest))))
+
+;; TEST: concat multiple lists
+;; EXPECT: (1 2 3 4 5 6 7 8 9)
+(concat '((1 2 3) (4 5 6) (7 8 9)))
+
+;; TEST: concat with empty lists
+;; EXPECT: (1 2 3 7 8 9)
+(concat '((1 2 3) () (7 8 9)))
+
+;; TEST: concat single list
+;; EXPECT: (1 2 3)
+(concat '((1 2 3)))
+
+;; TEST: concat empty list of lists
+;; EXPECT-FINAL: ()
+(concat '())

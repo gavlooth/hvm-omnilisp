@@ -1,0 +1,66 @@
+;; test_reject.lisp - Tests for reject (inverse filter)
+
+;; Reject removes elements matching predicate
+(define reject [pred] [lst]
+  (filter (lambda [x] (not (pred x))) lst))
+
+;; TEST: reject evens
+;; EXPECT: (1 3 5)
+(reject (lambda [x] (= (% x 2) 0)) '(1 2 3 4 5))
+
+;; TEST: reject odds
+;; EXPECT: (2 4)
+(reject (lambda [x] (= (% x 2) 1)) '(1 2 3 4 5))
+
+;; TEST: reject none
+;; EXPECT: (1 2 3)
+(reject (lambda [x] (> x 10)) '(1 2 3))
+
+;; TEST: reject all
+;; EXPECT: ()
+(reject (lambda [x] (> x 0)) '(1 2 3))
+
+;; TEST: reject empty
+;; EXPECT: ()
+(reject (lambda [x] true) '())
+
+;; Remove is alias for rejecting equal values
+(define remove [val] [lst]
+  (reject (lambda [x] (= x val)) lst))
+
+;; TEST: remove value
+;; EXPECT: (1 3 4 5)
+(remove 2 '(1 2 3 4 5))
+
+;; TEST: remove multiple
+;; EXPECT: (1 3 5)
+(remove 2 '(1 2 2 3 2 5))
+
+;; TEST: remove not found
+;; EXPECT: (1 2 3)
+(remove 99 '(1 2 3))
+
+;; Remove-if is alias for reject
+(define remove-if [pred] [lst]
+  (reject pred lst))
+
+;; TEST: remove-if negative
+;; EXPECT: (1 2 3)
+(remove-if (lambda [x] (< x 0)) '(-1 1 -2 2 -3 3))
+
+;; Remove first occurrence only
+(define remove-first [val] [lst]
+  (let helper [l lst] [acc '()] [found false]
+    (match l
+      ()       (reverse acc)
+      (h .. t) (if (and (not found) (= h val))
+                 (helper t acc true)
+                 (helper t (cons h acc) found)))))
+
+;; TEST: remove-first
+;; EXPECT: (1 2 2 3)
+(remove-first 2 '(1 2 2 2 3))
+
+;; TEST: remove-first not found
+;; EXPECT-FINAL: (1 2 3)
+(remove-first 99 '(1 2 3))

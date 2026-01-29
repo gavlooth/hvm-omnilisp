@@ -1,0 +1,59 @@
+;; test_read_line.lisp - Tests for reading input
+
+;; Read-line reads from stdin (simulated for tests)
+;; Note: These tests use mock input
+
+;; TEST: read-line returns string
+;; EXPECT: true
+(string? (with-mock-input "hello" (read-line)))
+
+;; TEST: read-line gets content
+;; EXPECT: "hello"
+(with-mock-input "hello\n" (read-line))
+
+;; TEST: read-line strips newline
+;; EXPECT: "test"
+(with-mock-input "test\n" (read-line))
+
+;; TEST: read-line empty
+;; EXPECT: ""
+(with-mock-input "\n" (read-line))
+
+;; Read with prompt
+;; TEST: read-line with prompt
+;; EXPECT: "answer"
+(with-mock-input "answer\n"
+  (read-line "Enter value: "))
+
+;; Read multiple lines
+;; TEST: read multiple lines
+;; EXPECT: ("a" "b" "c")
+(with-mock-input "a\nb\nc\n"
+  (cons (read-line)
+        (cons (read-line)
+              (cons (read-line) nil))))
+
+;; Read-char
+;; TEST: read-char single
+;; EXPECT: "a"
+(with-mock-input "abc" (read-char))
+
+;; TEST: read-char sequence
+;; EXPECT: ("a" "b" "c")
+(with-mock-input "abc"
+  (cons (read-char)
+        (cons (read-char)
+              (cons (read-char) nil))))
+
+;; Peek-char
+;; TEST: peek-char doesn't consume
+;; EXPECT: ("a" "a")
+(with-mock-input "abc"
+  (cons (peek-char)
+        (cons (read-char) nil)))
+
+;; Read-password (masked input)
+;; TEST: read-password
+;; EXPECT-FINAL: "secret"
+(with-mock-input "secret\n"
+  (read-password "Password: "))

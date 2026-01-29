@@ -1,0 +1,56 @@
+;; test_pika_parse.lisp - Tests for Pika parser
+
+;; Pika is a bottom-up parser (NOT PEG)
+;; TEST: pika parse simple
+;; EXPECT: #{"type" "number" "value" 42}
+(defgrammar pika-num
+  (pika-rule "number" (one-or-more (char-range "0" "9"))))
+(pika-parse pika-num "42")
+
+;; TEST: pika handles left recursion
+;; EXPECT: true
+(defgrammar expr
+  (pika-rule "expr"
+    (alt
+      (seq (ref "expr") (lit "+") (ref "term"))
+      (ref "term")))
+  (pika-rule "term" (one-or-more (char-range "0" "9"))))
+(some? (pika-parse expr "1+2+3"))
+
+;; TEST: pika parse with actions
+;; EXPECT: 6
+(defgrammar calc
+  (pika-rule "sum"
+    (seq (ref "num") (lit "+") (ref "num"))
+    :action (lambda [a _ b] (+ a b)))
+  (pika-rule "num"
+    (one-or-more (char-range "0" "9"))
+    :action str->int))
+(pika-parse calc "2+4")
+
+;; TEST: pika ambiguity resolution
+;; EXPECT: true
+(defgrammar ambig
+  (pika-rule "S"
+    (alt
+      (seq (ref "S") (ref "S"))
+      (lit "a"))))
+(some? (pika-parse ambig "aaa"))
+
+;; TEST: pika memoization
+;; EXPECT: "abc"
+(defgrammar memo-test
+  (pika-rule "word"
+    (one-or-more (char-range "a" "z"))))
+(pika-parse memo-test "abc")
+
+;; TEST: pika parse failure
+;; EXPECT: nil
+(pika-parse pika-num "abc")
+
+;; TEST: pika nested rules
+;; EXPECT-FINAL: true
+(defgrammar nested-pika
+  (pika-rule "outer" (seq (lit "(") (ref "inner") (lit ")")))
+  (pika-rule "inner" (one-or-more (char-range "a" "z"))))
+(some? (pika-parse nested-pika "(hello)"))

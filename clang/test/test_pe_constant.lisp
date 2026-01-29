@@ -1,0 +1,52 @@
+;; test_pe_constant.lisp - Tests for partial evaluation constant folding
+
+;; Constant folding evaluates known expressions at compile time
+;; TEST: fold addition
+;; EXPECT: '42
+(pe-fold '(+ 20 22))
+
+;; TEST: fold multiplication
+;; EXPECT: '100
+(pe-fold '(* 10 10))
+
+;; TEST: fold nested
+;; EXPECT: '30
+(pe-fold '(+ (* 2 5) (* 4 5)))
+
+;; TEST: fold with unknown preserves
+;; EXPECT: '(+ x 5)
+(pe-fold '(+ x (+ 2 3)))
+
+;; TEST: fold conditional with known test
+;; EXPECT: '"yes"
+(pe-fold '(if true "yes" "no"))
+
+;; TEST: fold conditional with unknown test
+;; EXPECT: '(if x "yes" "no")
+(pe-fold '(if x "yes" "no"))
+
+;; TEST: fold string operations
+;; EXPECT: '"HELLO"
+(pe-fold '(str-upper "hello"))
+
+;; TEST: fold list operations
+;; EXPECT: '3
+(pe-fold '(length '(1 2 3)))
+
+;; Propagation
+;; TEST: propagate constants
+;; EXPECT: '30
+(pe-fold '(let [x 10] [y 20] (+ x y)))
+
+;; TEST: propagate partial
+;; EXPECT: '(+ x 10)
+(pe-fold '(let [y 10] (+ x y)))
+
+;; Dead code elimination
+;; TEST: eliminate dead branch
+;; EXPECT: '1
+(pe-fold '(if true 1 (expensive-computation)))
+
+;; TEST: preserve live code
+;; EXPECT-FINAL: '(if x 1 2)
+(pe-fold '(if x 1 2))
