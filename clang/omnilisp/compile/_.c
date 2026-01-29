@@ -66,10 +66,7 @@ fn u32 omni_ctr_arity(Term t) {
   return 0;
 }
 
-fn Term omni_ctr_arg(Term t, u32 idx) {
-  u32 loc = term_val(t);
-  return HEAP[loc + idx];
-}
+// omni_ctr_arg is defined in parse/_.c
 
 // Nick decoder
 fn const char *omni_nick_to_name(u32 nick) {
@@ -546,8 +543,21 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       return;
     }
 
-    // Let
+    // Let (lazy binding - allows parallel evaluation)
     if (nam == OMNI_NAM_LET && ari == 2) {
+      // Lazy binding: &var = expr; (no !! prefix)
+      const char *var_name = omni_env_push(e);
+      fprintf(e->out, "&%s = ", var_name);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs("; ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      omni_env_pop(e, 1);
+      return;
+    }
+
+    // LetS (strict binding - forces eager evaluation with ^:strict)
+    if (nam == OMNI_NAM_LETS && ari == 2) {
+      // Strict binding: !!&var = expr; (with !! prefix)
       fputs("!!", e->out);
       const char *var_name = omni_env_push(e);
       fprintf(e->out, "&%s = ", var_name);
@@ -555,6 +565,15 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       fputs("; ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));
       omni_env_pop(e, 1);
+      return;
+    }
+
+    // Pure (purity marker from ^:pure metadata)
+    // Emits #Pure{fn} - can be used for static analysis and optimization
+    if (nam == OMNI_NAM_PURE && ari == 1) {
+      fputs("#Pure{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputc('}', e->out);
       return;
     }
 
@@ -738,6 +757,18 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
         // Native HVM4 match
         omni_emit_native_match(e, scrutinee, cases);
       }
+      return;
+    }
+
+    // Speculative match (^:speculate) - evaluates branches in parallel
+    // Emits #MatS{scrutinee, cases} for runtime handling
+    // In HVM4, the dup/superposition semantics enable parallel branch evaluation
+    if (nam == OMNI_NAM_MATS && ari == 2) {
+      fputs("#MatS{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
       return;
     }
 

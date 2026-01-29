@@ -1,3 +1,5 @@
+#pragma once
+
 // OmniLisp Parser
 // Parses OmniLisp syntax into HVM4 AST terms
 //
@@ -74,7 +76,7 @@ fn int omni_is_delim(char c) {
 }
 
 // Match a string exactly
-fn int omni_match(PState *s, const char *str) {
+fn int omni_match_str(PState *s, const char *str) {
   omni_skip(s);
   u32 len = strlen(str);
   if (s->pos + len > s->len) return 0;
@@ -153,6 +155,38 @@ fn int omni_symbol_is(PState *s, u32 start, u32 len, const char *lit) {
 }
 
 // =============================================================================
+// Additional Parse Helpers
+// =============================================================================
+
+// Wrapper for omni_skip for compatibility
+fn void parse_skip_whitespace(PState *s) {
+  omni_skip(s);
+}
+
+// Get length of symbol at current position without consuming
+fn u32 parse_symbol_length(PState *s) {
+  u32 saved_pos = s->pos;
+  omni_skip(s);
+  u32 start = s->pos;
+
+  char c = parse_peek(s);
+  if (omni_is_delim(c) || isdigit(c) || c == ':' || c == '^') {
+    s->pos = saved_pos;
+    return 0;
+  }
+
+  while (!parse_at_end(s)) {
+    c = parse_peek(s);
+    if (omni_is_delim(c) || c == ':' || c == '^') break;
+    parse_advance(s);
+  }
+
+  u32 len = s->pos - start;
+  s->pos = saved_pos;  // restore position
+  return len;
+}
+
+// =============================================================================
 // Term Constructors
 // =============================================================================
 
@@ -194,9 +228,33 @@ fn Term omni_list(Term *items, u32 count) {
   return result;
 }
 
+// Reverse a cons list
+fn Term omni_reverse_list(Term list) {
+  Term result = omni_ctr0(OMNI_NAM_NIL);
+  Term cur = list;
+  while (term_tag(cur) >= C00 && term_tag(cur) <= C16) {
+    u32 ext = term_ext(cur);
+    if (ext == OMNI_NAM_NIL) break;
+    if (ext == OMNI_NAM_CON) {
+      u32 loc = term_val(cur);
+      Term head = HEAP[loc];
+      Term tail = HEAP[loc + 1];
+      result = omni_ctr2(OMNI_NAM_CON, head, result);
+      cur = tail;
+    } else {
+      break;
+    }
+  }
+  return result;
+}
+
 // AST constructors
 fn Term omni_lit(u32 n) {
   return omni_ctr1(OMNI_NAM_LIT, term_new_num(n));
+}
+
+fn Term omni_int(int n) {
+  return omni_ctr1(OMNI_NAM_LIT, term_new_num((u32)n));
 }
 
 fn Term omni_sym(u32 sym_id) {
@@ -215,12 +273,16 @@ fn Term omni_lamr(Term body) {
   return omni_ctr1(OMNI_NAM_LAMR, body);
 }
 
-fn Term omni_app(Term fn, Term arg) {
-  return omni_ctr2(OMNI_NAM_APP, fn, arg);
+fn Term omni_app(Term func, Term arg) {
+  return omni_ctr2(OMNI_NAM_APP, func, arg);
 }
 
 fn Term omni_let(Term val, Term body) {
   return omni_ctr2(OMNI_NAM_LET, val, body);
+}
+
+fn Term omni_lets(Term val, Term body) {
+  return omni_ctr2(OMNI_NAM_LETS, val, body);
 }
 
 fn Term omni_if(Term cond, Term then_br, Term else_br) {
@@ -233,6 +295,7 @@ fn Term omni_mul(Term a, Term b) { return omni_ctr2(OMNI_NAM_MUL, a, b); }
 fn Term omni_div(Term a, Term b) { return omni_ctr2(OMNI_NAM_DIV, a, b); }
 fn Term omni_mod(Term a, Term b) { return omni_ctr2(OMNI_NAM_MOD, a, b); }
 fn Term omni_eql(Term a, Term b) { return omni_ctr2(OMNI_NAM_EQL, a, b); }
+fn Term omni_neq(Term a, Term b) { return omni_ctr2(OMNI_NAM_NEQ, a, b); }
 fn Term omni_lt(Term a, Term b)  { return omni_ctr2(OMNI_NAM_LT, a, b); }
 fn Term omni_gt(Term a, Term b)  { return omni_ctr2(OMNI_NAM_GT, a, b); }
 fn Term omni_le(Term a, Term b)  { return omni_ctr2(OMNI_NAM_LE, a, b); }
@@ -243,6 +306,8 @@ fn Term omni_not(Term a)         { return omni_ctr1(OMNI_NAM_NOT, a); }
 
 fn Term omni_cons(Term h, Term t) { return omni_ctr2(OMNI_NAM_CON, h, t); }
 fn Term omni_nil(void)            { return omni_ctr0(OMNI_NAM_NIL); }
+fn int  omni_is_nil(Term t)       { return term_tag(t) == C00 && term_ext(t) == OMNI_NAM_NIL; }
+fn Term omni_ctr_arg(Term t, u32 idx) { return HEAP[term_val(t) + idx]; }
 fn Term omni_chr(u32 c)           { return omni_ctr1(OMNI_NAM_CHR, term_new_num(c)); }
 
 fn Term omni_nothing(void) { return omni_ctr0(OMNI_NAM_NOTH); }
@@ -285,6 +350,10 @@ fn Term omni_match(Term scrutinee, Term cases) {
   return omni_ctr2(OMNI_NAM_MAT, scrutinee, cases);
 }
 
+fn Term omni_match_speculative(Term scrutinee, Term cases) {
+  return omni_ctr2(OMNI_NAM_MATS, scrutinee, cases);
+}
+
 // FFI
 fn Term omni_ffi(Term name, Term args) {
   return omni_ctr2(OMNI_NAM_FFI, name, args);
@@ -310,6 +379,26 @@ fn Term omni_control(u32 k_idx, Term body) {
 
 fn Term omni_yield(Term val) {
   return omni_ctr1(OMNI_NAM_YLD, val);
+}
+
+fn Term omni_fiber_spawn(Term body) {
+  return omni_ctr1(OMNI_NAM_FSPN, body);
+}
+
+fn Term omni_fiber_resume(Term fiber, Term val) {
+  return omni_ctr2(OMNI_NAM_FRSM, fiber, val);
+}
+
+fn Term omni_fiber_done(Term fiber) {
+  return omni_ctr1(OMNI_NAM_FDNP, fiber);
+}
+
+fn Term omni_fiber_result(Term fiber) {
+  return omni_ctr1(OMNI_NAM_FRST, fiber);
+}
+
+fn Term omni_fiber_mailbox(Term fiber) {
+  return omni_ctr1(OMNI_NAM_FMBX, fiber);
 }
 
 // =============================================================================
@@ -487,9 +576,9 @@ fn Term parse_omni_char(PState *s) {
   omni_expect_char(s, '\\');
 
   // Check for named characters
-  if (omni_match(s, "newline")) return omni_chr('\n');
-  if (omni_match(s, "space")) return omni_chr(' ');
-  if (omni_match(s, "tab")) return omni_chr('\t');
+  if (omni_match_str(s, "newline")) return omni_chr('\n');
+  if (omni_match_str(s, "space")) return omni_chr(' ');
+  if (omni_match_str(s, "tab")) return omni_chr('\t');
 
   // Hex character
   if (parse_peek(s) == 'x') {
@@ -778,7 +867,7 @@ fn Term parse_omni_macro_pattern(PState *s) {
     u32 len = s->pos - start;
     char buf[32] = {0};
     memcpy(buf, s->src + start, len < 31 ? len : 31);
-    i32 val = atoi(buf);
+    int val = atoi(buf);
     return omni_ctr1(OMNI_NAM_MLIT, omni_lit(val));
   }
 
@@ -953,7 +1042,7 @@ fn Term parse_omni_grammar_seq(PState *s) {
     if (c == '-' && s->pos + 1 < s->len && s->src[s->pos + 1] == '>') break;
 
     Term item = parse_omni_grammar_suffix(s);
-    if (term_tag(item) == T_NIL) break;
+    if (omni_is_nil(item)) break;
 
     Term cell = omni_cons(item, omni_nil());
     *tail = cell;
@@ -964,9 +1053,9 @@ fn Term parse_omni_grammar_seq(PState *s) {
   // Single item: return as-is
   // Multiple items: wrap in GSeq
   Term first = items;
-  if (term_tag(first) == T_NIL) return omni_nil();
+  if (omni_is_nil(first)) return omni_nil();
   Term second = HEAP[term_val(first) + 1];
-  if (term_tag(second) == T_NIL) {
+  if (omni_is_nil(second)) {
     return HEAP[term_val(first)];  // Single item
   }
   return omni_ctr1(OMNI_NAM_GSEQ, items);
@@ -1019,7 +1108,7 @@ fn Term parse_omni_pattern(PState *s) {
   // Check for 'as' suffix: pattern as name
   // Works for any pattern type: [x y] as pair, Point(x y) as p, x as val
   omni_skip(s);
-  if (omni_match(s, "as")) {
+  if (omni_match_str(s, "as")) {
     u32 name_start, name_len;
     if (omni_parse_symbol_raw(s, &name_start, &name_len)) {
       u32 name_nick = omni_symbol_nick(s, name_start, name_len);
@@ -1109,19 +1198,93 @@ fn Term parse_omni_pattern_base(PState *s) {
     return omni_pat_lit(str);
   }
 
+  // Parenthesized patterns: (or ...), (h .. t), (Constructor args...), ()
+  if (c == '(') {
+    omni_expect_char(s, '(');
+    omni_skip(s);
+
+    // Empty list pattern: ()
+    if (parse_peek(s) == ')') {
+      parse_advance(s);
+      return omni_pat_lit(omni_nil());
+    }
+
+    // Check for 'or' pattern: (or pat1 pat2 ...)
+    u32 kw_start, kw_len;
+    if (omni_parse_symbol_raw(s, &kw_start, &kw_len) &&
+        omni_symbol_is(s, kw_start, kw_len, "or")) {
+      Term patterns = omni_nil();
+      Term *tail = &patterns;
+      while (parse_peek(s) != ')' && !parse_at_end(s)) {
+        Term pat = parse_omni_pattern(s);
+        Term cell = omni_cons(pat, omni_nil());
+        *tail = cell;
+        tail = &HEAP[term_val(cell) + 1];
+      }
+      omni_expect_char(s, ')');
+      return omni_ctr1(OMNI_NAM_POR, patterns);
+    }
+
+    // Back up for non-'or' cases
+    s->pos -= kw_len;
+    omni_skip(s);
+
+    // List pattern: (h .. t) or (a b c) or (Constructor args...)
+    Term patterns = omni_nil();
+    Term *tail = &patterns;
+    int has_spread = 0;
+    Term spread_var = omni_nil();
+
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      // Check for spread: .. rest
+      if (parse_peek(s) == '.' && s->pos + 1 < s->len && s->src[s->pos + 1] == '.') {
+        s->pos += 2;  // skip ..
+        omni_skip(s);
+        u32 rest_start, rest_len;
+        if (omni_parse_symbol_raw(s, &rest_start, &rest_len)) {
+          u32 rest_nick = omni_symbol_nick(s, rest_start, rest_len);
+          omni_bind_push(rest_nick);
+          spread_var = omni_ctr1(OMNI_NAM_SPRD, term_new_num(rest_nick));
+          has_spread = 1;
+        }
+        break;
+      }
+
+      Term pat = parse_omni_pattern(s);
+      Term cell = omni_cons(pat, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+
+    omni_expect_char(s, ')');
+
+    // If has spread, it's a list spread pattern
+    if (has_spread) {
+      // Append spread to the patterns list
+      Term spread_cell = omni_cons(spread_var, omni_nil());
+      *tail = spread_cell;
+    }
+
+    // Return as list pattern
+    return omni_ctr1(OMNI_NAM_PLST, patterns);
+  }
+
   // Constructor or variable pattern
   u32 sym_start, sym_len;
   if (omni_parse_symbol_raw(s, &sym_start, &sym_len)) {
     u32 nick = omni_symbol_nick(s, sym_start, sym_len);
 
-    // Check for reserved words
-    if (omni_symbol_is(s, sym_start, sym_len, "true")) {
+    // Check for reserved words (case-insensitive for True/False)
+    if (omni_symbol_is(s, sym_start, sym_len, "true") ||
+        omni_symbol_is(s, sym_start, sym_len, "True")) {
       return omni_pat_lit(omni_true());
     }
-    if (omni_symbol_is(s, sym_start, sym_len, "false")) {
+    if (omni_symbol_is(s, sym_start, sym_len, "false") ||
+        omni_symbol_is(s, sym_start, sym_len, "False")) {
       return omni_pat_lit(omni_false());
     }
-    if (omni_symbol_is(s, sym_start, sym_len, "nothing")) {
+    if (omni_symbol_is(s, sym_start, sym_len, "nothing") ||
+        omni_symbol_is(s, sym_start, sym_len, "Nothing")) {
       return omni_pat_lit(omni_nothing());
     }
 
@@ -1156,33 +1319,26 @@ fn Term parse_omni_pattern_base(PState *s) {
 }
 
 // =============================================================================
-// Match Clause Parsing: [pattern result] or [pattern :when guard result]
+// Match Clause Parsing: pattern result or pattern & guard result (flat pairs)
 // =============================================================================
 
 fn Term parse_omni_match_clause(PState *s) {
-  omni_expect_char(s, '[');
-
   u32 binds_before = OMNI_BINDS_LEN;
 
-  // Parse pattern
+  // Parse pattern (flat, no brackets)
   Term pattern = parse_omni_pattern(s);
 
-  // Check for guard
+  // Check for guard with & syntax
   Term guard = omni_nil();
-  if (parse_peek(s) == ':') {
-    parse_advance(s);
-    if (omni_match(s, "when")) {
-      guard = parse_omni_expr(s);
-    } else {
-      // Put the colon back (it was a colon-quoted symbol)
-      s->pos--;
-    }
+  omni_skip(s);
+  if (parse_peek(s) == '&') {
+    parse_advance(s);  // skip &
+    omni_skip(s);
+    guard = parse_omni_expr(s);
   }
 
-  // Parse body
+  // Parse body (result expression)
   Term body = parse_omni_expr(s);
-
-  omni_expect_char(s, ']');
 
   // Pop bindings from pattern
   omni_bind_pop(OMNI_BINDS_LEN - binds_before);
@@ -1198,11 +1354,33 @@ fn Term parse_omni_atom(PState *s) {
   omni_skip(s);
   char c = parse_peek(s);
 
-  // Quote: 'expr
+  // Quote: 'expr or '(list elements)
   if (c == '\'') {
     parse_advance(s);
-    Term quoted = parse_omni_atom(s);
-    // Plain quote - wraps in #Cod{} which evaluates to itself
+    omni_skip(s);
+
+    // '(...) is a quoted list literal
+    if (parse_peek(s) == '(') {
+      parse_advance(s);  // consume '('
+      omni_skip(s);
+
+      // Build list from elements
+      Term result = omni_nil();
+      Term *tail = &result;
+
+      while (parse_peek(s) != ')' && !parse_at_end(s)) {
+        Term elem = parse_omni_expr(s);
+        Term cell = omni_cons(elem, omni_nil());
+        *tail = cell;
+        tail = &HEAP[term_val(cell) + 1];
+      }
+
+      omni_expect_char(s, ')');
+      return result;
+    }
+
+    // Regular quote - wraps in #Cod{} which evaluates to itself
+    Term quoted = parse_omni_expr(s);
     return omni_ctr1(OMNI_NAM_COD, quoted);
   }
 
@@ -1394,8 +1572,13 @@ fn Term parse_omni_atom(PState *s) {
             if (omni_bind_lookup(sym_nick, &idx)) {
               var_ref = omni_var(idx);
             } else {
-              // Free variable - use symbol
-              var_ref = omni_sym(sym_nick);
+              // Free variable - use table_id for runtime resolution
+              char name_buf[256];
+              u32 copy_len = sym_len < 255 ? sym_len : 255;
+              memcpy(name_buf, s->src + sym_start, copy_len);
+              name_buf[copy_len] = '\0';
+              u32 ref_id = table_find(name_buf, copy_len);
+              var_ref = omni_sym(ref_id);
             }
             Term exp_part = omni_ctr1(OMNI_NAM_FEXP, var_ref);
             Term cell = omni_cons(exp_part, omni_nil());
@@ -1547,8 +1730,9 @@ fn Term parse_omni_atom(PState *s) {
       return term_new_ref(ref_id);
     }
 
-    // Free variable - treat as symbol (will be resolved at runtime)
-    return omni_sym(nick);
+    // Free variable - store table ID (not nick) for runtime resolution
+    // This handles forward references like mutual recursion (even?/odd?)
+    return omni_sym(ref_id);
   }
 
   parse_error(s, "expression", c);
@@ -1572,17 +1756,18 @@ fn Term parse_omni_sexp(PState *s) {
   }
 
   // Get the head symbol
+  u32 saved_pos = s->pos;  // Save position before attempting symbol parse
   u32 sym_start, sym_len;
   if (!omni_parse_symbol_raw(s, &sym_start, &sym_len)) {
     // Not a special form, parse as application
-    s->pos = sym_start;  // Rewind
-    Term fn = parse_omni_expr(s);
+    s->pos = saved_pos;  // Rewind to position before symbol parse attempt
+    Term func = parse_omni_expr(s);
     while (parse_peek(s) != ')' && !parse_at_end(s)) {
       Term arg = parse_omni_expr(s);
-      fn = omni_app(fn, arg);
+      func = omni_app(func, arg);
     }
     omni_expect_char(s, ')');
-    return fn;
+    return func;
   }
 
   // ============ SPECIAL FORMS ============
@@ -1631,7 +1816,9 @@ fn Term parse_omni_sexp(PState *s) {
         memcpy(type_name, s->src + type_start, copy_len);
         type_name[copy_len] = '\0';
         u32 def_id = table_find(type_name, copy_len);
-        BOOK[def_id] = result;
+        u64 loc = heap_alloc(1);
+        HEAP[loc] = result;
+        BOOK[def_id] = (u32)loc;
 
         return result;
       }
@@ -1952,7 +2139,9 @@ fn Term parse_omni_sexp(PState *s) {
         memcpy(effect_name, s->src + effect_start, copy_len);
         effect_name[copy_len] = '\0';
         u32 def_id = table_find(effect_name, copy_len);
-        BOOK[def_id] = result;
+        u64 loc = heap_alloc(1);
+        HEAP[loc] = result;
+        BOOK[def_id] = (u32)loc;
 
         return result;
       }
@@ -2096,7 +2285,9 @@ fn Term parse_omni_sexp(PState *s) {
         memcpy(mac_name, s->src + mac_start, copy_len);
         mac_name[copy_len] = '\0';
         u32 def_id = table_find(mac_name, copy_len);
-        BOOK[def_id] = macro;
+        u64 loc = heap_alloc(1);
+        HEAP[loc] = macro;
+        BOOK[def_id] = (u32)loc;
 
         return macro;
       }
@@ -2218,7 +2409,9 @@ fn Term parse_omni_sexp(PState *s) {
         memcpy(gram_name, s->src + gram_start, copy_len);
         gram_name[copy_len] = '\0';
         u32 def_id = table_find(gram_name, copy_len);
-        BOOK[def_id] = grammar;
+        u64 loc = heap_alloc(1);
+        HEAP[loc] = grammar;
+        BOOK[def_id] = (u32)loc;
 
         return grammar;
       }
@@ -2244,6 +2437,7 @@ fn Term parse_omni_sexp(PState *s) {
     OmniSlot slots[64];
     u32 slot_count = 0;
     int has_typed_params = 0;
+    omni_skip(s);  // Skip whitespace before slots
     while (parse_peek(s) == '[' && slot_count < 64) {
       if (!parse_omni_slot(s, &slots[slot_count])) break;
       // Check if this slot has a type annotation
@@ -2252,6 +2446,9 @@ fn Term parse_omni_sexp(PState *s) {
       }
       slot_count++;
     }
+
+    // Skip whitespace after slots before checking for return type and metadata
+    omni_skip(s);
 
     // Parse return type if present
     Term ret_type = omni_nil();
@@ -2359,6 +2556,28 @@ fn Term parse_omni_sexp(PState *s) {
       }
     }
 
+    // Parse ^:pure metadata - marks function as having no side effects
+    int is_pure = 0;
+    if (parse_peek(s) == '^') {
+      u32 saved_pure_pos = s->pos;
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len) &&
+            omni_symbol_is(s, meta_start, meta_len, "pure")) {
+          is_pure = 1;
+          omni_skip(s);
+        } else {
+          // Not ^:pure, restore position
+          s->pos = saved_pure_pos;
+        }
+      } else {
+        // Not ^:something, restore position
+        s->pos = saved_pure_pos;
+      }
+    }
+
     // Push parameter bindings
     for (u32 i = 0; i < slot_count; i++) {
       omni_bind_push(slots[i].name_nick);
@@ -2457,6 +2676,12 @@ fn Term parse_omni_sexp(PState *s) {
       body = omni_lam(body);
     }
 
+    // Wrap with purity marker if ^:pure was specified
+    // #Pure{fn} indicates function has no side effects
+    if (is_pure) {
+      body = omni_ctr1(OMNI_NAM_PURE, body);
+    }
+
     // Check if this is a typed function (for multiple dispatch)
     if (has_typed_params && slot_count > 0) {
       // Build signature: list of types
@@ -2484,25 +2709,36 @@ fn Term parse_omni_sexp(PState *s) {
       // The runtime will accumulate multiple methods for same name
       u32 def_id = table_find(def_name, copy_len);
 
-      // If this is the first method, wrap in GFun; otherwise append to existing
-      Term existing = BOOK[def_id];
-      if (term_tag(existing) == CTR && term_ext(existing) == OMNI_NAM_GFUN) {
+      // BOOK stores heap locations - read existing entry if any
+      u32 existing_loc = BOOK[def_id];
+      Term existing = (existing_loc != 0) ? HEAP[existing_loc] : 0;
+
+      Term gfun;
+      if (term_tag(existing) == C02 && term_ext(existing) == OMNI_NAM_GFUN) {
         // Append method to existing generic function
         Term methods = omni_ctr_arg(existing, 1);
         Term new_methods = omni_cons(meth, methods);
-        BOOK[def_id] = omni_ctr2(OMNI_NAM_GFUN, term_new_num(name_nick), new_methods);
+        gfun = omni_ctr2(OMNI_NAM_GFUN, term_new_num(name_nick), new_methods);
+        HEAP[existing_loc] = gfun;  // Update in place
       } else {
         // Create new generic function with this method
         Term methods = omni_cons(meth, omni_nil());
-        BOOK[def_id] = omni_ctr2(OMNI_NAM_GFUN, term_new_num(name_nick), methods);
+        gfun = omni_ctr2(OMNI_NAM_GFUN, term_new_num(name_nick), methods);
+        u64 loc = heap_alloc(1);
+        HEAP[loc] = gfun;
+        BOOK[def_id] = (u32)loc;
       }
 
       return meth;
     }
 
     // Regular (untyped) definition
+    // BOOK stores heap locations (u32), not full Terms (u64)
+    // So allocate heap slot, store term there, put location in BOOK
     u32 def_id = table_find(def_name, copy_len);
-    BOOK[def_id] = body;
+    u64 loc = heap_alloc(1);
+    HEAP[loc] = body;
+    BOOK[def_id] = (u32)loc;
 
     return body;
   }
@@ -2567,7 +2803,9 @@ fn Term parse_omni_sexp(PState *s) {
     memcpy(mod_name, s->src + mod_start, copy_len);
     mod_name[copy_len] = '\0';
     u32 def_id = table_find(mod_name, copy_len);
-    BOOK[def_id] = mod;
+    u64 loc = heap_alloc(1);
+    HEAP[loc] = mod;
+    BOOK[def_id] = (u32)loc;
 
     return mod;
   }
@@ -2667,13 +2905,34 @@ fn Term parse_omni_sexp(PState *s) {
       u32 name_nick;      // Name nick (for simple binding)
       Term value;         // Value expression
       int is_destruct;    // 1 if destructuring, 0 if simple
+      int is_strict;      // 1 if ^:strict metadata, 0 for lazy (default)
     } LetBinding;
     LetBinding bindings[64];
     u32 binding_count = 0;
 
     // Parse bindings
+    omni_skip(s);  // Skip whitespace before first binding
     while (parse_peek(s) == '[' && binding_count < 64) {
       omni_expect_char(s, '[');
+
+      // Check for ^:strict metadata on this binding
+      int binding_is_strict = 0;
+      omni_skip(s);
+      if (parse_peek(s) == '^') {
+        parse_advance(s);  // skip ^
+        if (parse_peek(s) == ':') {
+          parse_advance(s);  // skip :
+          u32 bmeta_start, bmeta_len;
+          if (omni_parse_symbol_raw(s, &bmeta_start, &bmeta_len)) {
+            if (omni_symbol_is(s, bmeta_start, bmeta_len, "strict")) {
+              binding_is_strict = 1;
+            }
+            // Could add other per-binding metadata here
+          }
+        }
+        omni_skip(s);
+      }
+      bindings[binding_count].is_strict = binding_is_strict;
 
       // Check if this is a destructuring pattern (starts with [ for array)
       if (parse_peek(s) == '[') {
@@ -2707,6 +2966,7 @@ fn Term parse_omni_sexp(PState *s) {
 
       omni_expect_char(s, ']');
       binding_count++;
+      omni_skip(s);  // Skip whitespace after binding
     }
 
     // Parse body
@@ -2735,7 +2995,7 @@ fn Term parse_omni_sexp(PState *s) {
       // Build list of initial values
       Term init_values = omni_nil();
       for (int i = (int)binding_count - 1; i >= 0; i--) {
-        init_values = omni_pair(bindings[i].value, init_values);
+        init_values = omni_cons(bindings[i].value, init_values);
       }
 
       // Wrap body in lambdas for each binding (innermost to outermost)
@@ -2754,15 +3014,18 @@ fn Term parse_omni_sexp(PState *s) {
       return omni_ctr3(nlet_tag, term_new_num(loop_name_nick), init_values, loop_body);
     } else {
       // Regular let: construct let chain from innermost to outermost
-      // Note: Regular let also respects ^:seq for sequential binding evaluation
-      // but current implementation is already sequential (let* semantics)
+      // Bindings are lazy by default (#Let), use #LetS for ^:strict bindings
       Term result = body;
       for (int i = (int)binding_count - 1; i >= 0; i--) {
         if (bindings[i].is_destruct) {
           // Destructuring let: #DLet{pattern, value, body}
+          // TODO: Support ^:strict on destructuring bindings
           result = omni_ctr3(OMNI_NAM_DLET, bindings[i].pattern, bindings[i].value, result);
+        } else if (bindings[i].is_strict) {
+          // Strict let: #LetS{value, body} - forces eager evaluation
+          result = omni_lets(bindings[i].value, result);
         } else {
-          // Simple let: #Let{value, body}
+          // Lazy let: #Let{value, body} - default, allows parallel evaluation
           result = omni_let(bindings[i].value, result);
         }
       }
@@ -2782,6 +3045,7 @@ fn Term parse_omni_sexp(PState *s) {
 
     OmniSlot slots[64];
     u32 slot_count = 0;
+    omni_skip(s);  // Skip whitespace before slots
     while (parse_peek(s) == '[' && slot_count < 64) {
       if (!parse_omni_slot(s, &slots[slot_count])) break;
       slot_count++;
@@ -2849,40 +3113,75 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_match(cond, cases);
   }
 
-  // match: (match expr [pattern body]...)
+  // match: (match expr pattern1 result1 pattern2 result2 ...)
+  // Flat pattern-result pairs with & for guards: pattern & guard result
+  // Optional ^:speculate for parallel speculative evaluation of all branches
   if (omni_symbol_is(s, sym_start, sym_len, "match")) {
+    // Check for ^:speculate metadata
+    int is_speculative = 0;
+    omni_skip(s);
+    if (parse_peek(s) == '^') {
+      u32 saved_spec_pos = s->pos;
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len) &&
+            omni_symbol_is(s, meta_start, meta_len, "speculate")) {
+          is_speculative = 1;
+          omni_skip(s);
+        } else {
+          // Not ^:speculate, restore position
+          s->pos = saved_spec_pos;
+        }
+      } else {
+        s->pos = saved_spec_pos;
+      }
+    }
+
     Term scrutinee = parse_omni_expr(s);
 
     Term cases = omni_nil();
     Term *tail = &cases;
 
-    while (parse_peek(s) == '[') {
+    // Parse flat pattern-result pairs until closing paren
+    omni_skip(s);
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
       Term clause = parse_omni_match_clause(s);
       Term cell = omni_cons(clause, omni_nil());
       *tail = cell;
       tail = &HEAP[term_val(cell) + 1];
+      omni_skip(s);
     }
 
     omni_expect_char(s, ')');
+    if (is_speculative) {
+      return omni_match_speculative(scrutinee, cases);
+    }
     return omni_match(scrutinee, cases);
   }
 
-  // handle: (handle body [effect-name [args] handler-body]...)
+  // handle: (handle body (effect-name [args] handler-body)...)
+  // Also accepts: (handle body [effect-name [args] handler-body]...)
   if (omni_symbol_is(s, sym_start, sym_len, "handle")) {
     Term body = parse_omni_expr(s);
 
     Term handlers = omni_nil();
     Term *tail = &handlers;
 
-    while (parse_peek(s) == '[') {
-      omni_expect_char(s, '[');
+    // Accept both ( and [ for handler clauses
+    while (parse_peek(s) == '[' || parse_peek(s) == '(') {
+      char open_bracket = parse_peek(s);
+      char close_bracket = (open_bracket == '[') ? ']' : ')';
+      parse_advance(s);  // consume opening bracket
+      omni_skip(s);
 
       // Effect name
       u32 eff_start, eff_len;
       omni_parse_symbol_raw(s, &eff_start, &eff_len);
       u32 eff_nick = omni_symbol_nick(s, eff_start, eff_len);
 
-      // Handler args
+      // Handler args - always use []
       omni_expect_char(s, '[');
       u32 handler_binds = 0;
       while (parse_peek(s) != ']') {
@@ -2898,7 +3197,12 @@ fn Term parse_omni_sexp(PState *s) {
       // Handler body
       Term handler_body = parse_omni_expr(s);
 
-      omni_expect_char(s, ']');
+      // Expect matching close bracket
+      if (parse_peek(s) != close_bracket) {
+        parse_error(s, (char[2]){close_bracket, 0}, parse_peek(s));
+      }
+      parse_advance(s);
+      omni_skip(s);
 
       omni_bind_pop(handler_binds);
 
@@ -2929,7 +3233,7 @@ fn Term parse_omni_sexp(PState *s) {
     // Parse continuation variable name
     u32 k_start, k_len;
     if (!omni_parse_symbol_raw(s, &k_start, &k_len)) {
-      s->error = "control requires continuation variable name";
+      fprintf(stderr, "Error at line %u col %u: control requires continuation variable name\n", s->line, s->col);
       return omni_nothing();
     }
     u32 k_nick = omni_symbol_nick(s, k_start, k_len);
@@ -2949,7 +3253,7 @@ fn Term parse_omni_sexp(PState *s) {
   if (omni_symbol_is(s, sym_start, sym_len, "shift")) {
     u32 k_start, k_len;
     if (!omni_parse_symbol_raw(s, &k_start, &k_len)) {
-      s->error = "shift requires continuation variable name";
+      fprintf(stderr, "Error at line %u col %u: shift requires continuation variable name\n", s->line, s->col);
       return omni_nothing();
     }
     u32 k_nick = omni_symbol_nick(s, k_start, k_len);
@@ -2972,6 +3276,45 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_yield(val);
   }
 
+  // spawn: (spawn body) - create and start a fiber
+  if (omni_symbol_is(s, sym_start, sym_len, "spawn")) {
+    Term body = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_fiber_spawn(body);
+  }
+
+  // fiber-resume: (fiber-resume f val) - resume suspended fiber with value
+  if (omni_symbol_is(s, sym_start, sym_len, "fiber-resume")) {
+    Term fiber = parse_omni_expr(s);
+    Term val = omni_nothing();
+    if (parse_peek(s) != ')') {
+      val = parse_omni_expr(s);
+    }
+    omni_expect_char(s, ')');
+    return omni_fiber_resume(fiber, val);
+  }
+
+  // fiber-done?: (fiber-done? f) - check if fiber is completed
+  if (omni_symbol_is(s, sym_start, sym_len, "fiber-done?")) {
+    Term fiber = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_fiber_done(fiber);
+  }
+
+  // fiber-result: (fiber-result f) - get final result from completed fiber
+  if (omni_symbol_is(s, sym_start, sym_len, "fiber-result")) {
+    Term fiber = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_fiber_result(fiber);
+  }
+
+  // fiber-mailbox: (fiber-mailbox f) - get list of yielded values
+  if (omni_symbol_is(s, sym_start, sym_len, "fiber-mailbox")) {
+    Term fiber = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_fiber_mailbox(fiber);
+  }
+
   // NOTE: loop/recur removed - use recursion or effects for iteration
 
   // |> pipe operator: (|> value fn1 fn2 ...) - thread value through functions
@@ -2982,8 +3325,8 @@ fn Term parse_omni_sexp(PState *s) {
 
     // Chain functions left-to-right
     while (parse_peek(s) != ')' && !parse_at_end(s)) {
-      Term fn = parse_omni_expr(s);
-      result = omni_app(fn, result);
+      Term func = parse_omni_expr(s);
+      result = omni_app(func, result);
     }
 
     omni_expect_char(s, ')');
@@ -2992,41 +3335,41 @@ fn Term parse_omni_sexp(PState *s) {
 
   // apply: (apply fn args-list) - apply function to list of arguments
   if (omni_symbol_is(s, sym_start, sym_len, "apply")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     Term args_list = parse_omni_expr(s);
     omni_expect_char(s, ')');
 
     // Create apply: #Appl{fn, args}
-    return omni_ctr2(OMNI_NAM_APPL, fn, args_list);
+    return omni_ctr2(OMNI_NAM_APPL, func, args_list);
   }
 
   // curry: (curry fn) or (curry fn arity) - convert multi-arg function to curried form
   // ((curry f) a b c) where f takes 3 args → f(a)(b)(c)
   // (curry f 2) - explicitly curry the 2-arg version for multi-arity functions
   if (omni_symbol_is(s, sym_start, sym_len, "curry")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     Term arity = omni_nil();  // nil means infer/max arity
     if (parse_peek(s) != ')') {
       arity = parse_omni_expr(s);
     }
     omni_expect_char(s, ')');
-    return omni_ctr2(OMNI_NAM_CURY, fn, arity);
+    return omni_ctr2(OMNI_NAM_CURY, func, arity);
   }
 
   // flip: (flip fn) - swap first two arguments
   // ((flip f) a b) → (f b a)
   if (omni_symbol_is(s, sym_start, sym_len, "flip")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr1(OMNI_NAM_FLIP, fn);
+    return omni_ctr1(OMNI_NAM_FLIP, func);
   }
 
   // rotate: (rotate fn) - cycle arguments left (first arg moves to end)
   // ((rotate f) a b c) → (f b c a)
   if (omni_symbol_is(s, sym_start, sym_len, "rotate")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr1(OMNI_NAM_ROTR, fn);
+    return omni_ctr1(OMNI_NAM_ROTR, func);
   }
 
   // comp: (comp fn1 fn2 ...) - compose functions (right to left)
@@ -3035,8 +3378,8 @@ fn Term parse_omni_sexp(PState *s) {
     Term *tail = &fns;
 
     while (parse_peek(s) != ')') {
-      Term fn = parse_omni_expr(s);
-      Term cell = omni_cons(fn, omni_nil());
+      Term func = parse_omni_expr(s);
+      Term cell = omni_cons(func, omni_nil());
       *tail = cell;
       tail = &HEAP[term_val(cell) + 1];
     }
@@ -3096,7 +3439,8 @@ fn Term parse_omni_sexp(PState *s) {
     omni_expect_char(s, ')');
     return omni_div(a, b);
   }
-  if (omni_symbol_is(s, sym_start, sym_len, "mod")) {
+  if (omni_symbol_is(s, sym_start, sym_len, "mod") ||
+      omni_symbol_is(s, sym_start, sym_len, "%")) {
     Term a = parse_omni_expr(s);
     Term b = parse_omni_expr(s);
     omni_expect_char(s, ')');
@@ -3109,6 +3453,14 @@ fn Term parse_omni_sexp(PState *s) {
     Term b = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_eql(a, b);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "!=") ||
+      omni_symbol_is(s, sym_start, sym_len, "/=") ||
+      omni_symbol_is(s, sym_start, sym_len, "<>")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_neq(a, b);
   }
   if (omni_symbol_is(s, sym_start, sym_len, "<")) {
     Term a = parse_omni_expr(s);
@@ -3152,6 +3504,30 @@ fn Term parse_omni_sexp(PState *s) {
     Term a = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_not(a);
+  }
+
+  // Simple type predicates
+  if (omni_symbol_is(s, sym_start, sym_len, "int?") ||
+      omni_symbol_is(s, sym_start, sym_len, "integer?")) {
+    Term value = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_INTP, value);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "list?")) {
+    Term value = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_LSTP, value);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "nil?") ||
+      omni_symbol_is(s, sym_start, sym_len, "empty?")) {
+    Term value = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_NILP, value);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "number?")) {
+    Term value = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_NUMP, value);
   }
 
   // Type predicates
@@ -3291,9 +3667,9 @@ fn Term parse_omni_sexp(PState *s) {
   if (omni_symbol_is(s, sym_start, sym_len, "update")) {
     Term coll = parse_omni_expr(s);
     Term key = parse_omni_expr(s);
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr3(OMNI_NAM_UPDT, coll, key, fn);
+    return omni_ctr3(OMNI_NAM_UPDT, coll, key, func);
   }
 
   // get-in: (get-in coll [k1 k2 ...]) or (get-in coll [k1 k2 ...] default)
@@ -3321,9 +3697,9 @@ fn Term parse_omni_sexp(PState *s) {
   if (omni_symbol_is(s, sym_start, sym_len, "update-in")) {
     Term coll = parse_omni_expr(s);
     Term path = parse_omni_expr(s);
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr3(OMNI_NAM_UPIN, coll, path, fn);
+    return omni_ctr3(OMNI_NAM_UPIN, coll, path, func);
   }
 
   // ==========================================================================
@@ -3357,9 +3733,9 @@ fn Term parse_omni_sexp(PState *s) {
   if (omni_symbol_is(s, sym_start, sym_len, "update!")) {
     Term coll = parse_omni_expr(s);
     Term key = parse_omni_expr(s);
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr3(OMNI_NAM_UPDTB, coll, key, fn);
+    return omni_ctr3(OMNI_NAM_UPDTB, coll, key, func);
   }
 
   // dissoc: (dissoc coll key) - remove key from collection
@@ -3400,10 +3776,10 @@ fn Term parse_omni_sexp(PState *s) {
 
   // iter-map: (iter-map fn iter) - lazy map over iterator
   if (omni_symbol_is(s, sym_start, sym_len, "iter-map")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     Term iter = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr2(OMNI_NAM_IMAP, iter, fn);
+    return omni_ctr2(OMNI_NAM_IMAP, iter, func);
   }
 
   // iter-filter: (iter-filter pred iter) - lazy filter over iterator
@@ -3448,10 +3824,10 @@ fn Term parse_omni_sexp(PState *s) {
 
   // iterate: (iterate fn init) - infinite lazy sequence
   if (omni_symbol_is(s, sym_start, sym_len, "iterate")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     Term init = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr2(OMNI_NAM_ITER, init, fn);
+    return omni_ctr2(OMNI_NAM_ITER, init, func);
   }
 
   // repeat: (repeat val) or (repeat n val) - repeated value
@@ -3536,11 +3912,11 @@ fn Term parse_omni_sexp(PState *s) {
   if (omni_symbol_is(s, sym_start, sym_len, "iter-fold") ||
       omni_symbol_is(s, sym_start, sym_len, "fold") ||
       omni_symbol_is(s, sym_start, sym_len, "reduce")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     Term init = parse_omni_expr(s);
     Term iter = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr3(OMNI_NAM_IFLD, iter, init, fn);
+    return omni_ctr3(OMNI_NAM_IFLD, iter, init, func);
   }
 
   // iter-find: (iter-find pred iter) - find first matching element
@@ -3582,10 +3958,10 @@ fn Term parse_omni_sexp(PState *s) {
   // iter-flat-map: (iter-flat-map fn iter) - map then flatten
   if (omni_symbol_is(s, sym_start, sym_len, "iter-flat-map") ||
       omni_symbol_is(s, sym_start, sym_len, "flat-map")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     Term iter = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr2(OMNI_NAM_IFMP, iter, fn);
+    return omni_ctr2(OMNI_NAM_IFMP, iter, func);
   }
 
   // iter-step-by: (iter-step-by n iter) - take every nth element
@@ -4252,9 +4628,9 @@ fn Term parse_omni_sexp(PState *s) {
 
   // source: (source fn) - get source code of function
   if (omni_symbol_is(s, sym_start, sym_len, "source")) {
-    Term fn = parse_omni_expr(s);
+    Term func = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr1(OMNI_NAM_SRCE, fn);
+    return omni_ctr1(OMNI_NAM_SRCE, func);
   }
 
   // profile: (profile label expr) - profiling wrapper
@@ -4340,7 +4716,7 @@ fn Term parse_omni_sexp(PState *s) {
     Term port = parse_omni_expr(s);
     Term data = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr3(OMNI_NAM_UDPS, sock, omni_cons(host, omni_cons(port, omni_cons(data, omni_nil()))));
+    return omni_ctr4(OMNI_NAM_UDPS, sock, host, port, data);
   }
 
   // udp-recv-from: (udp-recv-from sock max-len) -> [data host port] or nothing
@@ -4380,7 +4756,7 @@ fn Term parse_omni_sexp(PState *s) {
     Term headers = parse_omni_expr(s);
     Term body = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return omni_ctr3(OMNI_NAM_HTTP, method, omni_cons(url, omni_cons(headers, omni_cons(body, omni_nil()))));
+    return omni_ctr4(OMNI_NAM_HTTP, method, url, headers, body);
   }
 
   // require: (require predicate) - inline precondition check
@@ -4427,6 +4803,58 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_perform(tag, payload);
   }
 
+  // map/filter/foldl: Support ^:seq metadata for sequential processing
+  // (map ^:seq f xs) -> (@map_seq f xs)
+  // (filter ^:seq pred xs) -> (@filter_seq pred xs)
+  // (foldl ^:seq f acc xs) -> (@foldl_seq f acc xs)
+  if (omni_symbol_is(s, sym_start, sym_len, "map") ||
+      omni_symbol_is(s, sym_start, sym_len, "filter") ||
+      omni_symbol_is(s, sym_start, sym_len, "foldl")) {
+    // Check for ^:seq metadata
+    int is_sequential = 0;
+    omni_skip(s);
+    if (parse_peek(s) == '^') {
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len)) {
+          if (omni_symbol_is(s, meta_start, meta_len, "seq")) {
+            is_sequential = 1;
+          }
+        }
+      }
+    }
+
+    // Determine which function to call
+    const char* fn_name;
+    if (omni_symbol_is(s, sym_start, sym_len, "map")) {
+      fn_name = is_sequential ? "map_seq" : "map";
+    } else if (omni_symbol_is(s, sym_start, sym_len, "filter")) {
+      fn_name = is_sequential ? "filter_seq" : "filter";
+    } else {
+      fn_name = is_sequential ? "foldl_seq" : "foldl";
+    }
+
+    // Look up the function
+    u32 fn_id = table_find(fn_name, strlen(fn_name));
+    Term func;
+    if (BOOK[fn_id] != 0) {
+      func = term_new_ref(fn_id);
+    } else {
+      func = omni_sym(fn_id);
+    }
+
+    // Parse arguments
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      Term arg = parse_omni_expr(s);
+      func = omni_app(func, arg);
+    }
+
+    omni_expect_char(s, ')');
+    return func;
+  }
+
   // Default: function application
   u32 fn_nick = omni_symbol_nick(s, sym_start, sym_len);
 
@@ -4436,29 +4864,29 @@ fn Term parse_omni_sexp(PState *s) {
   memcpy(fn_name, s->src + sym_start, fn_len);
   fn_name[fn_len] = '\0';
 
-  Term fn;
+  Term func;
   u32 fn_id = table_find(fn_name, fn_len);
   if (BOOK[fn_id] != 0) {
-    fn = term_new_ref(fn_id);
+    func = term_new_ref(fn_id);
   } else {
     // Check if bound variable
     u32 idx;
     if (omni_bind_lookup(fn_nick, &idx)) {
-      fn = omni_var(idx);
+      func = omni_var(idx);
     } else {
-      // Unknown - symbol reference
-      fn = omni_sym(fn_nick);
+      // Unknown - use table_id for runtime resolution (handles forward refs)
+      func = omni_sym(fn_id);
     }
   }
 
   // Parse arguments
   while (parse_peek(s) != ')' && !parse_at_end(s)) {
     Term arg = parse_omni_expr(s);
-    fn = omni_app(fn, arg);
+    func = omni_app(func, arg);
   }
 
   omni_expect_char(s, ')');
-  return fn;
+  return func;
 }
 
 // =============================================================================

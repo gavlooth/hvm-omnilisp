@@ -1,8 +1,11 @@
+#pragma once
+
 // OmniLisp Nick-encoded names
 // Constructor names are encoded as base64-like 24-bit values
 // Each character maps to 0-63, allowing 4 characters max
 
-#include "../../hvm4/clang/hvm4.c"
+// hvm4.c is already included by main.c before this file
+// #include "../../../hvm4/clang/hvm4.c"
 
 // =============================================================================
 // Nick Encoding Utilities
@@ -29,7 +32,8 @@ static u32 OMNI_NAM_VAR;   // Variable (de Bruijn index)
 static u32 OMNI_NAM_LAM;   // Lambda
 static u32 OMNI_NAM_LAMR;  // Recursive lambda
 static u32 OMNI_NAM_APP;   // Application
-static u32 OMNI_NAM_LET;   // Let binding
+static u32 OMNI_NAM_LET;   // Let binding (lazy by default)
+static u32 OMNI_NAM_LETS;  // Strict let binding (^:strict)
 static u32 OMNI_NAM_IF;    // Conditional
 static u32 OMNI_NAM_DO;    // Sequencing
 
@@ -40,6 +44,7 @@ static u32 OMNI_NAM_MUL;   // *
 static u32 OMNI_NAM_DIV;   // /
 static u32 OMNI_NAM_MOD;   // mod
 static u32 OMNI_NAM_EQL;   // =
+static u32 OMNI_NAM_NEQ;   // !=
 static u32 OMNI_NAM_LT;    // <
 static u32 OMNI_NAM_GT;    // >
 static u32 OMNI_NAM_LE;    // <=
@@ -47,6 +52,12 @@ static u32 OMNI_NAM_GE;    // >=
 static u32 OMNI_NAM_AND;   // and
 static u32 OMNI_NAM_OR;    // or
 static u32 OMNI_NAM_NOT;   // not
+
+// Type predicates
+static u32 OMNI_NAM_INTP;  // int?
+static u32 OMNI_NAM_LSTP;  // list?
+static u32 OMNI_NAM_NILP;  // nil?
+static u32 OMNI_NAM_NUMP;  // number?
 
 // Data structures
 static u32 OMNI_NAM_CON;   // Cons cell
@@ -63,6 +74,7 @@ static u32 OMNI_NAM_FIX;   // Fixed-point: #Fix{hi, lo, scale}
 
 // Pattern matching
 static u32 OMNI_NAM_MAT;   // Match expression
+static u32 OMNI_NAM_MATS;  // Speculative match (^:speculate) - evaluates all branches in parallel
 static u32 OMNI_NAM_NMAT;  // Native match
 static u32 OMNI_NAM_CASE;  // Case clause: #Case{pattern, guard, body}
 static u32 OMNI_NAM_PCTR;  // Constructor pattern: #PCtr{tag, args}
@@ -77,6 +89,8 @@ static u32 OMNI_NAM_SPRD;  // Spread pattern: #Sprd{name}
 static u32 OMNI_NAM_DLET;  // Destructuring let: #DLet{pattern, value, body}
 static u32 OMNI_NAM_PARR;  // Array pattern: #PArr{elements}
 static u32 OMNI_NAM_DLAM;  // Destructuring lambda: #DLam{pattern, body}
+static u32 OMNI_NAM_POR;   // Or pattern: #POr{patterns} - (or pat1 pat2 ...)
+static u32 OMNI_NAM_PLST;  // List pattern: #PLst{elements} - (h .. t) or (a b c)
 
 // Named let (Scheme-style loop)
 static u32 OMNI_NAM_NLET;  // Named let (parallel): #NLet{name, init_args, body}
@@ -261,6 +275,7 @@ static u32 OMNI_NAM_TEOP;  // Effect operation: #TEOp{name, params, ret_type}
 
 // Metadata
 static u32 OMNI_NAM_META;  // Metadata: #Meta{key, value, target}
+static u32 OMNI_NAM_PURE;  // Purity marker: #Pure{fn} - function has no side effects
 static u32 OMNI_NAM_COVR;  // Covariance marker: #Covr{tvar}
                            // e.g., ^:covar T → type parameter T is covariant
 static u32 OMNI_NAM_CNVR;  // Contravariance marker: #Cnvr{tvar}
@@ -307,7 +322,6 @@ static u32 OMNI_NAM_PRSC;  // Proof success: #PrSc{proof} - search found proof
 
 // Concurrency
 static u32 OMNI_NAM_FIBR;  // Fiber: #Fibr{state, cont, mailbox}
-static u32 OMNI_NAM_CHAN;  // Channel: #Chan{buf, cap, snd, rcv}
 static u32 OMNI_NAM_FORK;  // Fork (HVM4 superposition)
 static u32 OMNI_NAM_AMB;   // Nondeterminism
 
@@ -370,6 +384,13 @@ static u32 OMNI_NAM_FBRR;  // Fiber running: #FbrR
 static u32 OMNI_NAM_FBRS;  // Fiber suspended: #FbrS
 static u32 OMNI_NAM_FBRD;  // Fiber done: #FbrD
 static u32 OMNI_NAM_YLD;   // Yield expression: #Yld{val}
+
+// Fiber operations (exposed to user)
+static u32 OMNI_NAM_FSPN;  // Fiber spawn: #FSpn{body} - create and start fiber
+static u32 OMNI_NAM_FRSM;  // Fiber resume: #FRsm{fiber, value} - resume suspended fiber
+static u32 OMNI_NAM_FDNP;  // Fiber done?: #FDn?{fiber} - check if fiber completed
+static u32 OMNI_NAM_FRST;  // Fiber result: #FRst{fiber} - get final result
+static u32 OMNI_NAM_FMBX;  // Fiber mailbox: #FMbx{fiber} - get yielded values
 
 // Boolean values
 static u32 OMNI_NAM_TRUE;  // true
@@ -481,6 +502,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_LAMR = omni_nick("LamR");
   OMNI_NAM_APP  = omni_nick("App");
   OMNI_NAM_LET  = omni_nick("Let");
+  OMNI_NAM_LETS = omni_nick("LetS");
   OMNI_NAM_IF   = omni_nick("If");
   OMNI_NAM_DO   = omni_nick("Do");
 
@@ -491,6 +513,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_DIV = omni_nick("Div");
   OMNI_NAM_MOD = omni_nick("Mod");
   OMNI_NAM_EQL = omni_nick("Eql");
+  OMNI_NAM_NEQ = omni_nick("Neq");
   OMNI_NAM_LT  = omni_nick("Lt");
   OMNI_NAM_GT  = omni_nick("Gt");
   OMNI_NAM_LE  = omni_nick("Le");
@@ -498,6 +521,12 @@ fn void omni_names_init(void) {
   OMNI_NAM_AND = omni_nick("And");
   OMNI_NAM_OR  = omni_nick("Or");
   OMNI_NAM_NOT = omni_nick("Not");
+
+  // Type predicates
+  OMNI_NAM_INTP = omni_nick("IntP");
+  OMNI_NAM_LSTP = omni_nick("LstP");
+  OMNI_NAM_NILP = omni_nick("NilP");
+  OMNI_NAM_NUMP = omni_nick("NumP");
 
   // Data structures
   OMNI_NAM_CON  = NAM_CON;  // Use HVM4's CON
@@ -514,6 +543,7 @@ fn void omni_names_init(void) {
 
   // Pattern matching
   OMNI_NAM_MAT  = omni_nick("Mat");
+  OMNI_NAM_MATS = omni_nick("MatS");  // Speculative match (^:speculate)
   OMNI_NAM_NMAT = omni_nick("NMat");
   OMNI_NAM_CASE = omni_nick("Case");
   OMNI_NAM_PCTR = omni_nick("PCtr");
@@ -528,6 +558,8 @@ fn void omni_names_init(void) {
   OMNI_NAM_DLET = omni_nick("DLet");
   OMNI_NAM_PARR = omni_nick("PArr");
   OMNI_NAM_DLAM = omni_nick("DLam");
+  OMNI_NAM_POR  = omni_nick("POr");
+  OMNI_NAM_PLST = omni_nick("PLst");
 
   // Named let (Scheme-style loop)
   OMNI_NAM_NLET = omni_nick("NLet");   // Parallel (default)
@@ -704,6 +736,7 @@ fn void omni_names_init(void) {
 
   // Metadata
   OMNI_NAM_META = omni_nick("Meta");
+  OMNI_NAM_PURE = omni_nick("Pure");  // Purity marker
   OMNI_NAM_COVR = omni_nick("Covr");  // Covariance marker
   OMNI_NAM_CNVR = omni_nick("Cnvr");  // Contravariance marker
 
@@ -743,7 +776,6 @@ fn void omni_names_init(void) {
 
   // Concurrency
   OMNI_NAM_FIBR = omni_nick("Fibr");
-  OMNI_NAM_CHAN = omni_nick("Chan");
   OMNI_NAM_FORK = omni_nick("Fork");
   OMNI_NAM_AMB  = omni_nick("Amb");
 
@@ -803,6 +835,13 @@ fn void omni_names_init(void) {
   OMNI_NAM_FBRS = omni_nick("FbrS");
   OMNI_NAM_FBRD = omni_nick("FbrD");
   OMNI_NAM_YLD  = omni_nick("Yld");
+
+  // Fiber operations (exposed to user)
+  OMNI_NAM_FSPN = omni_nick("FSpn");
+  OMNI_NAM_FRSM = omni_nick("FRsm");
+  OMNI_NAM_FDNP = omni_nick("FDn?");
+  OMNI_NAM_FRST = omni_nick("FRst");
+  OMNI_NAM_FMBX = omni_nick("FMbx");
 
   // Booleans
   OMNI_NAM_TRUE = omni_nick("True");

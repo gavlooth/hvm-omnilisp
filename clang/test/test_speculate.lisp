@@ -1,0 +1,44 @@
+;; test_speculate.lisp - Tests for ^:speculate metadata on match
+
+;; TEST: basic speculative match
+;; EXPECT: "one"
+(match ^:speculate 1
+  0 "zero"
+  1 "one"
+  _ "other")
+
+;; TEST: speculative match with wildcard
+;; EXPECT: "other"
+(match ^:speculate 5
+  0 "zero"
+  1 "one"
+  _ "other")
+
+;; TEST: speculative match with computation
+;; EXPECT: "positive"
+(match ^:speculate (- 10 5)
+  0 "zero"
+  _ "positive")
+
+;; TEST: regular match still works
+;; EXPECT: "two"
+(match 2
+  1 "one"
+  2 "two"
+  3 "three"
+  _ "other")
+
+;; TEST: speculative match with boolean
+;; EXPECT: "yes"
+(match ^:speculate true
+  true "yes"
+  false "no")
+
+;; EXPECT-FINAL: "baz"
+(define get_type [x]
+  (match ^:speculate x
+    1 "foo"
+    2 "bar"
+    3 "baz"
+    _ "unknown"))
+(get_type 3)
