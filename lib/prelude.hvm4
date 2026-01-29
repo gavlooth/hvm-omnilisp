@@ -55,7 +55,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: #CON{h, @filter(p)(t)}
-        _: @filter(p)(t)
+        _: λ&u_. @filter(p)(t)
       }(p(h))
     // Eager: array (filter then rebuild)
     #Arr: λ&len. λ&data.
@@ -79,7 +79,7 @@
     #Some: λ&v. λ&rest.
       λ{
         #True: #Some{v, @filter(p)(rest)}
-        _: @filter_iter_next(p)(rest)
+        _: λ&u_. @filter_iter_next(p)(rest)
       }(p(v))
     #None: #None{}
   }(@iter_next(i))
@@ -160,7 +160,7 @@
     #CON: λ&h. λ&t.
       λ{
         0: #NIL
-        _: #CON{h, @take(#Cst{(λ{#Cst: λ&m. m}(n) - 1)})(t)}
+        _: λ&u_. #CON{h, @take(#Cst{(λ{#Cst: λ&m. m}(n) - 1)})(t)}
       }(λ{#Cst: λ&m. m}(n))
     // Eager: array
     #Arr: λ&len. λ&data.
@@ -177,7 +177,7 @@
     λ{#Cst: λ&c.
       λ{
         0: #None{}
-        _: λ{
+        _: λ&u_. λ{
           #Some: λ&v. λ&rest.
             #Some{v, #CON{#Cst{(c - 1)}, rest}}
           #None: #None{}
@@ -195,7 +195,7 @@
     #CON: λ&h. λ&t.
       λ{
         0: xs
-        _: @drop(#Cst{(λ{#Cst: λ&m. m}(n) - 1)})(t)
+        _: λ&u_. @drop(#Cst{(λ{#Cst: λ&m. m}(n) - 1)})(t)
       }(λ{#Cst: λ&m. m}(n))
     // Eager: array
     #Arr: λ&len. λ&data.
@@ -216,8 +216,8 @@
             #Some{v, #CON{#Cst{0}, rest}}
           #None: #None{}
         }(@iter_next(i))
-        _: λ{
-          #Some: λ&u. λ&rest.
+        _: λ&u_. λ{
+          #Some: λ&uu. λ&rest.
             @drop_iter_next(#CON{#Cst{(c - 1)}, rest})
           #None: #None{}
         }(@iter_next(i))
@@ -232,7 +232,7 @@
       #NIL: #Noth{}
       #CON: λ&h. λ&t. h
     }(xs)
-    _: λ{
+    _: λ&u_. λ{
       #NIL: #Noth{}
       #CON: λ&h. λ&t. @nth((n - 1))(t)
     }(xs)
@@ -259,7 +259,7 @@
     #CON: λ&h. λ&t.
       λ{
         #NIL: h
-        _: @last(t)
+        _: λ&u_. @last(t)
       }(t)
   }(xs)
 
@@ -270,7 +270,7 @@
     #CON: λ&h. λ&t.
       λ{
         #NIL: #NIL
-        _: #CON{h, @init(t)}
+        _: λ&u_. #CON{h, @init(t)}
       }(t)
   }(xs)
 
@@ -278,7 +278,7 @@
 @null_p = λ&xs.
   λ{
     #NIL: #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(xs)
 
 // Check if element is in list
@@ -288,7 +288,7 @@
     #CON: λ&h. λ&t.
       λ{
         1: #True{}
-        _: @elem_p(x)(t)
+        _: λ&u_. @elem_p(x)(t)
       }(@omni_values_equal(x)(h))
   }(xs)
 
@@ -311,7 +311,7 @@
       λ{
         #Arr: λ&len2. λ&data2.
           @list_to_arr(@zip(data1)(data2))
-        _: @zip(data1)(ys)
+        _: λ&u_. @zip(data1)(ys)
       }(ys)
     // Lazy: iterator
     #Iter: λ&state. λ&next_fn.
@@ -364,7 +364,7 @@
   !!&e = (λ{#Cst: λ&n. n})(end);
   λ{
     1: #NIL
-    _: #CON{#Cst{s}, @range_eager(#Cst{(s + 1)})(#Cst{e})}
+    _: λ&u_. #CON{#Cst{s}, @range_eager(#Cst{(s + 1)})(#Cst{e})}
   }((s >= e))
 
 // Iterate: generate infinite sequence by applying f repeatedly
@@ -380,7 +380,7 @@
 @repeat_n = λ&n. λ&x.
   λ{
     0: #NIL
-    _: #CON{x, @repeat_n((n - 1))(x)}
+    _: λ&u_. #CON{x, @repeat_n((n - 1))(x)}
   }(λ{#Cst: λ&m. m}(n))
 
 // Cycle through a list infinitely
@@ -409,7 +409,7 @@
       !!&st = (λ{#Cst: λ&n. n})(step);
       λ{
         1: #None{}
-        _: #Some{start, #Rang{#Cst{(s + st)}, end, step}}
+        _: λ&u_. #Some{start, #Rang{#Cst{(s + st)}, end, step}}
       }((st > 0) * (s >= e) + (st < 0) * (s <= e))
     // General iterator
     #Iter: λ&state. λ&next_fn.
@@ -417,7 +417,7 @@
     // List-as-iterator
     #CON: λ&h. λ&t. #Some{h, t}
     #NIL: #None{}
-    _: #None{}
+    _: λ&u_. #None{}
   }(iter)
 
 // Check if done
@@ -442,7 +442,7 @@
     // Dict - convert to list of pairs
     #Dict: λ&entries. entries
     // Iterator - realize it
-    _: @collect_helper(seq)(#NIL)
+    _: λ&u_. @collect_helper(seq)(#NIL)
   }(seq)
 
 @collect_helper = λ&iter. λ&acc.
@@ -463,7 +463,7 @@
     // Dict - keys as array
     #Dict: λ&entries. @list_to_arr(@map(@head)(entries))
     // Iterator - collect then convert
-    _: @list_to_arr(@collect(seq))
+    _: λ&u_. @list_to_arr(@collect(seq))
   }(seq)
 
 // Collect into dict (from sequence of pairs)
@@ -475,7 +475,7 @@
     #NIL: #Dict{#NIL}
     #CON: λ&h. λ&t. #Dict{seq}
     // Iterator - collect pairs then wrap
-    _: #Dict{@collect(seq)}
+    _: λ&u_. #Dict{@collect(seq)}
   }(seq)
 
 // Into: collect into target collection type
@@ -520,7 +520,7 @@
       λ{#Cst: λ&i.
         λ{
           0: #CON{val, t}
-          _: #CON{h, @list_set(t)(#Cst{(i - 1)})(val)}
+          _: λ&u_. #CON{h, @list_set(t)(#Cst{(i - 1)})(val)}
         }(i)
       }(idx)
   }(xs)
@@ -564,7 +564,7 @@
       λ{#CON: λ&k. λ&v_rest.
         λ{
           1: λ{#CON: λ&v. λ&u. v}(v_rest)
-          _: @alist_get(rest)(key)
+          _: λ&u_. @alist_get(rest)(key)
         }(@omni_values_equal(k)(key))
       }(pair)
   }(entries)
@@ -582,7 +582,7 @@
       λ{#CON: λ&k. λ&v_rest.
         λ{
           1: #CON{#CON{key, #CON{val, #NIL}}, rest}
-          _: #CON{pair, @alist_set(rest)(key)(val)}
+          _: λ&u_. #CON{pair, @alist_set(rest)(key)(val)}
         }(@omni_values_equal(k)(key))
       }(pair)
   }(entries)
@@ -600,7 +600,7 @@
       λ{#CON: λ&k. λ&u.
         λ{
           1: rest
-          _: #CON{pair, @alist_remove(rest)(key)}
+          _: λ&u_. #CON{pair, @alist_remove(rest)(key)}
         }(@omni_values_equal(k)(key))
       }(pair)
   }(entries)
@@ -609,7 +609,7 @@
 @dict_has_p = λ&dict. λ&key.
   λ{
     #Noth: #Fals{}
-    _: #True{}
+    _: λ&u_. #True{}
   }(@dict_get(dict)(key))
 
 // Dict keys
@@ -721,7 +721,7 @@
   !!&v = (λ{#Cst: λ&m. m})(n);
   λ{
     1: #Cst{(0 - v)}
-    _: n
+    _: λ&u_. n
   }((v < 0))
 
 // Sign
@@ -729,9 +729,9 @@
   !!&v = (λ{#Cst: λ&m. m})(n);
   λ{
     1: #Cst{(0 - 1)}
-    _: λ{
+    _: λ&u_. λ{
       1: #Cst{1}
-      _: #Cst{0}
+      _: λ&u_. #Cst{0}
     }((v > 0))
   }((v < 0))
 
@@ -741,7 +741,7 @@
   !!&bv = (λ{#Cst: λ&n. n})(b);
   λ{
     1: a
-    _: b
+    _: λ&u_. b
   }((av < bv))
 
 // Maximum
@@ -750,7 +750,7 @@
   !!&bv = (λ{#Cst: λ&n. n})(b);
   λ{
     1: a
-    _: b
+    _: λ&u_. b
   }((av > bv))
 
 // Sum of list
@@ -780,7 +780,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: @all_p(p)(t)
-        _: #Fals{}
+        _: λ&u_. #Fals{}
       }(p(h))
   }(xs)
 
@@ -791,7 +791,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: #True{}
-        _: @any_p(p)(t)
+        _: λ&u_. @any_p(p)(t)
       }(p(h))
   }(xs)
 
@@ -807,21 +807,21 @@
 @nothing_p = λ&x.
   λ{
     #Noth: #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(x)
 
 // Map over Maybe
 @maybe_map = λ&f. λ&m.
   λ{
     #Noth: #Noth{}
-    _: f(m)
+    _: λ&u_. f(m)
   }(m)
 
 // Default for Nothing
 @maybe_or = λ&default. λ&m.
   λ{
     #Noth: default
-    _: m
+    _: λ&u_. m
   }(m)
 
 // =============================================================================
@@ -870,52 +870,52 @@
 @int_p = λ&v.
   λ{
     #Cst: λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @float_p = λ&v.
   λ{
     #Fix: λ&u. λ&u. λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @char_p = λ&v.
   λ{
     #CHR: λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @symbol_p = λ&v.
   λ{
     #Sym: λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @list_p = λ&v.
   λ{
     #CON: λ&u. λ&u. #True{}
     #NIL: #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @function_p = λ&v.
   λ{
     #Clo: λ&u. λ&u. #True{}
     #CloR: λ&u. λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @handle_p = λ&v.
   λ{
     #Hndl: λ&u. λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 @bool_p = λ&v.
   λ{
     #True: #True{}
     #Fals: #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 // =============================================================================
@@ -930,7 +930,7 @@
 @error_p = λ&v.
   λ{
     #Err: λ&u. #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(v)
 
 // =============================================================================
@@ -943,9 +943,9 @@
   !!&bv = (λ{#Cst: λ&n. n})(b);
   λ{
     1: #Cst{(0 - 1)}
-    _: λ{
+    _: λ&u_. λ{
       1: #Cst{1}
-      _: #Cst{0}
+      _: λ&u_. #Cst{0}
     }((av > bv))
   }((av < bv))
 
@@ -953,7 +953,7 @@
 @eq_p = λ&a. λ&b.
   λ{
     1: #True{}
-    _: #Fals{}
+    _: λ&u_. #Fals{}
   }(@omni_values_equal(a)(b))
 
 // Not equal?
@@ -985,7 +985,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: h
-        _: @find(p)(t)
+        _: λ&u_. @find(p)(t)
       }(p(h))
   }(xs)
 
@@ -999,7 +999,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: idx
-        _: @find_index_helper(p)(t)(#Cst{(λ{#Cst: λ&n. n}(idx) + 1)})
+        _: λ&u_. @find_index_helper(p)(t)(#Cst{(λ{#Cst: λ&n. n}(idx) + 1)})
       }(p(h))
   }(xs)
 
@@ -1013,7 +1013,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: @partition_helper(p)(t)(#CON{h, yes})(no)
-        _: @partition_helper(p)(t)(yes)(#CON{h, no})
+        _: λ&u_. @partition_helper(p)(t)(yes)(#CON{h, no})
       }(p(h))
   }(xs)
 
@@ -1024,7 +1024,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: #CON{h, @take_while(p)(t)}
-        _: #NIL
+        _: λ&u_. #NIL
       }(p(h))
   }(xs)
 
@@ -1035,7 +1035,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: @drop_while(p)(t)
-        _: xs
+        _: λ&u_. xs
       }(p(h))
   }(xs)
 
@@ -1056,7 +1056,7 @@
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
-      !!&spanned = @span(λ&x. λ{1: #True{}; _: #Fals{}}(@omni_values_equal(x)(h)))(t);
+      !!&spanned = @span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(x)(h)))(t);
       λ{
         #CON: λ&same. λ&rest.
           λ{
@@ -1072,7 +1072,7 @@
     #NIL: #NIL
     #CON: λ&h. λ&t.
       !!&key = f(h);
-      !!&spanned = @span(λ&x. λ{1: #True{}; _: #Fals{}}(@omni_values_equal(f(x))(key)))(t);
+      !!&spanned = @span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(f(x))(key)))(t);
       λ{
         #CON: λ&same. λ&rest.
           λ{
@@ -1089,7 +1089,7 @@
     #CON: λ&h. λ&t.
       λ{
         #NIL: #CON{h, #NIL}
-        _: #CON{h, #CON{sep, @intersperse(sep)(t)}}
+        _: λ&u_. #CON{h, #CON{sep, @intersperse(sep)(t)}}
       }(t)
   }(xs)
 
@@ -1107,7 +1107,7 @@
     #CON: λ&h. λ&t.
       λ{
         #True: @nub_helper(t)(seen)
-        _: #CON{h, @nub_helper(t)(#CON{h, seen})}
+        _: λ&u_. #CON{h, @nub_helper(t)(#CON{h, seen})}
       }(@elem_p(h)(seen))
   }(xs)
 
@@ -1122,7 +1122,7 @@
       !!&key = f(h);
       λ{
         #True: @nub_by_helper(f)(t)(seen)
-        _: #CON{h, @nub_by_helper(f)(t)(#CON{key, seen})}
+        _: λ&u_. #CON{h, @nub_by_helper(f)(t)(#CON{key, seen})}
       }(@elem_p(key)(seen))
   }(xs)
 
@@ -1134,7 +1134,7 @@
       λ{
         0: xs
         1: xs
-        _: @merge_sorted(cmp)(@sort(cmp)(@take(#Cst{(n / 2)})(xs)))
+        _: λ&u_. @merge_sorted(cmp)(@sort(cmp)(@take(#Cst{(n / 2)})(xs)))
                               (@sort(cmp)(@drop(#Cst{(n / 2)})(xs)))
       }(n)
   }(len)
@@ -1152,7 +1152,7 @@
             #Cst: λ&n.
               λ{
                 1: #CON{yh, @merge_sorted(cmp)(xs)(yt)}
-                _: #CON{xh, @merge_sorted(cmp)(xt)(ys)}
+                _: λ&u_. #CON{xh, @merge_sorted(cmp)(xt)(ys)}
               }(n)
           }(c)
       }(ys)
@@ -1181,7 +1181,7 @@
           #Cst: λ&n.
             λ{
               1: acc
-              _: x
+              _: λ&u_. x
             }(n)
         }(c)
       )(h)(t)
@@ -1240,7 +1240,7 @@
       !!&u = f(h);
       @for_each(f)(t)
     // Lazy: iterator
-    _: @for_each_iter(f)(xs)
+    _: λ&u_. @for_each_iter(f)(xs)
   }(xs)
 
 @for_each_iter = λ&f. λ&iter.
@@ -1268,6 +1268,370 @@
   λ{
     #NIL: #Cst{0}
     #CON: λ&h. λ&t. @length(xs)
-    _: @foldl(λ&acc. λu. #Cst{(λ{#Cst: λ&n. n}(acc) + 1)})(#Cst{0})(xs)
+    _: λ&u_. @foldl(λ&acc. λu. #Cst{(λ{#Cst: λ&n. n}(acc) + 1)})(#Cst{0})(xs)
   }(xs)
 
+
+// =============================================================================
+// PARALLEL COMBINATORS (HVM4 Superposition)
+// =============================================================================
+//
+// NOTE: OmniLisp is PARALLEL BY DEFAULT. The standard map, filter, etc. in
+// collections.hvm4 already use parallel evaluation via strict bindings.
+// These combinators provide EXPLICIT superposition control for advanced use.
+//
+// =============================================================================
+
+// Fork two computations (explicit HVM4 SUP)
+// Creates a superposition - both branches evaluate in parallel
+@fork2 = λ&a. λ&b.
+  &F{a, b}
+
+// Non-deterministic choice from list (creates nested SUP)
+// With collapse mode (-C), would enumerate all choices
+@choice = λ&opts.
+  λ{
+    #NIL: #Err{#NoChoice}
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h
+        _: λ&u_. &C{h, @choice(t)}
+      }(t)
+  }(opts)
+
+// Parallel fold with explicit fork
+// For associative operations, prefer @omni_reduce_tree in collections.hvm4
+@par_fold = λ&f. λ&z. λ&xs.
+  λ{
+    #NIL: z
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: f(z)(h)
+        _: λ&u_. @fork2(f(z)(h))(@par_fold(f)(z)(t))
+      }(t)
+  }(xs)
+
+// Amb - choose one value nondeterministically
+// Alias for choice, useful for logic programming patterns
+@amb = λ&opts. @choice(opts)
+
+// Run both branches and return first success (non-#Err result)
+@race = λ&a. λ&b.
+  !!&result_a = a;
+  !!&result_b = b;
+  λ{
+    #Err: λ&u_. result_b
+    _: λ&u_. result_a
+  }(result_a)
+
+// =============================================================================
+// Exploration System (Non-Deterministic Search via HVM4 Superposition)
+// =============================================================================
+//
+// This provides a clean API for non-deterministic programming where:
+// - @explore picks one value from a list (creates HVM4 superposition)
+// - @reject marks a branch as a dead end (returns #Noth{})
+// - @require rejects unless a condition is true
+// - @exploring wraps a computation and filters rejected branches
+//
+// Under the hood, @explore uses HVM4's &{} superposition which evaluates
+// all branches in parallel. With -C (collapse) mode, all valid results
+// are enumerated.
+//
+// Example:
+//   (exploring (fn []
+//     (let x (explore '(1 2 3)))
+//     (let y (explore '(1 2 3)))
+//     (require (= (+ x y) 4))
+//     (pair x y)))
+//   ;; → superposition of (1,3), (2,2), (3,1)
+//
+// =============================================================================
+
+// Nick-encoded effect tags for exploration
+// expl = omni_nick("expl") = 1410060
+// rejt = omni_nick("rejt") = 4739732
+@nick_expl = 1410060
+@nick_rejt = 4739732
+
+// Explore: non-deterministic choice from a list
+// Creates HVM4 superposition - all choices are explored in parallel
+@explore = λ&choices. @choice(choices)
+
+// Reject: mark current branch as dead end
+// Returns #Noth{} which can be filtered out
+@reject = #Noth{}
+
+// Require: reject if condition is false
+// (require cond) is shorthand for (if cond nothing (reject))
+@require = λ&cond.
+  λ{
+    1: #True{}
+    #True: #True{}
+    _: λ&u_. #Noth{}
+  }(cond)
+
+// Require with custom failure value
+@require_or = λ&cond. λ&fail_val.
+  λ{
+    1: #True{}
+    #True: #True{}
+    _: λ&u_. fail_val
+  }(cond)
+
+// Guard: return value only if condition is true, else reject
+// Useful for filtering in exploration
+@guard = λ&cond. λ&val.
+  λ{
+    1: val
+    #True: val
+    _: λ&u_. #Noth{}
+  }(cond)
+
+// Exploring: wrapper that filters out rejected (#Noth) branches
+// For now, this is identity - filtering happens at collapse time
+// or can be done manually with @filter_valid
+@exploring = λ&body.
+  body(0)  // 0 is unit argument
+
+// Filter out #Noth values from a list (for post-processing exploration results)
+@filter_valid = λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #Noth: @filter_valid(t)
+        _: λ&u_. #CON{h, @filter_valid(t)}
+      }(h)
+  }(xs)
+
+// Explore with immediate filtering (returns first valid result or #Noth)
+@explore_first = λ&choices. λ&pred.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        1: h
+        #True: h
+        _: λ&u_. @explore_first(t)(pred)
+      }(pred(h))
+  }(choices)
+
+// Explore all and collect valid results as a list
+// Note: This eagerly evaluates all branches (no superposition)
+@explore_all = λ&choices. λ&body.
+  @filter_valid(@map(body)(choices))
+
+// Cartesian exploration: explore all combinations of two lists
+@explore2 = λ&xs. λ&ys. λ&body.
+  @explore(@flat_map(λ&x.
+    @map(λ&y. body(x)(y))(ys)
+  )(xs))
+
+// Explore with range (integer domain)
+@explore_range = λ&lo. λ&hi.
+  @explore(@range(lo)(hi))
+
+// Generate range list for exploration
+@range = λ&lo. λ&hi.
+  λ{
+    1: #NIL
+    _: λ&u_. #CON{lo, @range((lo + 1))(hi)}
+  }((lo >= hi))
+
+// =============================================================================
+// Effect-Based Exploration (Uses algebraic effects for more control)
+// =============================================================================
+//
+// For integration with the effect system, use these handlers.
+// The effect-based approach captures continuations, allowing:
+// - Backtracking search
+// - Collecting all solutions
+// - Custom exploration strategies
+//
+
+// Effect handler for exploration with superposition
+// Handles 'expl' effect by creating superposition of resumed branches
+// Handles 'rejt' effect by returning nothing
+@exploring_handler = λ&body.
+  // This is the functional version - for effect-based, use handle/perform
+  body(0)
+
+// Helper: flat_map for exploration
+@flat_map = λ&f. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      @list_append(f(h))(@flat_map(f)(t))
+  }(xs)
+
+// Helper: list append
+@list_append = λ&xs. λ&ys.
+  λ{
+    #NIL: ys
+    #CON: λ&h. λ&t. #CON{h, @list_append(t)(ys)}
+  }(xs)
+
+// =============================================================================
+// Constraint Solving Helpers
+// =============================================================================
+
+// All different: ensure all values in list are distinct
+@all_different = λ&xs.
+  λ{
+    #NIL: #True{}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: @all_different(t)
+        _: λ&u_. #Fals{}
+      }(@not_member(h)(t))
+  }(xs)
+
+// Not member: check if x is not in list
+@not_member = λ&x. λ&xs.
+  λ{
+    #NIL: #True{}
+    #CON: λ&h. λ&t.
+      λ{
+        1: #Fals{}
+        _: λ&u_. @not_member(x)(t)
+      }((x == h))
+  }(xs)
+
+// Member check
+@member = λ&x. λ&xs.
+  λ{
+    #NIL: #Fals{}
+    #CON: λ&h. λ&t.
+      λ{
+        1: #True{}
+        _: λ&u_. @member(x)(t)
+      }((x == h))
+  }(xs)
+
+// =============================================================================
+// Tree-Shaped Reductions (Parallel-Friendly)
+// =============================================================================
+//
+// For associative operations, tree-shaped reduction enables parallelism:
+//   Sequential: ((((a op b) op c) op d) op e)
+//   Tree:       (a op b) || (c op d) → (ab op cd) || e → result
+//
+// HVM4's lazy evaluation + strict bindings naturally parallelize the tree.
+//
+// =============================================================================
+
+// Reduce using tree structure (for associative operations)
+// Parallel-friendly: left and right halves computed independently
+@reduce_tree = λ&op. λ&xs.
+  λ{
+    #NIL: #Err{#NoElements}
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h  // Single element
+        _: λ&u_. @reduce_tree_helper(op)(xs)
+      }(t)
+  }(xs)
+
+// Helper: reduce non-empty list with tree structure
+@reduce_tree_helper = λ&op. λ&xs.
+  !!&len = @length(xs);
+  λ{
+    0: #Err{#NoElements}
+    1: @head(xs)
+    _: λ&u_. // Split, reduce halves in parallel, combine
+      !!&mid = (len / 2);
+      !!&left = @take(mid)(xs);
+      !!&right = @drop(mid)(xs);
+      // These two reductions can happen in parallel (independent bindings)
+      !!&left_result = @reduce_tree_helper(op)(left);
+      !!&right_result = @reduce_tree_helper(op)(right);
+      op(left_result)(right_result)
+  }(len)
+
+// Reduce with default value (monoid-style)
+@reduce_tree_with = λ&op. λ&default. λ&xs.
+  λ{
+    #NIL: default
+    _: λ&u_. @reduce_tree(op)(xs)
+  }(xs)
+
+// Parallel sum using tree reduction
+@sum_tree = λ&xs.
+  @reduce_tree_with(λ&a. λ&b. (a + b))(0)(xs)
+
+// Parallel product using tree reduction
+@product_tree = λ&xs.
+  @reduce_tree_with(λ&a. λ&b. (a * b))(1)(xs)
+
+// Parallel maximum using tree reduction
+@maximum_tree = λ&xs.
+  @reduce_tree(λ&a. λ&b. λ{1: a; _: λ&u_. b}((a > b)))(xs)
+
+// Parallel minimum using tree reduction
+@minimum_tree = λ&xs.
+  @reduce_tree(λ&a. λ&b. λ{1: a; _: λ&u_. b}((a < b)))(xs)
+
+// Parallel all (logical AND) using tree reduction
+@all_tree = λ&pred. λ&xs.
+  @reduce_tree_with(λ&a. λ&b.
+    λ{#Fals: #Fals{}; 0: #Fals{}; _: λ&u_. b}(a)
+  )(#True{})(@map(pred)(xs))
+
+// Parallel any (logical OR) using tree reduction
+@any_tree = λ&pred. λ&xs.
+  @reduce_tree_with(λ&a. λ&b.
+    λ{#True: #True{}; 1: #True{}; _: λ&u_. b}(a)
+  )(#Fals{})(@map(pred)(xs))
+
+// Parallel string concatenation
+@concat_tree = λ&strings.
+  @reduce_tree_with(@string_append)(#NIL)(strings)
+
+// Helper: string append (char list concat)
+@string_append = λ&s1. λ&s2.
+  λ{
+    #NIL: s2
+    #CON: λ&c. λ&rest. #CON{c, @string_append(rest)(s2)}
+  }(s1)
+
+// Length of list (for tree reduction splitting)
+@length = λ&xs.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t. (1 + @length(t))
+  }(xs)
+
+// Take first n elements
+@take = λ&n. λ&xs.
+  λ{
+    0: #NIL
+    _: λ{
+      #NIL: #NIL
+      #CON: λ&h. λ&t. #CON{h, @take((n - 1))(t)}
+    }(xs)
+  }(n)
+
+// Drop first n elements
+@drop = λ&n. λ&xs.
+  λ{
+    0: xs
+    _: λ{
+      #NIL: #NIL
+      #CON: λ&h. λ&t. @drop((n - 1))(t)
+    }(xs)
+  }(n)
+
+// Head of list
+@head = λ&xs.
+  λ{
+    #NIL: #Err{#EmptyList}
+    #CON: λ&h. λ&t. h
+  }(xs)
+
+// Tail of list
+@tail = λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. t
+  }(xs)
