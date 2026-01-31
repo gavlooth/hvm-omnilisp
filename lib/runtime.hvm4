@@ -257,6 +257,18 @@
     #Gt: λ&a. λ&b.
       (λ&av. (λ&va. (λ&bv. @omni_gt(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
 
+    // Not equal: (a != b) -> not (a = b)
+    #Neq: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_neq(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
+
+    // Less than or equal
+    #Le: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_le(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
+
+    // Greater than or equal
+    #Ge: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_ge(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
+
     // Boolean AND with short-circuit evaluation
     #And: λ&a. λ&b.
       (λ&av.
@@ -291,6 +303,46 @@
     // Dict literal - evaluate all key-value pairs
     #Dict: λ&entries.
       #Dict{@omni_eval_dict_entries(menv)(entries)}
+
+    // ==========================================================================
+    // Collection Operations (dispatch to prelude functions)
+    // ==========================================================================
+
+    // Map: (map f xs) -> apply f to each element
+    #Map: λ&f. λ&xs.
+      (λ&fn. λ&coll.
+        @omni_map_apply(menv)(fn)(coll)
+      )(@omni_eval(menv)(f))(@omni_eval(menv)(xs))
+
+    // Filter: (filter pred xs) -> keep elements where pred is truthy
+    #Filt: λ&pred. λ&xs.
+      (λ&fn. λ&coll.
+        @omni_filter_apply(menv)(fn)(coll)
+      )(@omni_eval(menv)(pred))(@omni_eval(menv)(xs))
+
+    // Fold (left): (foldl f acc xs) -> sequential left fold
+    #Fold: λ&f. λ&acc. λ&xs.
+      (λ&fn. λ&init. λ&coll.
+        @omni_foldl_apply(menv)(fn)(init)(coll)
+      )(@omni_eval(menv)(f))(@omni_eval(menv)(acc))(@omni_eval(menv)(xs))
+
+    // Foldr (right): (foldr f acc xs) -> parallel right fold
+    #FldR: λ&f. λ&acc. λ&xs.
+      (λ&fn. λ&init. λ&coll.
+        @omni_foldr_apply(menv)(fn)(init)(coll)
+      )(@omni_eval(menv)(f))(@omni_eval(menv)(acc))(@omni_eval(menv)(xs))
+
+    // Length: (len xs) -> count elements
+    #Len: λ&xs.
+      (λ&coll. @omni_list_length(coll))(@omni_eval(menv)(xs))
+
+    // Reverse: (reverse xs) -> reverse list
+    #Rev: λ&xs.
+      (λ&coll. @omni_reverse(coll))(@omni_eval(menv)(xs))
+
+    // Concat: (concat xs ys) -> concatenate two lists
+    #Conc: λ&xs. λ&ys.
+      (λ&left. (λ&right. @omni_append(left)(right))(@omni_eval(menv)(ys)))(@omni_eval(menv)(xs))
 
     // Type check: (type? value {Type})
     #Tyck: λ&val. λ&type.
@@ -912,6 +964,20 @@
     _: λ&u_. #Fals{}
   }(a)
 
+@omni_neq = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn.
+          λ{
+            1: #Fals{}
+            _: λ&u_. #True{}
+          }((an == bn))
+        _: λ&u_. #True{}
+      }(b)
+    _: λ&u_. #True{}
+  }(a)
+
 @omni_lt = λ&a. λ&b.
   λ{
     #Cst: λ&an.
@@ -935,6 +1001,34 @@
             1: #True{}
             _: λ&u_. #Fals{}
           }((an > bn))
+        _: λ&u_. #Fals{}
+      }(b)
+    _: λ&u_. #Fals{}
+  }(a)
+
+@omni_le = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn.
+          λ{
+            1: #True{}
+            _: λ&u_. #Fals{}
+          }((an <= bn))
+        _: λ&u_. #Fals{}
+      }(b)
+    _: λ&u_. #Fals{}
+  }(a)
+
+@omni_ge = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn.
+          λ{
+            1: #True{}
+            _: λ&u_. #Fals{}
+          }((an >= bn))
         _: λ&u_. #Fals{}
       }(b)
     _: λ&u_. #Fals{}
@@ -1995,6 +2089,90 @@
   λ{
     #NIL: acc
     #CON: λ&h. λ&t. @omni_reverse_acc(t)(#CON{h, acc})
+  }(xs)
+
+// Map function over list (parallel - head and tail evaluated in parallel)
+@omni_map = λ&f. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&head_result = f(h);
+      !!&tail_result = @omni_map(f)(t);
+      #CON{head_result, tail_result}
+  }(xs)
+
+// Filter list by predicate (parallel)
+@omni_filter = λ&p. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&pred_result = p(h);
+      !!&tail_result = @omni_filter(p)(t);
+      λ{
+        1: #CON{h, tail_result}
+        _: tail_result
+      }(pred_result)
+  }(xs)
+
+// Left fold (sequential - accumulator threading)
+@omni_foldl = λ&f. λ&acc. λ&xs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. @omni_foldl(f)(f(acc)(h))(t)
+  }(xs)
+
+// Right fold (parallel for recursive call)
+@omni_foldr = λ&f. λ&acc. λ&xs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t.
+      !!&tail_result = @omni_foldr(f)(acc)(t);
+      f(h)(tail_result)
+  }(xs)
+
+// Map with @omni_apply - applies OmniLisp function to each element
+@omni_map_apply = λ&menv. λ&fn. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{@omni_apply(menv)(fn)(h), @omni_map_apply(menv)(fn)(t)}
+  }(xs)
+
+// Filter with @omni_apply - keeps elements where predicate returns truthy
+@omni_filter_apply = λ&menv. λ&pred. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      @omni_filter_one(menv)(pred)(h)(@omni_filter_apply(menv)(pred)(t))
+  }(xs)
+
+// Helper: filter a single element, prepend if truthy
+@omni_filter_one = λ&menv. λ&pred. λ&h. λ&tail.
+  (λ&result.
+    λ{
+      #Fals: tail
+      #Noth: tail
+      #Cst: λ&n. λ{0: tail; _: λ&u_. #CON{h, tail}}(n)
+      _: λ&u_. #CON{h, tail}
+    }(result)
+  )(@omni_apply(menv)(pred)(h))
+
+// Left fold with @omni_apply - applies curried OmniLisp function
+@omni_foldl_apply = λ&menv. λ&fn. λ&acc. λ&xs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t.
+      (λ&new_acc. @omni_foldl_apply(menv)(fn)(new_acc)(t))(@omni_apply(menv)(@omni_apply(menv)(fn)(acc))(h))
+  }(xs)
+
+// Right fold with @omni_apply
+@omni_foldr_apply = λ&menv. λ&fn. λ&acc. λ&xs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t.
+      (λ&tail_result.
+        @omni_apply(menv)(@omni_apply(menv)(fn)(h))(tail_result)
+      )(@omni_foldr_apply(menv)(fn)(acc)(t))
   }(xs)
 
 // =============================================================================

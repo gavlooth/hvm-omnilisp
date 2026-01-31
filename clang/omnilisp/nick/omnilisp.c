@@ -456,6 +456,7 @@ static u32 OMNI_NAM_CONC;  // Concat: #Conc{lists}
 static u32 OMNI_NAM_MAP;   // Map: #Map{fn, coll} - generic dispatch
 static u32 OMNI_NAM_FILT;  // Filter: #Filt{pred, coll} - generic dispatch
 static u32 OMNI_NAM_FOLD;  // Fold: #Fold{fn, init, coll} - generic dispatch
+static u32 OMNI_NAM_FLDR;  // Foldr: #FldR{fn, init, coll} - right fold
 static u32 OMNI_NAM_TAKE;  // Take: #Take{n, coll} - generic dispatch
 static u32 OMNI_NAM_DROP;  // Drop: #Drop{n, coll} - generic dispatch
 static u32 OMNI_NAM_REV;   // Reverse: #Rev{coll}
@@ -955,6 +956,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_MAP  = omni_nick("Map");
   OMNI_NAM_FILT = omni_nick("Filt");
   OMNI_NAM_FOLD = omni_nick("Fold");
+  OMNI_NAM_FLDR = omni_nick("FldR");
   OMNI_NAM_TAKE = omni_nick("Take");
   OMNI_NAM_DROP = omni_nick("Drop");
   OMNI_NAM_REV  = omni_nick("Rev");

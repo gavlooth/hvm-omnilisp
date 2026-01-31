@@ -5404,56 +5404,62 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_perform(tag, payload);
   }
 
-  // map/filter/foldl: Support ^:seq metadata for sequential processing
-  // (map ^:seq f xs) -> (@map_seq f xs)
-  // (filter ^:seq pred xs) -> (@filter_seq pred xs)
-  // (foldl ^:seq f acc xs) -> (@foldl_seq f acc xs)
-  if (omni_symbol_is(s, sym_start, sym_len, "map") ||
-      omni_symbol_is(s, sym_start, sym_len, "filter") ||
-      omni_symbol_is(s, sym_start, sym_len, "foldl")) {
-    // Check for ^:seq metadata
-    int is_sequential = 0;
-    omni_skip(s);
-    if (parse_peek(s) == '^') {
-      parse_advance(s);  // skip ^
-      if (parse_peek(s) == ':') {
-        parse_advance(s);  // skip :
-        u32 meta_start, meta_len;
-        if (omni_parse_symbol_raw(s, &meta_start, &meta_len)) {
-          if (omni_symbol_is(s, meta_start, meta_len, "seq")) {
-            is_sequential = 1;
-          }
-        }
-      }
-    }
-
-    // Determine which function to call
-    const char* fn_name;
-    if (omni_symbol_is(s, sym_start, sym_len, "map")) {
-      fn_name = is_sequential ? "map_seq" : "map";
-    } else if (omni_symbol_is(s, sym_start, sym_len, "filter")) {
-      fn_name = is_sequential ? "filter_seq" : "filter";
-    } else {
-      fn_name = is_sequential ? "foldl_seq" : "foldl";
-    }
-
-    // Look up the function
-    u32 fn_id = table_find(fn_name, strlen(fn_name));
-    Term func;
-    if (BOOK[fn_id] != 0) {
-      func = term_new_ref(fn_id);
-    } else {
-      func = omni_sym(fn_id);
-    }
-
-    // Parse arguments
-    while (parse_peek(s) != ')' && !parse_at_end(s)) {
-      Term arg = parse_omni_expr(s);
-      func = omni_app(func, arg);
-    }
-
+  // map: (map f xs) -> #Map{f, xs}
+  if (omni_symbol_is(s, sym_start, sym_len, "map")) {
+    Term f = parse_omni_expr(s);
+    Term xs = parse_omni_expr(s);
     omni_expect_char(s, ')');
-    return func;
+    return omni_ctr2(OMNI_NAM_MAP, f, xs);
+  }
+
+  // filter: (filter pred xs) -> #Filt{pred, xs}
+  if (omni_symbol_is(s, sym_start, sym_len, "filter")) {
+    Term pred = parse_omni_expr(s);
+    Term xs = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_FILT, pred, xs);
+  }
+
+  // foldl: (foldl f acc xs) -> #Fold{f, acc, xs}
+  if (omni_symbol_is(s, sym_start, sym_len, "foldl")) {
+    Term f = parse_omni_expr(s);
+    Term acc = parse_omni_expr(s);
+    Term xs = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_FOLD, f, acc, xs);
+  }
+
+  // foldr: (foldr f acc xs) -> #FldR{f, acc, xs}
+  if (omni_symbol_is(s, sym_start, sym_len, "foldr")) {
+    Term f = parse_omni_expr(s);
+    Term acc = parse_omni_expr(s);
+    Term xs = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_FLDR, f, acc, xs);
+  }
+
+  // len/length: (len xs) -> #Len{xs}
+  if (omni_symbol_is(s, sym_start, sym_len, "len") ||
+      omni_symbol_is(s, sym_start, sym_len, "length")) {
+    Term xs = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_LEN, xs);
+  }
+
+  // reverse: (reverse xs) -> #Rev{xs}
+  if (omni_symbol_is(s, sym_start, sym_len, "reverse")) {
+    Term xs = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_REV, xs);
+  }
+
+  // concat/append: (concat xs ys) -> #Conc{xs, ys}
+  if (omni_symbol_is(s, sym_start, sym_len, "concat") ||
+      omni_symbol_is(s, sym_start, sym_len, "append")) {
+    Term xs = parse_omni_expr(s);
+    Term ys = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_CONC, xs, ys);
   }
 
   // Default: function application
