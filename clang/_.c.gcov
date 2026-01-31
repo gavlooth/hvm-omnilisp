@@ -1,0 +1,14 @@
+        -:    0:Source:../hvm4/clang/term/new/_.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+     1432:    1:fn Term term_new_at(u32 loc, u8 tag, u32 ext, u32 ari, Term *args) {
+     3894:    2:  for (u32 i = 0; i < ari; i++) {
+     2462:    3:    heap_write(loc + i, args[i]);
+        -:    4:  }
+     1432:    5:  return term_new(0, tag, ext, loc);
+        -:    6:}
+        -:    7:
+      540:    8:fn Term term_new_(u8 tag, u32 ext, u32 ari, Term *args) {
+      540:    9:  return term_new_at(heap_alloc(ari), tag, ext, ari, args);
+        -:   10:}

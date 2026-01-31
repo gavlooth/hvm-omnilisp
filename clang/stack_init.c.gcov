@@ -1,0 +1,37 @@
+        -:    0:Source:../hvm4/clang/wnf/stack_init.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:#include <sys/mman.h>
+        -:    2:
+        -:    3:#ifndef MAP_NORESERVE
+        -:    4:#define MAP_NORESERVE 0
+        -:    5:#endif
+        -:    6:
+      209:    7:fn void wnf_stack_init(void) {
+      209:    8:  WnfBank *bank = WNF_BANK;
+      209:    9:  if (bank->stack) {
+      187:   10:    return;
+        -:   11:  }
+        -:   12:
+       22:   13:  u64 bytes = WNF_CAP * sizeof(Term);
+       22:   14:  int prot  = PROT_READ | PROT_WRITE;
+       22:   15:  int flags = MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE;
+       22:   16:  Term *stack = (Term *)mmap(NULL, bytes, prot, flags, -1, 0);
+       22:   17:  u8 stack_mmap = 1;
+        -:   18:
+       22:   19:  if (stack == MAP_FAILED) {
+    #####:   20:    stack = (Term *)malloc(bytes);
+    #####:   21:    stack_mmap = 0;
+        -:   22:  }
+        -:   23:
+       22:   24:  if (!stack) {
+    #####:   25:    fprintf(stderr, "wnf: stack allocation failed\n");
+    #####:   26:    exit(1);
+        -:   27:  }
+        -:   28:
+       22:   29:  bank->stack       = stack;
+       22:   30:  bank->stack_bytes = bytes;
+       22:   31:  bank->stack_mmap  = stack_mmap;
+       22:   32:  bank->s_pos       = 1;
+        -:   33:}

@@ -1,0 +1,21 @@
+        -:    0:Source:../hvm4/clang/wnf/eql_dry.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (^(af ax) === ^(bf bx))
+        -:    2:// ----------------------- EQL-DRY
+        -:    3:// (af === bf) & (ax === bx)
+    #####:    4:fn Term wnf_eql_dry(Term a, Term b) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  a_loc = term_val(a);
+    #####:    7:  u32  b_loc = term_val(b);
+    #####:    8:  Term af    = heap_read(a_loc + 0);
+    #####:    9:  Term ax    = heap_read(a_loc + 1);
+    #####:   10:  Term bf    = heap_read(b_loc + 0);
+    #####:   11:  Term bx    = heap_read(b_loc + 1);
+        -:   12:
+        -:   13:  // (af === bf) .&. (ax === bx)
+    #####:   14:  Term eq_f = term_new_eql(af, bf);
+    #####:   15:  Term eq_x = term_new_eql(ax, bx);
+    #####:   16:  return term_new_and(eq_f, eq_x);
+        -:   17:}

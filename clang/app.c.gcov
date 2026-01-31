@@ -1,0 +1,11 @@
+        -:    0:Source:../hvm4/clang/term/new/app.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+      633:    1:fn Term term_new_app_at(u32 loc, Term fun, Term arg) {
+      633:    2:  return term_new_at(loc, APP, 0, 2, (Term[]){fun, arg});
+        -:    3:}
+        -:    4:
+      471:    5:fn Term term_new_app(Term fun, Term arg) {
+      471:    6:  return term_new_app_at(heap_alloc(2), fun, arg);
+        -:    7:}

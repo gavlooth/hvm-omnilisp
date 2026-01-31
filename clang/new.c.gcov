@@ -1,0 +1,10 @@
+        -:    0:Source:../hvm4/clang/term/new.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+     5039:    1:fn Term term_new(u8 sub, u8 tag, u32 ext, u32 val) {
+     5039:    2:  return ((u64)sub << SUB_SHIFT)
+     5039:    3:       | ((u64)(tag & TAG_MASK) << TAG_SHIFT)
+     5039:    4:       | ((u64)(ext & EXT_MASK) << EXT_SHIFT)
+     5039:    5:       | ((u64)(val & VAL_MASK));
+        -:    6:}

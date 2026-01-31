@@ -1,0 +1,11 @@
+        -:    0:Source:../hvm4/clang/wnf/or_era.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (&{} .|. b)
+        -:    2:// ----------- OR-ERA
+        -:    3:// &{}
+    #####:    4:fn Term wnf_or_era(void) {
+    #####:    5:  ITRS++;
+    #####:    6:  return term_new_era();
+        -:    7:}

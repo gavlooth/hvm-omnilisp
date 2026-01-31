@@ -1,0 +1,22 @@
+        -:    0:Source:../hvm4/clang/wnf/mov_red.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// % X = f ~> g
+        -:    2:// ------------- MOV-RED
+        -:    3:// % F = f
+        -:    4:// % G = g
+        -:    5:// X ← F ~> G
+    #####:    6:fn Term wnf_mov_red(u32 loc, Term red) {
+    #####:    7:  ITRS++;
+    #####:    8:  u32  r_loc = term_val(red);
+    #####:    9:  u64  base  = heap_alloc(4);
+    #####:   10:  u32  at    = (u32)base;
+    #####:   11:  heap_write(at + 0, heap_read(r_loc + 0));
+    #####:   12:  heap_write(at + 1, heap_read(r_loc + 1));
+    #####:   13:  Term f     = term_new_got(at + 0);
+    #####:   14:  Term g     = term_new_got(at + 1);
+    #####:   15:  Term res   = term_new_red_at(at + 2, f, g);
+    #####:   16:  heap_subst_var(loc, res);
+    #####:   17:  return res;
+        -:   18:}

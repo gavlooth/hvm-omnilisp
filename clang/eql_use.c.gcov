@@ -1,0 +1,15 @@
+        -:    0:Source:../hvm4/clang/wnf/eql_use.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (λ{af} === λ{bf})
+        -:    2:// ----------------- EQL-USE
+        -:    3:// af === bf
+    #####:    4:fn Term wnf_eql_use(Term a, Term b) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  a_loc = term_val(a);
+    #####:    7:  u32  b_loc = term_val(b);
+    #####:    8:  Term af    = heap_read(a_loc);
+    #####:    9:  Term bf    = heap_read(b_loc);
+    #####:   10:  return term_new_eql(af, bf);
+        -:   11:}

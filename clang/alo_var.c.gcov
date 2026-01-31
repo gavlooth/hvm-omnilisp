@@ -1,0 +1,19 @@
+        -:    0:Source:../hvm4/clang/wnf/alo_var.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// @{s} n
+        -:    2:// ------ ALO-VAR
+        -:    3:// s[n] or n when substitution missing (n is a de Bruijn level)
+      133:    4:fn Term wnf_alo_var(u32 ls, u32 len, u32 lvl, u8 tag) {
+      133:    5:  if (lvl == 0 || lvl > len) {
+    #####:    6:    return term_new(0, tag, 0, lvl);
+        -:    7:  }
+      133:    8:  u32 idx = len - lvl;
+      133:    9:  u32 it  = ls;
+      205:   10:  for (u32 i = 0; i < idx && it != 0; i++) {
+       72:   11:    it = (u32)(heap_read(it) & 0xFFFFFFFF);
+        -:   12:  }
+     133*:   13:  u32 bind = (it != 0) ? (u32)(heap_read(it) >> 32) : 0;
+     133*:   14:  return bind ? term_new_var(bind) : term_new(0, tag, 0, lvl);
+        -:   15:}

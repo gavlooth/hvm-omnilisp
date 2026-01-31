@@ -629,8 +629,8 @@
     // Already a list - return as-is
     #NIL: #NIL
     #CON: λ&h. λ&t. seq
-    // Array - convert to list
-    #Arr: λ&len. λ&data. @arr_to_list(seq)
+    // Array - extract data list
+    #Arr: λ&len. λ&data. data
     // Dict - convert to list of pairs
     #Dict: λ&entries. entries
     // Iterator - realize it
@@ -693,13 +693,7 @@
 @arr_len = λ&arr.
   λ{#Arr: λ&len. λ&u. len}(arr)
 
-// Array get (indexed access)
-@arr_get = λ&arr. λ&idx.
-  λ{#Arr: λ&len. λ&data.
-    @nth(idx)(data)
-  }(arr)
-
-// Array set (functional update, returns new array)
+// Array set (functional update, returns new array) - unique operation
 @arr_set = λ&arr. λ&idx. λ&val.
   λ{#Arr: λ&len. λ&data.
     #Arr{len, @list_set(data)(idx)(val)}
@@ -717,27 +711,9 @@
       }(idx)
   }(xs)
 
-// List to array
+// List to array conversion
 @list_to_arr = λ&xs.
   #Arr{@length(xs), xs}
-
-// Array to list
-@arr_to_list = λ&arr.
-  λ{#Arr: λ&len. λ&data. data}(arr)
-
-// Array map (returns array)
-@arr_map = λ&f. λ&arr.
-  λ{#Arr: λ&len. λ&data.
-    #Arr{len, @map(f)(data)}
-  }(arr)
-
-// Array filter (returns array)
-@arr_filter = λ&p. λ&arr.
-  @list_to_arr(@filter(p)(@arr_to_list(arr)))
-
-// Array as iterator
-@arr_iter = λ&arr.
-  λ{#Arr: λ&len. λ&data. data}(arr)
 
 // =============================================================================
 // Dict Operations

@@ -1,0 +1,17 @@
+        -:    0:Source:../hvm4/clang/parse/skip.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+    21028:    1:fn void parse_skip(PState *s) {
+    22607:    2:  while (!parse_at_end(s)) {
+    22435:    3:    if (parse_is_space(parse_peek(s))) {
+     1537:    4:      parse_advance(s);
+     1537:    5:      continue;
+        -:    6:    }
+    20898:    7:    if (parse_starts_with(s, "//")) {
+       42:    8:      parse_skip_comment(s);
+       42:    9:      continue;
+        -:   10:    }
+    20856:   11:    break;
+        -:   12:  }
+    21028:   13:}

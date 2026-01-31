@@ -867,13 +867,6 @@
     _: λ{#CON: λ&h. λ&t. #CON{h, @omni_list_set((idx - 1))(val)(t)}; _: xs}(xs)
   }(idx)
 
-// Legacy aliases (deprecated, use polymorphic versions)
-@omni_array_to_list = @omni_to_list
-@omni_array_length = @omni_seq_length
-@omni_array_get = λidx. λarr. @omni_nth(idx)(arr)
-@omni_array_slice = @omni_slice
-@omni_array_map = @omni_map
-@omni_array_filter = @omni_filter
 
 // =============================================================================
 // Utility Functions

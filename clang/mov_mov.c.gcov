@@ -1,0 +1,17 @@
+        -:    0:Source:../hvm4/clang/wnf/mov_mov.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// % A = v
+        -:    2:// % B = A
+        -:    3:// ------- MOV-MOV
+        -:    4:// A ← B
+        -:    5:// % B = v
+    #####:    6:fn Term wnf_mov_mov(u32 b_loc, Term a_var) {
+    #####:    7:  ITRS++;
+    #####:    8:  u32  a_loc = term_val(a_var);
+    #####:    9:  Term val   = heap_take(a_loc);
+    #####:   10:  heap_subst_var(a_loc, term_new_got(b_loc));
+    #####:   11:  heap_set(b_loc, val);
+    #####:   12:  return val;
+        -:   13:}

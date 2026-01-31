@@ -1,0 +1,17 @@
+        -:    0:Source:../hvm4/clang/wnf/alo_lam.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// @{s} λx.f
+        -:    2:// ------------ ALO-LAM
+        -:    3:// x' ← fresh
+        -:    4:// λx'.@{x',s}f
+      165:    5:fn Term wnf_alo_lam(u32 ls_loc, u32 len, u32 lam_ext, u32 book_body_loc) {
+      165:    6:  u64 lam_body = heap_alloc(1);
+      165:    7:  u64 bind_ent = heap_alloc(1);
+      165:    8:  heap_set(bind_ent, ((u64)(u32)lam_body << 32) | ls_loc);
+      165:    9:  u64 alo_loc = heap_alloc(1);
+      165:   10:  heap_set(alo_loc, ((u64)(u32)bind_ent << 32) | book_body_loc);
+      165:   11:  heap_set(lam_body, term_new(0, ALO, len + 1, alo_loc));
+      165:   12:  return term_new(0, LAM, lam_ext, lam_body);
+        -:   13:}

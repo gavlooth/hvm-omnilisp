@@ -1,0 +1,51 @@
+        -:    0:Source:../hvm4/clang/parse/include.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:fn void parse_def(PState *s);
+        -:    2:
+        9:    3:fn void parse_include(PState *s) {
+        -:    4:  // Parse filename
+        9:    5:  parse_skip(s);
+        9:    6:  parse_consume(s, "\"");
+        9:    7:  u32 start = s->pos;
+      108:    8:  while (parse_peek(s) != '"' && !parse_at_end(s)) {
+       99:    9:    parse_advance(s);
+        -:   10:  }
+        9:   11:  u32 len = s->pos - start;
+        9:   12:  parse_consume(s, "\"");
+        -:   13:
+        -:   14:  // Resolve path
+        -:   15:  char filename[256], path[1024];
+        9:   16:  memcpy(filename, s->src + start, len);
+        9:   17:  filename[len] = 0;
+        9:   18:  sys_path_join(path, sizeof(path), s->file, filename);
+        -:   19:
+        -:   20:  // Check if already included
+       18:   21:  for (u32 i = 0; i < PARSE_SEEN_FILES_LEN; i++) {
+        9:   22:    if (strcmp(PARSE_SEEN_FILES[i], path) == 0) {
+    #####:   23:      return;
+        -:   24:    }
+        -:   25:  }
+        9:   26:  if (PARSE_SEEN_FILES_LEN >= 1024) {
+    #####:   27:    sys_error("MAX_INCLUDES");
+        -:   28:  }
+        9:   29:  PARSE_SEEN_FILES[PARSE_SEEN_FILES_LEN++] = strdup(path);
+        -:   30:
+        -:   31:  // Read and parse
+        9:   32:  char *src = sys_file_read(path);
+        9:   33:  if (!src) {
+    #####:   34:    fprintf(stderr, "Error: could not open '%s'\n", path);
+    #####:   35:    exit(1);
+        -:   36:  }
+        9:   37:  PState sub = {
+        9:   38:    .file = PARSE_SEEN_FILES[PARSE_SEEN_FILES_LEN - 1],
+        -:   39:    .src  = src,
+        -:   40:    .pos  = 0,
+        9:   41:    .len  = strlen(src),
+        -:   42:    .line = 1,
+        -:   43:    .col  = 1
+        -:   44:  };
+        9:   45:  parse_def(&sub);
+        9:   46:  free(src);
+        -:   47:}

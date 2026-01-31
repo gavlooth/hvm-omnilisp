@@ -1,0 +1,23 @@
+        -:    0:Source:../hvm4/clang/print/utf8.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// Print a Unicode codepoint as UTF-8
+        -:    2:// Emits a codepoint as UTF-8 without validation (used by CHR/STR sugar).
+    #####:    3:fn void print_utf8(FILE *f, u32 c) {
+    #####:    4:  if (c < 0x80) {
+    #####:    5:    fputc(c, f);
+    #####:    6:  } else if (c < 0x800) {
+    #####:    7:    fputc(0xC0 | (c >> 6), f);
+    #####:    8:    fputc(0x80 | (c & 0x3F), f);
+    #####:    9:  } else if (c < 0x10000) {
+    #####:   10:    fputc(0xE0 | (c >> 12), f);
+    #####:   11:    fputc(0x80 | ((c >> 6) & 0x3F), f);
+    #####:   12:    fputc(0x80 | (c & 0x3F), f);
+        -:   13:  } else {
+    #####:   14:    fputc(0xF0 | (c >> 18), f);
+    #####:   15:    fputc(0x80 | ((c >> 12) & 0x3F), f);
+    #####:   16:    fputc(0x80 | ((c >> 6) & 0x3F), f);
+    #####:   17:    fputc(0x80 | (c & 0x3F), f);
+        -:   18:  }
+    #####:   19:}

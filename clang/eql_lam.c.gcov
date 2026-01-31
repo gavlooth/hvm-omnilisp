@@ -1,0 +1,24 @@
+        -:    0:Source:../hvm4/clang/wnf/eql_lam.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (λax.af === λbx.bf)
+        -:    2:// ------------------- EQL-LAM
+        -:    3:// X := fresh_nam()
+        -:    4:// ax ← X
+        -:    5:// bx ← X
+        -:    6:// af === bf
+    #####:    7:fn Term wnf_eql_lam(Term a, Term b) {
+    #####:    8:  ITRS++;
+    #####:    9:  u32  a_loc = term_val(a);
+    #####:   10:  u32  b_loc = term_val(b);
+    #####:   11:  Term af    = heap_read(a_loc);
+    #####:   12:  Term bf    = heap_read(b_loc);
+        -:   13:  // Generate fresh name for substitution
+    #####:   14:  u32 fresh = __atomic_fetch_add(&FRESH, 1, __ATOMIC_RELAXED);
+    #####:   15:  Term nam = term_new_nam(fresh);
+        -:   16:  // Substitute both variable locations with the same name
+    #####:   17:  heap_subst_var(a_loc, nam);
+    #####:   18:  heap_subst_var(b_loc, nam);
+    #####:   19:  return term_new_eql(af, bf);
+        -:   20:}

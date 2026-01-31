@@ -1,0 +1,24 @@
+        -:    0:Source:../hvm4/clang/wnf/stack_free_all.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:#include <sys/mman.h>
+        -:    2:
+       22:    3:fn void wnf_stack_free_all(void) {
+       22:    4:  u32 threads = thread_get_count();
+       44:    5:  for (u32 i = 0; i < threads; i++) {
+       22:    6:    WnfBank *bank = &WNF_BANKS[i];
+      22*:    7:    if (!bank->stack) {
+    #####:    8:      continue;
+        -:    9:    }
+       22:   10:    if (bank->stack_mmap) {
+       22:   11:      munmap(bank->stack, bank->stack_bytes);
+        -:   12:    } else {
+    #####:   13:      free(bank->stack);
+        -:   14:    }
+       22:   15:    bank->stack       = NULL;
+       22:   16:    bank->stack_bytes = 0;
+       22:   17:    bank->stack_mmap  = 0;
+       22:   18:    bank->s_pos       = 0;
+        -:   19:  }
+       22:   20:}

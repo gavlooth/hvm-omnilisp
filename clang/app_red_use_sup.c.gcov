@@ -1,0 +1,32 @@
+        -:    0:Source:../hvm4/clang/wnf/app_red_use_sup.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// ((f ~> λ{g}) &L{a,b})
+        -:    2:// --------------------- APP-RED-USE-SUP
+        -:    3:// ! F &L = f
+        -:    4:// ! G &L = g
+        -:    5:// &L{((F₀ ~> λ{G₀}) a)
+        -:    6://   ,((F₁ ~> λ{G₁}) b)}
+    #####:    7:fn Term wnf_app_red_use_sup(Term f, Term use, Term sup) {
+    #####:    8:  ITRS++;
+    #####:    9:  u32  use_loc = term_val(use);
+    #####:   10:  u32  sup_loc = term_val(sup);
+    #####:   11:  u32  lab     = term_ext(sup);
+    #####:   12:  Term g       = heap_read(use_loc);
+    #####:   13:  Term a       = heap_read(sup_loc + 0);
+    #####:   14:  Term b       = heap_read(sup_loc + 1);
+    #####:   15:  u64  base    = heap_alloc(14);
+    #####:   16:  u32  at      = (u32)base;
+    #####:   17:  heap_write(at + 0, f);
+    #####:   18:  heap_write(at + 1, g);
+    #####:   19:  Copy F       = term_clone_at(at + 0, lab);
+    #####:   20:  Copy G       = term_clone_at(at + 1, lab);
+    #####:   21:  Term use0    = term_new_use_at(at + 2, G.k0);
+    #####:   22:  Term use1    = term_new_use_at(at + 3, G.k1);
+    #####:   23:  Term red0    = term_new_red_at(at + 4, F.k0, use0);
+    #####:   24:  Term red1    = term_new_red_at(at + 6, F.k1, use1);
+    #####:   25:  Term app0    = term_new_app_at(at + 8, red0, a);
+    #####:   26:  Term app1    = term_new_app_at(at + 10, red1, b);
+    #####:   27:  return term_new_sup_at(at + 12, lab, app0, app1);
+        -:   28:}

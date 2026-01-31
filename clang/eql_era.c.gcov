@@ -1,0 +1,19 @@
+        -:    0:Source:../hvm4/clang/wnf/eql_era.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (&{} === b)
+        -:    2:// ----------- EQL-ERA-L
+        -:    3:// &{}
+    #####:    4:fn Term wnf_eql_era_l(void) {
+    #####:    5:  ITRS++;
+    #####:    6:  return term_new_era();
+        -:    7:}
+        -:    8:
+        -:    9:// (a === &{})
+        -:   10:// ----------- EQL-ERA-R
+        -:   11:// &{}
+    #####:   12:fn Term wnf_eql_era_r(void) {
+    #####:   13:  ITRS++;
+    #####:   14:  return term_new_era();
+        -:   15:}

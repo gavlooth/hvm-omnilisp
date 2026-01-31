@@ -1,0 +1,15 @@
+        -:    0:Source:../hvm4/clang/wnf/or_inc.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (↑a | b)
+        -:    2:// --------- OR-INC
+        -:    3:// ↑(a | b)
+    #####:    4:fn Term wnf_or_inc(Term inc, Term b) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  inc_loc = term_val(inc);
+    #####:    7:  Term a       = heap_read(inc_loc);
+    #####:    8:  Term or_tm   = term_new_or(a, b);
+    #####:    9:  heap_set(inc_loc, or_tm);
+    #####:   10:  return term_new(0, INC, 0, inc_loc);
+        -:   11:}

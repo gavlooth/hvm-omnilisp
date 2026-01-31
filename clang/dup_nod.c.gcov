@@ -1,0 +1,35 @@
+        -:    0:Source:../hvm4/clang/wnf/dup_nod.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// ! X &L = T{a,b,...}
+        -:    2:// ------------------- DUP-NOD
+        -:    3:// ! A &L = a
+        -:    4:// ! B &L = b
+        -:    5:// ...
+        -:    6:// X₀ ← T{A₀,B₀,...}
+        -:    7:// X₁ ← T{A₁,B₁,...}
+       22:    8:fn Term wnf_dup_nod(u32 lab, u32 loc, u8 side, Term term) {
+       22:    9:  ITRS++;
+       22:   10:  u32 ari = term_arity(term);
+       22:   11:  if (ari == 0) {
+       12:   12:    heap_subst_var(loc, term);
+       12:   13:    return term;
+        -:   14:  }
+       10:   15:  u32  t_loc = term_val(term);
+       10:   16:  u32  t_ext = term_ext(term);
+       10:   17:  u8   t_tag = term_tag(term);
+       10:   18:  u64  block = heap_alloc(3 * (u64)ari);
+       10:   19:  u32  vals  = (u32)block;
+       10:   20:  u32  r0_loc = vals + ari;
+       10:   21:  u32  r1_loc = r0_loc + ari;
+       24:   22:  for (u32 i = 0; i < ari; i++) {
+       14:   23:    heap_write(vals + i, heap_read(t_loc + i));
+       14:   24:    Copy A = term_clone_at(vals + i, lab);
+       14:   25:    heap_write(r0_loc + i, A.k0);
+       14:   26:    heap_write(r1_loc + i, A.k1);
+        -:   27:  }
+       10:   28:  Term r0 = term_new(0, t_tag, t_ext, r0_loc);
+       10:   29:  Term r1 = term_new(0, t_tag, t_ext, r1_loc);
+       10:   30:  return heap_subst_cop(side, loc, r0, r1);
+        -:   31:}

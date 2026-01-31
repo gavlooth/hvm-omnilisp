@@ -1,0 +1,19 @@
+        -:    0:Source:../hvm4/clang/parse/term/nat.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:fn Term parse_term(PState *s, u32 depth);
+        -:    2:
+       65:    3:fn Term parse_term_nat(PState *s, u32 depth) {
+       65:    4:  u32 sav = s->pos;
+       65:    5:  u32 num = 0;
+      133:    6:  while (isdigit(parse_peek(s))) {
+       68:    7:    num = num * 10 + (parse_peek(s) - '0');
+       68:    8:    parse_advance(s);
+        -:    9:  }
+       65:   10:  if (parse_peek(s) != 'n') { s->pos = sav; return 0; }
+        2:   11:  parse_advance(s);
+       2*:   12:  Term t = parse_match(s, "+") ? parse_term(s, depth) : term_new_ctr(NAM_ZER, 0, 0);
+        7:   13:  for (u32 i = 0; i < num; i++) t = term_new_ctr(NAM_SUC, 1, &t);
+        2:   14:  return t;
+        -:   15:}

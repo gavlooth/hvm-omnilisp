@@ -1,0 +1,16 @@
+        -:    0:Source:../hvm4/clang/wnf/alo_dry.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// @{s} ^(f x)
+        -:    2:// -------------- ALO-DRY
+        -:    3:// ^(@{s}f @{s}x)
+    #####:    4:fn Term wnf_alo_dry(u32 ls_loc, u32 len, u32 loc) {
+    #####:    5:  u64 alo_loc0 = heap_alloc(1);
+    #####:    6:  u64 alo_loc1 = heap_alloc(1);
+    #####:    7:  heap_set(alo_loc0, ((u64)ls_loc << 32) | (loc + 0));
+    #####:    8:  heap_set(alo_loc1, ((u64)ls_loc << 32) | (loc + 1));
+    #####:    9:  Term fun = term_new(0, ALO, len, alo_loc0);
+    #####:   10:  Term arg = term_new(0, ALO, len, alo_loc1);
+    #####:   11:  return term_new_dry(fun, arg);
+        -:   12:}

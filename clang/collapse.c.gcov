@@ -1,0 +1,221 @@
+        -:    0:Source:../hvm4/clang/eval/collapse.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// Eval collapse (CNF flattening).
+        -:    2:// - Lazy CNF extraction via key queue traversal.
+        -:    3:// - Lower numeric keys are popped first.
+        -:    4:// - INC decreases key (explored earlier), SUP increases key.
+        -:    5:// - Uses cnf to handle infinite structures without stack overflow.
+        -:    6:
+        -:    7:#ifndef EVAL_COLLAPSE_STEAL_PERIOD
+        -:    8:#define EVAL_COLLAPSE_STEAL_PERIOD 128u
+        -:    9:#endif
+        -:   10:#ifndef EVAL_COLLAPSE_STEAL_BATCH
+        -:   11:#define EVAL_COLLAPSE_STEAL_BATCH 32u
+        -:   12:#endif
+        -:   13:#ifndef EVAL_COLLAPSE_STACK_SIZE
+        -:   14:#define EVAL_COLLAPSE_STACK_SIZE (64u * 1024u * 1024u)
+        -:   15:#endif
+        -:   16:
+        -:   17:typedef struct {
+        -:   18:  _Alignas(WSQ_L1) _Atomic u64     printed;
+        -:   19:  _Alignas(WSQ_L1) _Atomic int     stop;
+        -:   20:  _Alignas(WSQ_L1) _Atomic int64_t pending;
+        -:   21:  u64  limit;
+        -:   22:  int  silent;
+        -:   23:  int  show_itrs;
+        -:   24:  Wspq ws;
+        -:   25:} EvalCollapseCtx;
+        -:   26:
+        -:   27:typedef struct {
+        -:   28:  EvalCollapseCtx *ctx;
+        -:   29:  u32 tid;
+        -:   30:} EvalCollapseArg;
+        -:   31:
+    #####:   32:static inline void eval_collapse_process_loc(EvalCollapseCtx *C, u32 me, u8 key, u32 loc, int64_t *pend_local) {
+    #####:   33:  for (;;) {
+    #####:   34:    if (atomic_load_explicit(&C->stop, memory_order_acquire)) {
+    #####:   35:      return;
+        -:   36:    }
+        -:   37:
+    #####:   38:    Term before = heap_read(loc);
+    #####:   39:    Term t = cnf(before);
+    #####:   40:    if (t != before) {
+    #####:   41:      heap_set(loc, t);
+        -:   42:    }
+        -:   43:
+    #####:   44:    switch (term_tag(t)) {
+    #####:   45:      case INC: {
+    #####:   46:        u32 inc_loc = term_val(t);
+    #####:   47:        loc = inc_loc;
+    #####:   48:        Term prev = heap_read(loc);
+    #####:   49:        t = cnf(prev);
+    #####:   50:        if (t != prev) {
+    #####:   51:          heap_set(loc, t);
+        -:   52:        }
+    #####:   53:        if (key > 0) {
+    #####:   54:          key -= 1;
+        -:   55:        }
+    #####:   56:        continue;
+        -:   57:      }
+    #####:   58:      case SUP: {
+    #####:   59:        u32 sup_loc = term_val(t);
+    #####:   60:        u8  nkey = (u8)(key + 1);
+    #####:   61:        u64 task = ((u64)(sup_loc + 1) << 32) | (u64)(sup_loc + 0);
+    #####:   62:        wspq_push(&C->ws, me, nkey, task);
+    #####:   63:        *pend_local += 2;
+    #####:   64:        return;
+        -:   65:      }
+    #####:   66:      case ERA: {
+    #####:   67:        return;
+        -:   68:      }
+    #####:   69:      default: {
+    #####:   70:        u64 prev = atomic_fetch_add_explicit(&C->printed, 1, memory_order_relaxed);
+    #####:   71:        if (prev < C->limit) {
+    #####:   72:          if (!C->silent) {
+    #####:   73:            print_term_quoted(t);
+    #####:   74:            if (C->show_itrs) {
+    #####:   75:              printf(" \033[2m#%llu\033[0m", wnf_itrs_total());
+        -:   76:            }
+    #####:   77:            printf("\n");
+        -:   78:          }
+        -:   79:        }
+    #####:   80:        if (prev + 1u >= C->limit) {
+    #####:   81:          atomic_store_explicit(&C->stop, 1, memory_order_release);
+        -:   82:        }
+    #####:   83:        return;
+        -:   84:      }
+        -:   85:    }
+        -:   86:  }
+        -:   87:}
+        -:   88:
+    #####:   89:static void *eval_collapse_worker(void *arg) {
+    #####:   90:  EvalCollapseArg *A = (EvalCollapseArg *)arg;
+    #####:   91:  EvalCollapseCtx *C = A->ctx;
+    #####:   92:  u32 me = A->tid;
+        -:   93:
+    #####:   94:  wnf_set_tid(me);
+        -:   95:
+    #####:   96:  u32 iter = 0;
+    #####:   97:  u32 steal_period = EVAL_COLLAPSE_STEAL_PERIOD;
+    #####:   98:  u32 steal_batch = EVAL_COLLAPSE_STEAL_BATCH;
+    #####:   99:  u32 steal_cursor = me + 1;
+    #####:  100:  int64_t pend_local = 0;
+        -:  101:
+    #####:  102:  for (;;) {
+    #####:  103:    if (atomic_load_explicit(&C->stop, memory_order_acquire)) {
+    #####:  104:      break;
+        -:  105:    }
+        -:  106:
+    #####:  107:    u8  key = 0;
+    #####:  108:    u64 task = 0;
+    #####:  109:    bool has_local = wspq_pop(&C->ws, me, &key, &task);
+    #####:  110:    if (has_local) {
+    #####:  111:      u32 loc0 = (u32)task;
+    #####:  112:      u32 loc1 = (u32)(task >> 32);
+    #####:  113:      if (loc0 != 0) {
+    #####:  114:        eval_collapse_process_loc(C, me, key, loc0, &pend_local);
+    #####:  115:        pend_local -= 1;
+    #####:  116:        iter += 1u;
+        -:  117:      }
+    #####:  118:      if (loc1 != 0) {
+    #####:  119:        eval_collapse_process_loc(C, me, key, loc1, &pend_local);
+    #####:  120:        pend_local -= 1;
+    #####:  121:        iter += 1u;
+        -:  122:      }
+    #####:  123:      if ((iter & (steal_period - 1u)) != 0u) {
+    #####:  124:        continue;
+        -:  125:      }
+        -:  126:    } else {
+    #####:  127:      iter = steal_period;
+        -:  128:    }
+        -:  129:
+    #####:  130:    if (iter >= steal_period) {
+    #####:  131:      u32 got = wspq_steal_some(&C->ws, me, steal_batch, has_local, &steal_cursor);
+    #####:  132:      iter = 0;
+    #####:  133:      if (got > 0u) {
+    #####:  134:        continue;
+        -:  135:      }
+        -:  136:    }
+        -:  137:
+    #####:  138:    if (pend_local != 0) {
+    #####:  139:      atomic_fetch_add_explicit(&C->pending, pend_local, memory_order_relaxed);
+    #####:  140:      pend_local = 0;
+        -:  141:    }
+        -:  142:
+    #####:  143:    if (atomic_load_explicit(&C->pending, memory_order_relaxed) == 0) {
+    #####:  144:      break;
+        -:  145:    }
+        -:  146:
+    #####:  147:    cpu_relax();
+        -:  148:  }
+        -:  149:
+    #####:  150:  if (pend_local != 0) {
+    #####:  151:    atomic_fetch_add_explicit(&C->pending, pend_local, memory_order_relaxed);
+        -:  152:  }
+        -:  153:
+    #####:  154:  wnf_itrs_flush(me);
+    #####:  155:  return NULL;
+        -:  156:}
+        -:  157:
+    #####:  158:fn void eval_collapse(Term term, int limit, int show_itrs, int silent) {
+    #####:  159:  u32 n = thread_get_count();
+    #####:  160:  if (n == 0) {
+    #####:  161:    n = 1;
+        -:  162:  }
+    #####:  163:  if (n > MAX_THREADS) {
+    #####:  164:    n = MAX_THREADS;
+        -:  165:  }
+    #####:  166:  if (limit == 0) {
+    #####:  167:    return;
+        -:  168:  }
+        -:  169:
+    #####:  170:  u64 max_lines = UINT64_MAX;
+    #####:  171:  if (limit >= 0) {
+    #####:  172:    max_lines = (u64)limit;
+        -:  173:  }
+        -:  174:
+    #####:  175:  u32 root_loc = heap_alloc(1);
+    #####:  176:  heap_set(root_loc, term);
+        -:  177:
+        -:  178:  EvalCollapseCtx C;
+    #####:  179:  atomic_store_explicit(&C.printed, 0, memory_order_relaxed);
+    #####:  180:  atomic_store_explicit(&C.stop, 0, memory_order_relaxed);
+    #####:  181:  atomic_store_explicit(&C.pending, 0, memory_order_relaxed);
+    #####:  182:  C.limit = max_lines;
+    #####:  183:  C.silent = silent;
+    #####:  184:  C.show_itrs = show_itrs;
+    #####:  185:  if (!wspq_init(&C.ws, n)) {
+    #####:  186:    fprintf(stderr, "eval_collapse: queue allocation failed\n");
+    #####:  187:    exit(1);
+        -:  188:  }
+        -:  189:
+    #####:  190:  wspq_push(&C.ws, 0u, 0u, (u64)root_loc);
+    #####:  191:  atomic_fetch_add_explicit(&C.pending, 1, memory_order_relaxed);
+        -:  192:
+        -:  193:  pthread_t tids[MAX_THREADS];
+        -:  194:  EvalCollapseArg args[MAX_THREADS];
+    #####:  195:  if (n > 1) {
+        -:  196:    pthread_attr_t attr;
+    #####:  197:    pthread_attr_init(&attr);
+    #####:  198:    pthread_attr_setstacksize(&attr, (size_t)EVAL_COLLAPSE_STACK_SIZE);
+    #####:  199:    for (u32 i = 1; i < n; ++i) {
+    #####:  200:      args[i].ctx = &C;
+    #####:  201:      args[i].tid = i;
+    #####:  202:      pthread_create(&tids[i], &attr, eval_collapse_worker, &args[i]);
+        -:  203:    }
+    #####:  204:    pthread_attr_destroy(&attr);
+        -:  205:  }
+        -:  206:
+    #####:  207:  EvalCollapseArg arg0 = { .ctx = &C, .tid = 0 };
+    #####:  208:  eval_collapse_worker(&arg0);
+        -:  209:
+    #####:  210:  if (n > 1) {
+    #####:  211:    for (u32 i = 1; i < n; ++i) {
+    #####:  212:      pthread_join(tids[i], NULL);
+        -:  213:    }
+        -:  214:  }
+        -:  215:
+    #####:  216:  wspq_free(&C.ws);
+        -:  217:}

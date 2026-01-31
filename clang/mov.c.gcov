@@ -1,0 +1,11 @@
+        -:    0:Source:../hvm4/clang/term/new/mov.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+    #####:    1:fn Term term_new_mov_at(u32 loc, Term val, Term bod) {
+    #####:    2:  return term_new_at(loc, MOV, 0, 2, (Term[]){val, bod});
+        -:    3:}
+        -:    4:
+    #####:    5:fn Term term_new_mov(Term val, Term bod) {
+    #####:    6:  return term_new_mov_at(heap_alloc(2), val, bod);
+        -:    7:}

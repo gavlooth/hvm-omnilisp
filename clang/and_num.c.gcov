@@ -1,0 +1,20 @@
+        -:    0:Source:../hvm4/clang/wnf/and_num.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (#0 .&. b)
+        -:    2:// ---------- AND-ZER
+        -:    3:// #0
+        -:    4://
+        -:    5:// (#n .&. b)   [n ≠ 0]
+        -:    6:// -------------------- AND-ONE
+        -:    7:// b
+    #####:    8:fn Term wnf_and_num(Term num, Term b) {
+    #####:    9:  ITRS++;
+    #####:   10:  u32 val = term_val(num);
+    #####:   11:  if (val == 0) {
+    #####:   12:    return term_new_num(0);
+        -:   13:  } else {
+    #####:   14:    return b;
+        -:   15:  }
+        -:   16:}

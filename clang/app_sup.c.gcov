@@ -1,0 +1,23 @@
+        -:    0:Source:../hvm4/clang/wnf/app_sup.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:// (&L{f,g} a)
+        -:    2:// ----------------- APP-SUP
+        -:    3:// ! A &L = a
+        -:    4:// &L{(f A₀),(g A₁)}
+    #####:    5:fn Term wnf_app_sup(Term app, Term sup) {
+    #####:    6:  ITRS++;
+    #####:    7:  u32  app_loc = term_val(app);
+    #####:    8:  u32  sup_loc = term_val(sup);
+    #####:    9:  u32  lab     = term_ext(sup);
+    #####:   10:  Term arg     = heap_read(app_loc + 1);
+    #####:   11:  Term tm1     = heap_read(sup_loc + 1);
+    #####:   12:  u64  loc     = heap_alloc(3);
+    #####:   13:  heap_write(loc + 2, arg);
+    #####:   14:  Copy D = term_clone_at(loc + 2, lab);
+    #####:   15:  heap_set(sup_loc + 1, D.k0);
+    #####:   16:  Term ap0 = term_new(0, APP, 0, sup_loc);
+    #####:   17:  Term ap1 = term_new_app_at(loc, tm1, D.k1);
+    #####:   18:  return term_new_sup_at(app_loc, lab, ap0, ap1);
+        -:   19:}

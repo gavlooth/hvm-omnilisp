@@ -1,0 +1,8 @@
+        -:    0:Source:../hvm4/clang/heap/subst_cop.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+       19:    1:fn Term heap_subst_cop(u8 side, u32 loc, Term r0, Term r1) {
+       19:    2:  heap_set(loc, term_sub_set(side == 0 ? r1 : r0, 1));
+       19:    3:  return side == 0 ? r0 : r1;
+        -:    4:}

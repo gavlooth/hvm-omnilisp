@@ -1,0 +1,90 @@
+        -:    0:Source:../hvm4/clang/parse/term/opr.c
+        -:    0:Graph:hvm4-cov-main.gcno
+        -:    0:Data:hvm4-cov-main.gcda
+        -:    0:Runs:22
+        -:    1:fn Term parse_term(PState *s, u32 depth);
+        -:    2:
+        -:    3:// Returns operator precedence (higher = binds tighter)
+       16:    4:fn int parse_term_opr_prec(int op) {
+       16:    5:  switch (op) {
+    #####:    6:    case OP_OR:  return 1;
+    #####:    7:    case OP_AND: return 2;
+    #####:    8:    case OP_EQ: case OP_NE: return 3;
+    #####:    9:    case OP_LT: case OP_LE: case OP_GT: case OP_GE: return 4;
+    #####:   10:    case OP_LSH: case OP_RSH: return 5;
+       14:   11:    case OP_ADD: case OP_SUB: return 6;
+        2:   12:    case OP_MUL: case OP_DIV: case OP_MOD: return 7;
+    #####:   13:    case OP_XOR: return 8;
+    #####:   14:    default: return 0;
+        -:   15:  }
+        -:   16:}
+        -:   17:
+        -:   18:// Peek at next operator without consuming. Returns op code or -1.
+     2155:   19:fn int parse_term_opr_peek(PState *s) {
+     2155:   20:  parse_skip(s);
+     2155:   21:  char c = parse_peek(s);
+     2155:   22:  char c1 = parse_peek_at(s, 1);
+        -:   23:
+    2155*:   24:  if (c == '=' && c1 == '=') return OP_EQ;
+    2155*:   25:  if (c == '!' && c1 == '=') return OP_NE;
+    2155*:   26:  if (c == '<' && c1 == '=') return OP_LE;
+    2155*:   27:  if (c == '>' && c1 == '=') return OP_GE;
+    2155*:   28:  if (c == '<' && c1 == '<') return OP_LSH;
+    2155*:   29:  if (c == '>' && c1 == '>') return OP_RSH;
+    2155*:   30:  if (c == '&' && c1 == '&') return OP_AND;
+    2155*:   31:  if (c == '|' && c1 == '|') return OP_OR;
+        -:   32:
+     2155:   33:  if (c == '+') return OP_ADD;
+    2148*:   34:  if (c == '-') return OP_SUB;
+     2148:   35:  if (c == '*') return OP_MUL;
+    2147*:   36:  if (c == '/') return OP_DIV;
+    2147*:   37:  if (c == '%') return OP_MOD;
+    2147*:   38:  if (c == '^') return OP_XOR;
+    2147*:   39:  if (c == '~') return OP_NOT;
+    2147*:   40:  if (c == '<') return OP_LT;
+    2147*:   41:  if (c == '>') return OP_GT;
+        -:   42:
+     2147:   43:  return -1;
+        -:   44:}
+        -:   45:
+        -:   46:// Consume an operator (call after peek confirms one exists)
+        8:   47:fn void parse_term_opr_consume(PState *s, int op) {
+        8:   48:  parse_skip(s);
+        8:   49:  parse_advance(s);
+        -:   50:  // Two-character operators need second advance
+        8:   51:  if (op == OP_EQ || op == OP_NE || op == OP_LE || op == OP_GE ||
+        8:   52:      op == OP_LSH || op == OP_RSH || op == OP_AND || op == OP_OR) {
+    #####:   53:    parse_advance(s);
+        -:   54:  }
+        8:   55:}
+        -:   56:
+        -:   57:// Try to match an infix operator. Returns the op code or -1 if no match.
+        -:   58:// If matched, advances the parser past the operator.
+        -:   59:fn int parse_term_opr_match(PState *s) {
+        -:   60:  parse_skip(s);
+        -:   61:  char c = parse_peek(s);
+        -:   62:  char c1 = parse_peek_at(s, 1);
+        -:   63:
+        -:   64:  // Two-character operators
+        -:   65:  if (c == '=' && c1 == '=') { parse_advance(s); parse_advance(s); return OP_EQ; }
+        -:   66:  if (c == '!' && c1 == '=') { parse_advance(s); parse_advance(s); return OP_NE; }
+        -:   67:  if (c == '<' && c1 == '=') { parse_advance(s); parse_advance(s); return OP_LE; }
+        -:   68:  if (c == '>' && c1 == '=') { parse_advance(s); parse_advance(s); return OP_GE; }
+        -:   69:  if (c == '<' && c1 == '<') { parse_advance(s); parse_advance(s); return OP_LSH; }
+        -:   70:  if (c == '>' && c1 == '>') { parse_advance(s); parse_advance(s); return OP_RSH; }
+        -:   71:  if (c == '&' && c1 == '&') { parse_advance(s); parse_advance(s); return OP_AND; }
+        -:   72:  if (c == '|' && c1 == '|') { parse_advance(s); parse_advance(s); return OP_OR; }
+        -:   73:
+        -:   74:  // Single-character operators (check they're not part of something else)
+        -:   75:  if (c == '+') { parse_advance(s); return OP_ADD; }
+        -:   76:  if (c == '-') { parse_advance(s); return OP_SUB; }
+        -:   77:  if (c == '*') { parse_advance(s); return OP_MUL; }
+        -:   78:  if (c == '/') { parse_advance(s); return OP_DIV; }
+        -:   79:  if (c == '%') { parse_advance(s); return OP_MOD; }
+        -:   80:  if (c == '^') { parse_advance(s); return OP_XOR; }
+        -:   81:  if (c == '~') { parse_advance(s); return OP_NOT; }
+        -:   82:  if (c == '<') { parse_advance(s); return OP_LT; }
+        -:   83:  if (c == '>') { parse_advance(s); return OP_GT; }
+        -:   84:
+        -:   85:  return -1;
+        -:   86:}
