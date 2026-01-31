@@ -1,9 +1,0 @@
-        -:    0:Source:../hvm4/clang/parse/skip_comment.c
-        -:    0:Graph:hvm4-cov-main.gcno
-        -:    0:Data:hvm4-cov-main.gcda
-        -:    0:Runs:22
-       42:    1:fn void parse_skip_comment(PState *s) {
-     1019:    2:  while (!parse_at_end(s) && parse_peek(s) != '\n') {
-      977:    3:    parse_advance(s);
-        -:    4:  }
-       42:    5:}

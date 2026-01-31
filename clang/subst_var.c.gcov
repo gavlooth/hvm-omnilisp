@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/heap/subst_var.c
-        -:    0:Graph:hvm4-cov-main.gcno
-        -:    0:Data:hvm4-cov-main.gcda
-        -:    0:Runs:22
-      163:    1:fn void heap_subst_var(u32 loc, Term val) {
-      163:    2:  heap_set(loc, term_sub_set(val, 1));
-      163:    3:}

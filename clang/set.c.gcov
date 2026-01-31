@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/term/sub/set.c
-        -:    0:Graph:hvm4-cov-main.gcno
-        -:    0:Data:hvm4-cov-main.gcda
-        -:    0:Runs:22
-      350:    1:fn Term term_sub_set(Term t, u8 sub) {
-      350:    2:  return (t & ~(((u64)SUB_MASK) << SUB_SHIFT)) | (((u64)(sub & SUB_MASK)) << SUB_SHIFT);
-        -:    3:}

@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/term/new/dp0.c
-        -:    0:Graph:hvm4-cov-main.gcno
-        -:    0:Data:hvm4-cov-main.gcda
-        -:    0:Runs:22
-       20:    1:fn Term term_new_dp0(u32 lab, u32 loc) {
-       20:    2:  return term_new(0, DP0, lab, loc);
-        -:    3:}

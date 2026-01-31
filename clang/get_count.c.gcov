@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/thread/get_count.c
-        -:    0:Graph:hvm4-cov-main.gcno
-        -:    0:Data:hvm4-cov-main.gcda
-        -:    0:Runs:22
-      110:    1:fn u32 thread_get_count(void) {
-     110*:    2:  return THREAD_COUNT == 0 ? 1 : THREAD_COUNT;
-        -:    3:}

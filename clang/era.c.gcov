@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/term/new/era.c
-        -:    0:Graph:hvm4-cov-main.gcno
-        -:    0:Data:hvm4-cov-main.gcda
-        -:    0:Runs:22
-       27:    1:fn Term term_new_era(void) {
-       27:    2:  return term_new(0, ERA, 0, 0);
-        -:    3:}
