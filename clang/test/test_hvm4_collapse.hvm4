@@ -1,0 +1,36 @@
+// HVM4 Collapse tests - tests eval_collapse and related functions
+
+// Test 1: Simple superposition collapse
+@sup_simple = &L{1,2}
+
+// Test 2: Nested superposition
+@sup_nested = &L{&M{1,2}, &M{3,4}}
+
+// Test 3: Superposition with ERA (erasure)
+@sup_era = &L{1, &{}}
+
+// Test 4: Superposition with computation
+@sup_compute = &L{(1+2), (3*4)}
+
+// Test 5: Chain of INC (priority adjustments)
+@sup_inc = ↑&L{1,2}
+
+// Test 6: Deep nested superposition
+@sup_deep = &A{&B{&C{1,2}, &C{3,4}}, &B{&C{5,6}, &C{7,8}}}
+
+// Test 7: Superposition with lambda
+@sup_lam = &L{λx.x, λy.(y+1)}
+
+// Test 8: Superposition applied
+@sup_applied = (&L{λa.a, λb.(b+1)})(5)
+
+// Test 9: Multiple superpositions in expression
+@sup_multi = (&L{1,2}) + (&M{10,20})
+
+// Test 10: Superposition with duplication using λ&
+@sup_dup = λ&x.&L{x₀, x₁}
+
+// Main: collapse all branches
+@main = @sup_simple
+//1
+//2

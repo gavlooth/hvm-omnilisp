@@ -1,0 +1,108 @@
+// HVM4 Printer tests - exercises various term printing in term.c
+
+// Test 1: NAM (stuck name)
+@test_nam = ^hello
+
+// Test 2: DRY (stuck application)
+@test_dry = ^(λa.a λb.b)
+
+// Test 3: ERA (erasure)
+@test_era = &{}
+
+// Test 4: ANY (wildcard)
+@test_any = *
+
+// Test 5: SUP (superposition)
+@test_sup = &L{λa.a, λb.b}
+
+// Test 6: DUP (duplication)
+@test_dup = λa.!A&L=a ; A₀
+
+// Test 7: DSU (dynamic superposition)
+@test_dsu = λL.&(L){1, 2}
+
+// Test 8: DDU (dynamic duplication)
+@test_ddu = λL.λv.!X&(L)=v;X₀
+
+// Test 9: MOV term
+@test_mov = λa.%A=a ; A
+
+// Test 10: MAT (match on constructor)
+@test_mat = λ{
+  #Z: 0 ;
+  #S: λs.1 ;
+}
+
+// Test 11: SWI (switch on number)
+@test_swi = λ{
+  0: 100 ;
+  1: 200 ;
+  λx.x
+}
+
+// Test 12: USE (default handler)
+@test_use = λ{λx.x}
+
+// Test 13: CTR (constructor)
+@test_ctr = #Point{10, 20}
+
+// Test 14: OP2 (binary operation)
+@test_op2 = λx.λy.(x + y)
+
+// Test 15: RED (reduction marker)
+@test_red = λx.x ~> λy.y
+
+// Test 16: EQL (structural equality)
+@test_eql = λx.x === λa.a
+
+// Test 17: AND (logical and)
+@test_and = λx.λy.(x .&. y)
+
+// Test 18: OR (logical or)
+@test_or = λx.λy.(x .|. y)
+
+// Test 19: UNS (unscoped)
+@test_uns = ! a = λ b ; λa.2
+
+// Test 20: INC (increment priority)
+@test_inc = ↑42
+
+// Test 21: Nat literal
+@test_nat = 5n
+
+// Test 22: Nat successor
+@test_suc = 1n+ 3n
+
+// Test 23: String literal
+@test_str = "hello"
+
+// Test 24: List literal
+@test_list = [1, 2, 3]
+
+// Test 25: Char literal
+@test_char = 'x'
+
+// Test 26: Nested CTR
+@test_nested_ctr = #Pair{#Left{1}, #Right{2}}
+
+// Test 27: Complex expression with many term types
+@test_complex = λf.λx.
+  !A&L = f(x) ;
+  &M{A₀, ↑A₁}
+
+// Test 28: ALO (book reference with substitution)
+@helper = λx.x
+@test_alo = @helper
+
+// Test 29: List cons
+@test_cons = 1 <> 2 <> []
+
+// Test 30: Match with nat patterns
+@test_nat_mat = λ{
+  0n: 0 ;
+  1n+: λs.s ;
+}
+
+// Main
+@main = 1
+//1

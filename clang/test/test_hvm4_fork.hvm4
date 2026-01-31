@@ -1,0 +1,36 @@
+// HVM4 Fork syntax tests - tests parse_term_fork in fork.c
+
+// Test 1: Basic static fork with single variable
+@fork_single = &Lλx{x ; x}
+
+// Test 2: Static fork with multiple variables
+@fork_multi = &Lλx,y{(x+y) ; (x*y)}
+
+// Test 3: Fork with arithmetic in branches
+@fork_arith = &Lλa,b,c{(a+b+c) ; (a*b*c)}
+
+// Test 4: Dynamic fork with single variable
+@fork_dyn_single = λL.&(L)λx{x ; x}
+
+// Test 5: Dynamic fork with multiple variables
+@fork_dyn_multi = λL.&(L)λx,y{(x+y) ; (x*y)}
+
+// Test 6: Fork with explicit branch markers
+@fork_branch = &Lλx,y{&₀: x ; &₁: y}
+
+// Test 7: Dynamic fork with branch markers
+@fork_dyn_branch = λL.&(L)λx,y{&₀: x ; &₁: y}
+
+// Test 8: Nested fork usage
+@fork_nested = (&Lλx{(x+1) ; (x*2)})((&L{3,5}))
+
+// Test 9: Fork in application context
+@fork_app = (&Lλx,y{(x+y);(x*y)})(&L{2,100},&L{3,100})
+
+// Test 10: Fork with trailing semicolons
+@fork_trailing = &Lλa{a ; a ;}
+
+// Main entry point for testing
+@main = @fork_app
+//5
+//10000
