@@ -1349,6 +1349,116 @@ fn Term parse_omni_match_clause(PState *s) {
 }
 
 // =============================================================================
+// Quoted Data Parsing (symbols use nick encoding, not table IDs)
+// =============================================================================
+
+fn Term parse_omni_quoted_data(PState *s);
+
+// Parse quoted data recursively - symbols become #Sym{nick} not table refs
+fn Term parse_omni_quoted_data(PState *s) {
+  omni_skip(s);
+  char c = parse_peek(s);
+
+  // Nested quote
+  if (c == '\'') {
+    parse_advance(s);
+    Term inner = parse_omni_quoted_data(s);
+    return omni_ctr1(OMNI_NAM_COD, inner);
+  }
+
+  // List: (...)
+  if (c == '(') {
+    parse_advance(s);
+    omni_skip(s);
+
+    if (parse_peek(s) == ')') {
+      parse_advance(s);
+      return omni_nil();
+    }
+
+    Term result = omni_nil();
+    Term *tail = &result;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      Term elem = parse_omni_quoted_data(s);
+      Term cell = omni_cons(elem, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return result;
+  }
+
+  // Array: [...]
+  if (c == '[') {
+    parse_advance(s);
+    omni_skip(s);
+
+    Term items = omni_nil();
+    Term *tail = &items;
+    while (parse_peek(s) != ']' && !parse_at_end(s)) {
+      Term item = parse_omni_quoted_data(s);
+      Term cell = omni_cons(item, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ']');
+    return omni_ctr1(OMNI_NAM_ARR, items);
+  }
+
+  // Number
+  Term num_out;
+  if (omni_parse_number(s, &num_out)) {
+    return num_out;
+  }
+
+  // String
+  if (c == '"') {
+    // Delegate to string parsing (reuse existing logic)
+    parse_advance(s);
+    Term chars = omni_nil();
+    Term *tail = &chars;
+    while (parse_peek(s) != '"' && !parse_at_end(s)) {
+      char ch = parse_peek(s);
+      if (ch == '\\') {
+        parse_advance(s);
+        ch = parse_peek(s);
+        switch (ch) {
+          case 'n': ch = '\n'; break;
+          case 't': ch = '\t'; break;
+          case 'r': ch = '\r'; break;
+          case '\\': ch = '\\'; break;
+          case '"': ch = '"'; break;
+          default: break;
+        }
+      }
+      Term chr_cell = omni_cons(omni_chr((u32)ch), omni_nil());
+      *tail = chr_cell;
+      tail = &HEAP[term_val(chr_cell) + 1];
+      parse_advance(s);
+    }
+    omni_expect_char(s, '"');
+    return chars;
+  }
+
+  // Symbol - use nick encoding (THE KEY FIX!)
+  u32 sym_start, sym_len;
+  if (omni_parse_symbol_raw(s, &sym_start, &sym_len)) {
+    // Check special values
+    if (omni_symbol_is(s, sym_start, sym_len, "true")) return omni_true();
+    if (omni_symbol_is(s, sym_start, sym_len, "false")) return omni_false();
+    if (omni_symbol_is(s, sym_start, sym_len, "nothing")) return omni_nothing();
+    if (omni_symbol_is(s, sym_start, sym_len, "nil")) return omni_nil();
+
+    // Use nick encoding for quoted symbols (not table ID!)
+    u32 nick = omni_symbol_nick(s, sym_start, sym_len);
+    return omni_sym(nick);
+  }
+
+  parse_error(s, "quoted data", c);
+  return omni_nil();
+}
+
+// =============================================================================
 // Expression Parsing
 // =============================================================================
 
@@ -1357,6 +1467,7 @@ fn Term parse_omni_atom(PState *s) {
   char c = parse_peek(s);
 
   // Quote: 'expr or '(list elements)
+  // Use parse_omni_quoted_data to ensure symbols get nick encoding (not table IDs)
   if (c == '\'') {
     parse_advance(s);
     omni_skip(s);
@@ -1366,12 +1477,12 @@ fn Term parse_omni_atom(PState *s) {
       parse_advance(s);  // consume '('
       omni_skip(s);
 
-      // Build list from elements
+      // Build list from elements using quoted data parser
       Term result = omni_nil();
       Term *tail = &result;
 
       while (parse_peek(s) != ')' && !parse_at_end(s)) {
-        Term elem = parse_omni_expr(s);
+        Term elem = parse_omni_quoted_data(s);  // Use quoted data parser!
         Term cell = omni_cons(elem, omni_nil());
         *tail = cell;
         tail = &HEAP[term_val(cell) + 1];
@@ -1382,7 +1493,7 @@ fn Term parse_omni_atom(PState *s) {
     }
 
     // Regular quote - wraps in #Cod{} which evaluates to itself
-    Term quoted = parse_omni_expr(s);
+    Term quoted = parse_omni_quoted_data(s);  // Use quoted data parser!
     return omni_ctr1(OMNI_NAM_COD, quoted);
   }
 
