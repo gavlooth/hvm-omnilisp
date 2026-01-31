@@ -364,6 +364,40 @@
       }(pv))(@omni_eval(menv)(p))
 
     // ==========================================================================
+    // Lazy Iterator Wrappers - evaluate to actual lists
+    // ==========================================================================
+
+    // Take: #ITkn{list, n} -> first n elements
+    #ITkn: λ&xs. λ&n.
+      (λ&list. (λ&count.
+        @omni_take(count)(list)
+      )(@omni_eval(menv)(n)))(@omni_eval(menv)(xs))
+
+    // Drop: #IDrp{list, n} -> skip first n elements
+    #IDrp: λ&xs. λ&n.
+      (λ&list. (λ&count.
+        @omni_drop(count)(list)
+      )(@omni_eval(menv)(n)))(@omni_eval(menv)(xs))
+
+    // Zip: #IZip{lists} -> zip multiple lists together
+    #IZip: λ&lists.
+      (λ&evaled.
+        @omni_zip_lists(evaled)
+      )(@omni_eval_list(menv)(lists))
+
+    // ==========================================================================
+    // Math Operations
+    // ==========================================================================
+
+    // Square root (integer)
+    #Sqrt: λ&x.
+      (λ&n. @omni_isqrt(n))(@omni_eval(menv)(x))
+
+    // Power: base^exp
+    #Pow: λ&base. λ&exp.
+      (λ&b. (λ&e. @omni_ipow(b)(e))(@omni_eval(menv)(exp)))(@omni_eval(menv)(base))
+
+    // ==========================================================================
     // Tower / Meta-programming Operations
     // ==========================================================================
 
@@ -2101,6 +2135,110 @@
     #NIL: acc
     #CON: λ&h. λ&t. @omni_reverse_acc(t)(#CON{h, acc})
   }(xs)
+
+// Take first n elements from list
+@omni_take = λ&n. λ&xs.
+  λ{
+    #Cst: λ&count.
+      λ{
+        0: #NIL
+        _: λ&u_.
+          λ{
+            #NIL: #NIL
+            #CON: λ&h. λ&t. #CON{h, @omni_take(#Cst{(count - 1)})(t)}
+          }(xs)
+      }(count)
+    _: λ&u_. xs  // non-numeric n, return whole list
+  }(n)
+
+// Drop first n elements from list
+@omni_drop = λ&n. λ&xs.
+  λ{
+    #Cst: λ&count.
+      λ{
+        0: xs
+        _: λ&u_.
+          λ{
+            #NIL: #NIL
+            #CON: λ&h. λ&t. @omni_drop(#Cst{(count - 1)})(t)
+          }(xs)
+      }(count)
+    _: λ&u_. #NIL  // non-numeric n, return empty
+  }(n)
+
+// Zip list of two lists together: ((a b) (x y)) -> ((a x) (b y))
+@omni_zip_lists = λ&lists.
+  λ{
+    #CON: λ&first. λ&rest.
+      λ{
+        #CON: λ&second. λ&rest2.
+          @omni_zip_two(first)(second)
+        _: λ&u_. first  // only one list, return it
+      }(rest)
+    _: λ&u_. #NIL
+  }(lists)
+
+// Zip two lists: (a b c) (x y z) -> ((a x) (b y) (c z))
+@omni_zip_two = λ&xs. λ&ys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: #NIL
+        #CON: λ&yh. λ&yt.
+          #CON{#CON{xh, #CON{yh, #NIL}}, @omni_zip_two(xt)(yt)}
+      }(ys)
+  }(xs)
+
+// Integer square root - find largest k where k*k <= n
+@omni_isqrt = λ&n.
+  λ{
+    #Cst: λ&x.
+      λ{
+        0: #Cst{0}
+        _: λ&u_. @omni_isqrt_search(x)(0)(x)
+      }(x)
+    _: λ&u_. #Cst{0}
+  }(n)
+
+// Binary search for sqrt: find largest k where k*k <= n
+// lo <= sqrt(n) <= hi
+@omni_isqrt_search = λ&n. λ&lo. λ&hi.
+  (λ&mid.
+    (λ&sq.
+      λ{
+        #True:  // sq <= n: answer is mid or higher
+          λ{
+            #True: #Cst{mid}  // lo >= hi: done
+            _: λ&u_. @omni_isqrt_search(n)((mid + 1))(hi)
+          }(@omni_ge(#Cst{lo})(#Cst{hi}))
+        _: λ&u_.  // sq > n: answer is lower than mid
+          @omni_isqrt_search(n)(lo)((mid - 1))
+      }(@omni_le(#Cst{sq})(#Cst{n}))
+    )((mid * mid))
+  )(((lo + hi) / 2))
+
+// Integer power: base^exp
+@omni_ipow = λ&base. λ&exp.
+  λ{
+    #Cst: λ&b.
+      λ{
+        #Cst: λ&e.
+          λ{
+            0: #Cst{1}
+            1: base
+            _: λ&u_. @omni_ipow_iter(b)(e)(1)
+          }(e)
+        _: λ&u_. #Cst{1}
+      }(exp)
+    _: λ&u_. #Cst{0}
+  }(base)
+
+@omni_ipow_iter = λ&base. λ&exp. λ&acc.
+  λ{
+    0: #Cst{acc}
+    _: λ&u_. @omni_ipow_iter(base)((exp - 1))((acc * base))
+  }(exp)
 
 // Map function over list (parallel - head and tail evaluated in parallel)
 @omni_map = λ&f. λ&xs.
