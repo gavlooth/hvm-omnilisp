@@ -1,14 +1,14 @@
         -:    0:Source:../hvm4/clang/parse/match.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
- 36128170:    1:fn int parse_match(PState *s, const char *str) {
- 36128170:    2:  if (!parse_starts_with(s, str)) {
- 30390150:    3:    return 0;
+        -:    0:Runs:17
+  2256912:    1:fn int parse_match(PState *s, const char *str) {
+  2256912:    2:  if (!parse_starts_with(s, str)) {
+  1900352:    3:    return 0;
         -:    4:  }
- 12304990:    5:  while (*str) {
-  6566970:    6:    parse_advance(s);
-  6566970:    7:    str++;
+   764336:    5:  while (*str) {
+   407776:    6:    parse_advance(s);
+   407776:    7:    str++;
         -:    8:  }
-  5738020:    9:  return 1;
+   356560:    9:  return 1;
         -:   10:}

@@ -1,17 +1,17 @@
         -:    0:Source:../hvm4/clang/parse/bind_lookup.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-   808718:    1:fn void parse_bind_lookup(u32 name, u32 depth, int *lvl, u32 *lab, u32 *kind, u32 *cloned) {
+        -:    0:Runs:17
+    50976:    1:fn void parse_bind_lookup(u32 name, u32 depth, int *lvl, u32 *lab, u32 *kind, u32 *cloned) {
         -:    2:  (void)depth;
-  2421658:    3:  for (int i = PARSE_BINDS_LEN - 1; i >= 0; i--) {
-  2421658:    4:    if (PARSE_BINDS[i].name == name) {
-   808718:    5:      *lvl = (int)PARSE_BINDS[i].depth + 1;
-   808718:    6:      *lab = PARSE_BINDS[i].lab;
-   808718:    7:      *kind = PARSE_BINDS[i].kind;
-   808718:    8:      *cloned = PARSE_BINDS[i].cloned;
-   808718:    9:      PARSE_BINDS[i].uses++;
-   808718:   10:      return;
+   155248:    3:  for (int i = PARSE_BINDS_LEN - 1; i >= 0; i--) {
+   155248:    4:    if (PARSE_BINDS[i].name == name) {
+    50976:    5:      *lvl = (int)PARSE_BINDS[i].depth + 1;
+    50976:    6:      *lab = PARSE_BINDS[i].lab;
+    50976:    7:      *kind = PARSE_BINDS[i].kind;
+    50976:    8:      *cloned = PARSE_BINDS[i].cloned;
+    50976:    9:      PARSE_BINDS[i].uses++;
+    50976:   10:      return;
         -:   11:    }
         -:   12:  }
     #####:   13:  *lvl = -1;
@@ -60,9 +60,9 @@
     #####:   56:  return 0;
         -:   57:}
         -:   58:
-   694070:   59:fn u32 parse_bind_get_uses(void) {
-   694070:   60:  if (PARSE_BINDS_LEN > 0) {
-   694070:   61:    return PARSE_BINDS[PARSE_BINDS_LEN - 1].uses;
+    42928:   59:fn u32 parse_bind_get_uses(void) {
+    42928:   60:  if (PARSE_BINDS_LEN > 0) {
+    42928:   61:    return PARSE_BINDS[PARSE_BINDS_LEN - 1].uses;
         -:   62:  }
     #####:   63:  return 0;
         -:   64:}

@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/wnf/app_red_use_inc.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// ((f ~> use) ↑x)
         -:    2:// --------------- APP-RED-USE-INC
         -:    3:// ↑((f ~> use) x)

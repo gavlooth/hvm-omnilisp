@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/wnf/and_era.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// (&{} .&. b)
         -:    2:// ----------- AND-ERA
         -:    3:// &{}

@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/data/uset.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// data/uset.c - open-addressing set for non-zero u32 keys.
         -:    2://
         -:    3:// Context
@@ -29,77 +29,77 @@
         -:   25:} Uset;
         -:   26:
         -:   27:// Multiplicative hash for u32 keys (unmasked).
-  8750128:   28:static inline u32 uset_hash(u32 key) {
-  8750128:   29:  return key * 2654435761u;
+       69:   28:static inline u32 uset_hash(u32 key) {
+       69:   29:  return key * 2654435761u;
         -:   30:}
         -:   31:
         -:   32:// Round up to next power of two (minimum 2) for mask arithmetic.
-      282:   33:static inline u32 uset_next_pow2(u32 x) {
-      282:   34:  if (x < 2u) {
+       16:   33:static inline u32 uset_next_pow2(u32 x) {
+       16:   34:  if (x < 2u) {
     #####:   35:    return 2u;
         -:   36:  }
-      282:   37:  x--;
-      282:   38:  x |= x >> 1;
-      282:   39:  x |= x >> 2;
-      282:   40:  x |= x >> 4;
-      282:   41:  x |= x >> 8;
-      282:   42:  x |= x >> 16;
-      282:   43:  return x + 1;
+       16:   37:  x--;
+       16:   38:  x |= x >> 1;
+       16:   39:  x |= x >> 2;
+       16:   40:  x |= x >> 4;
+       16:   41:  x |= x >> 8;
+       16:   42:  x |= x >> 16;
+       16:   43:  return x + 1;
         -:   44:}
         -:   45:
         -:   46:// Initialize the set with a capacity >= cap_hint.
-      282:   47:static inline void uset_init(Uset *set, u32 cap_hint) {
-      282:   48:  u32 cap = uset_next_pow2(cap_hint);
-      282:   49:  set->table = (u32 *)calloc(cap, sizeof(u32));
-      282:   50:  if (!set->table) {
+       16:   47:static inline void uset_init(Uset *set, u32 cap_hint) {
+       16:   48:  u32 cap = uset_next_pow2(cap_hint);
+       16:   49:  set->table = (u32 *)calloc(cap, sizeof(u32));
+       16:   50:  if (!set->table) {
     #####:   51:    fprintf(stderr, "uset: allocation failed\n");
     #####:   52:    exit(1);
         -:   53:  }
-      282:   54:  set->cap  = cap;
-      282:   55:  set->mask = cap - 1;
-      282:   56:  set->len  = 0;
-      282:   57:}
+       16:   54:  set->cap  = cap;
+       16:   55:  set->mask = cap - 1;
+       16:   56:  set->len  = 0;
+       16:   57:}
         -:   58:
         -:   59:// Release the backing table and reset the set state.
-      144:   60:static inline void uset_free(Uset *set) {
-      144:   61:  if (set->table) {
-      144:   62:    free(set->table);
-      144:   63:    set->table = NULL;
+       15:   60:static inline void uset_free(Uset *set) {
+       15:   61:  if (set->table) {
+       15:   62:    free(set->table);
+       15:   63:    set->table = NULL;
         -:   64:  }
-      144:   65:  set->cap = 0;
-      144:   66:  set->mask = 0;
-      144:   67:  set->len = 0;
-      144:   68:}
+       15:   65:  set->cap = 0;
+       15:   66:  set->mask = 0;
+       15:   67:  set->len = 0;
+       15:   68:}
         -:   69:
         -:   70:// Resize to new_cap and reinsert all keys.
-        3:   71:static inline void uset_rehash(Uset *set, u32 new_cap) {
-        3:   72:  u32 *old = set->table;
-        3:   73:  u32 old_cap = set->cap;
+    #####:   71:static inline void uset_rehash(Uset *set, u32 new_cap) {
+    #####:   72:  u32 *old = set->table;
+    #####:   73:  u32 old_cap = set->cap;
         -:   74:
-        3:   75:  set->table = (u32 *)calloc(new_cap, sizeof(u32));
-        3:   76:  if (!set->table) {
+    #####:   75:  set->table = (u32 *)calloc(new_cap, sizeof(u32));
+    #####:   76:  if (!set->table) {
     #####:   77:    fprintf(stderr, "uset: allocation failed\n");
     #####:   78:    exit(1);
         -:   79:  }
-        3:   80:  set->cap  = new_cap;
-        3:   81:  set->mask = new_cap - 1;
-        3:   82:  set->len  = 0;
+    #####:   80:  set->cap  = new_cap;
+    #####:   81:  set->mask = new_cap - 1;
+    #####:   82:  set->len  = 0;
         -:   83:
-  7340035:   84:  for (u32 i = 0; i < old_cap; i++) {
-  7340032:   85:    u32 key = old[i];
-  7340032:   86:    if (key == 0) {
-  2202011:   87:      continue;
+    #####:   84:  for (u32 i = 0; i < old_cap; i++) {
+    #####:   85:    u32 key = old[i];
+    #####:   86:    if (key == 0) {
+    #####:   87:      continue;
         -:   88:    }
-  5138021:   89:    u32 idx = uset_hash(key) & set->mask;
-  6510185:   90:    while (set->table[idx] != 0) {
-  1372164:   91:      idx = (idx + 1) & set->mask;
+    #####:   89:    u32 idx = uset_hash(key) & set->mask;
+    #####:   90:    while (set->table[idx] != 0) {
+    #####:   91:      idx = (idx + 1) & set->mask;
         -:   92:    }
-  5138021:   93:    set->table[idx] = key;
-  5138021:   94:    set->len++;
+    #####:   93:    set->table[idx] = key;
+    #####:   94:    set->len++;
         -:   95:  }
         -:   96:
-        3:   97:  free(old);
-        3:   98:}
+    #####:   97:  free(old);
+    #####:   98:}
         -:   99:
         -:  100:// Check whether key is present (0 is never present).
         -:  101:static inline u8 uset_has(Uset *set, u32 key) {
@@ -121,30 +121,30 @@
         -:  117:}
         -:  118:
         -:  119:// Insert key if missing; returns 1 if inserted, 0 if already present.
-  3612107:  120:static inline u8 uset_add(Uset *set, u32 key) {
-  3612107:  121:  if (key == 0) {
+       69:  120:static inline u8 uset_add(Uset *set, u32 key) {
+       69:  121:  if (key == 0) {
     #####:  122:    return 0;
         -:  123:  }
-  3612107:  124:  if ((set->len + 1) * 10 >= set->cap * 7) {
-        3:  125:    u32 new_cap = set->cap << 1;
-        3:  126:    if (new_cap < set->cap) {
+       69:  124:  if ((set->len + 1) * 10 >= set->cap * 7) {
+    #####:  125:    u32 new_cap = set->cap << 1;
+    #####:  126:    if (new_cap < set->cap) {
     #####:  127:      fprintf(stderr, "uset: allocation failed\n");
     #####:  128:      exit(1);
         -:  129:    }
-        3:  130:    uset_rehash(set, new_cap);
+    #####:  130:    uset_rehash(set, new_cap);
         -:  131:  }
-  3612107:  132:  u32 idx = uset_hash(key) & set->mask;
-  9450485:  133:  for (u32 i = 0; i < set->cap; i++) {
-  9450485:  134:    u32 cur = set->table[idx];
-  9450485:  135:    if (cur == key) {
-     3710:  136:      return 0;
+       69:  132:  u32 idx = uset_hash(key) & set->mask;
+      69*:  133:  for (u32 i = 0; i < set->cap; i++) {
+       69:  134:    u32 cur = set->table[idx];
+       69:  135:    if (cur == key) {
+    #####:  136:      return 0;
         -:  137:    }
-  9446775:  138:    if (cur == 0) {
-  3608397:  139:      set->table[idx] = key;
-  3608397:  140:      set->len++;
-  3608397:  141:      return 1;
+       69:  138:    if (cur == 0) {
+       69:  139:      set->table[idx] = key;
+       69:  140:      set->len++;
+       69:  141:      return 1;
         -:  142:    }
-  5838378:  143:    idx = (idx + 1) & set->mask;
+    #####:  143:    idx = (idx + 1) & set->mask;
         -:  144:  }
     #####:  145:  uset_rehash(set, set->cap << 1);
     #####:  146:  return uset_add(set, key);

@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/parse/at_end.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
- 87945686:    1:fn int parse_at_end(PState *s) {
- 87945686:    2:  return s->pos >= s->len;
+        -:    0:Runs:17
+  5358448:    1:fn int parse_at_end(PState *s) {
+  5358448:    2:  return s->pos >= s->len;
         -:    3:}

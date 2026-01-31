@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/eval/normalize.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// Parallel normalization (SNF) traversal using work-stealing.
         -:    2:#include <pthread.h>
         -:    3:#include <sched.h>
@@ -33,50 +33,50 @@
         -:   29:  u32 tid;
         -:   30:} EvalNormalizeArg;
         -:   31:
-    71654:   32:static inline void eval_normalize_pending_inc(_Atomic u64 *pending) {
-    71654:   33:  atomic_fetch_add_explicit(pending, 1, memory_order_relaxed);
-    71654:   34:}
+       15:   32:static inline void eval_normalize_pending_inc(_Atomic u64 *pending) {
+       15:   33:  atomic_fetch_add_explicit(pending, 1, memory_order_relaxed);
+       15:   34:}
         -:   35:
-    38199:   36:static inline void eval_normalize_pending_dec(_Atomic u64 *pending) {
-    38199:   37:  atomic_fetch_sub_explicit(pending, 1, memory_order_release);
-    38199:   38:}
+       30:   36:static inline void eval_normalize_pending_dec(_Atomic u64 *pending) {
+       30:   37:  atomic_fetch_sub_explicit(pending, 1, memory_order_release);
+       30:   38:}
         -:   39:
         -:   40:static inline void eval_normalize_par_enqueue(EvalNormalizeCtx *ctx, EvalNormalizeWorker *worker, u64 task);
         -:   41:
-    38337:   42:static inline void eval_normalize_par_go(EvalNormalizeCtx *ctx, EvalNormalizeWorker *worker, u64 task) {
-    38337:   43:  u32 loc = EVAL_NORMALIZE_TASK_LOC(task);
-    38337:   44:  if (loc == 0) {
+       31:   42:static inline void eval_normalize_par_go(EvalNormalizeCtx *ctx, EvalNormalizeWorker *worker, u64 task) {
+       31:   43:  u32 loc = EVAL_NORMALIZE_TASK_LOC(task);
+       31:   44:  if (loc == 0) {
     #####:   45:    return;
         -:   46:  }
-    38337:   47:  if (!uset_add(&worker->seen, loc)) {
-     1855:   48:    return;
+       31:   47:  if (!uset_add(&worker->seen, loc)) {
+    #####:   48:    return;
         -:   49:  }
-    36482:   50:  bool parallel = ctx->n > 1;
-  3571915:   51:  for (;;) {
-  3608397:   52:    Term term = wnf_at(loc);
-  3608259:   53:    u8 tag = term_tag(term);
-  3608259:   54:    if (tag == DP0 || tag == DP1 || tag == GOT) {
-  3449332:   55:      u32 dup_loc = term_val(term);
-  3449332:   56:      if (dup_loc != 0 && !term_sub_get(heap_peek(dup_loc))) {
-  3449332:   57:        if (parallel) {
+       31:   50:  bool parallel = ctx->n > 1;
+       38:   51:  for (;;) {
+       69:   52:    Term term = wnf_at(loc);
+       68:   53:    u8 tag = term_tag(term);
+       68:   54:    if (tag == DP0 || tag == DP1 || tag == GOT) {
+    #####:   55:      u32 dup_loc = term_val(term);
+    #####:   56:      if (dup_loc != 0 && !term_sub_get(heap_peek(dup_loc))) {
+    #####:   57:        if (parallel) {
     #####:   58:          eval_normalize_par_enqueue(ctx, worker, EVAL_NORMALIZE_TASK(dup_loc));
     #####:   59:          return;
         -:   60:        } else {
-  3449332:   61:          if (!uset_add(&worker->seen, dup_loc)) {
+    #####:   61:          if (!uset_add(&worker->seen, dup_loc)) {
     #####:   62:            return;
         -:   63:          }
-  3449332:   64:          loc = dup_loc;
-  3449332:   65:          continue;
+    #####:   64:          loc = dup_loc;
+    #####:   65:          continue;
         -:   66:        }
         -:   67:      }
         -:   68:    }
         -:   69:
-   158927:   70:    u32 ari = term_arity(term);
-   158927:   71:    if (ari == 0) {
-    34489:   72:      return;
+       68:   70:    u32 ari = term_arity(term);
+       68:   71:    if (ari == 0) {
+       30:   72:      return;
         -:   73:    }
-   124438:   74:    u32 tloc = term_val(term);
-   124438:   75:    if (parallel) {
+       38:   74:    u32 tloc = term_val(term);
+       38:   75:    if (parallel) {
     #####:   76:      if (tag == DRY) {
     #####:   77:        eval_normalize_par_enqueue(ctx, worker, EVAL_NORMALIZE_TASK(tloc + 1));
     #####:   78:        eval_normalize_par_enqueue(ctx, worker, EVAL_NORMALIZE_TASK(tloc));
@@ -91,14 +91,14 @@
         -:   87:      }
     #####:   88:      return;
         -:   89:    }
-   124438:   90:    if (tag == LAM) {
-    35339:   91:      if (!uset_add(&worker->seen, tloc)) {
+      38*:   90:    if (tag == LAM) {
+    #####:   91:      if (!uset_add(&worker->seen, tloc)) {
     #####:   92:        return;
         -:   93:      }
-    35339:   94:      loc = tloc;
-    35339:   95:      continue;
+    #####:   94:      loc = tloc;
+    #####:   95:      continue;
         -:   96:    }
-   89099*:   97:    if (tag == DRY) {
+      38*:   97:    if (tag == DRY) {
     #####:   98:      eval_normalize_par_enqueue(ctx, worker, EVAL_NORMALIZE_TASK(tloc + 1));
     #####:   99:      if (!uset_add(&worker->seen, tloc)) {
     #####:  100:        return;
@@ -106,56 +106,56 @@
     #####:  102:      loc = tloc;
     #####:  103:      continue;
         -:  104:    }
-   160753:  105:    for (u32 i = ari; i > 1; i--) {
-    71654:  106:      eval_normalize_par_enqueue(ctx, worker, EVAL_NORMALIZE_TASK(tloc + (i - 1)));
+       53:  105:    for (u32 i = ari; i > 1; i--) {
+       15:  106:      eval_normalize_par_enqueue(ctx, worker, EVAL_NORMALIZE_TASK(tloc + (i - 1)));
         -:  107:    }
-    89099:  108:    if (!uset_add(&worker->seen, tloc)) {
-     1855:  109:      return;
+       38:  108:    if (!uset_add(&worker->seen, tloc)) {
+    #####:  109:      return;
         -:  110:    }
-    87244:  111:    loc = tloc;
+       38:  111:    loc = tloc;
         -:  112:  }
         -:  113:}
         -:  114:
-    71654:  115:static inline void eval_normalize_par_enqueue(EvalNormalizeCtx *ctx, EvalNormalizeWorker *worker, u64 task) {
-    71654:  116:  if (EVAL_NORMALIZE_TASK_LOC(task) == 0) {
+       15:  115:static inline void eval_normalize_par_enqueue(EvalNormalizeCtx *ctx, EvalNormalizeWorker *worker, u64 task) {
+       15:  116:  if (EVAL_NORMALIZE_TASK_LOC(task) == 0) {
     #####:  117:    return;
         -:  118:  }
-    71654:  119:  if (wsq_push(&worker->dq, task)) {
-    71654:  120:    eval_normalize_pending_inc(&ctx->pending);
+       15:  119:  if (wsq_push(&worker->dq, task)) {
+       15:  120:    eval_normalize_pending_inc(&ctx->pending);
         -:  121:  } else {
     #####:  122:    eval_normalize_par_go(ctx, worker, task);
         -:  123:  }
         -:  124:}
         -:  125:
-      282:  126:static void *eval_normalize_par_worker(void *arg) {
-      282:  127:  EvalNormalizeArg *A = (EvalNormalizeArg *)arg;
-      282:  128:  EvalNormalizeCtx *ctx = A->ctx;
-      282:  129:  u32 me = A->tid;
-      282:  130:  EvalNormalizeWorker *worker = &ctx->W[me];
+       16:  126:static void *eval_normalize_par_worker(void *arg) {
+       16:  127:  EvalNormalizeArg *A = (EvalNormalizeArg *)arg;
+       16:  128:  EvalNormalizeCtx *ctx = A->ctx;
+       16:  129:  u32 me = A->tid;
+       16:  130:  EvalNormalizeWorker *worker = &ctx->W[me];
         -:  131:
-      282:  132:  wnf_set_tid(me);
+       16:  132:  wnf_set_tid(me);
         -:  133:
-      282:  134:  u32 r = 0x9E3779B9u ^ me;
+       16:  134:  u32 r = 0x9E3779B9u ^ me;
         -:  135:
-      282:  136:  u32 idle = 0;
-    38199:  137:  for (;;) {
+       16:  136:  u32 idle = 0;
+       30:  137:  for (;;) {
         -:  138:    u64 task;
         -:  139:
-    38481:  140:    if (wsq_pop(&worker->dq, &task)) {
-    38337:  141:      eval_normalize_par_go(ctx, worker, task);
-    38199:  142:      eval_normalize_pending_dec(&ctx->pending);
-    38199:  143:      idle = 0;
-    38199:  144:      continue;
+       46:  140:    if (wsq_pop(&worker->dq, &task)) {
+       31:  141:      eval_normalize_par_go(ctx, worker, task);
+       30:  142:      eval_normalize_pending_dec(&ctx->pending);
+       30:  143:      idle = 0;
+       30:  144:      continue;
         -:  145:    }
         -:  146:
-      144:  147:    bool stolen = false;
-      144:  148:    u32 n = ctx->n;
-      144:  149:    u32 start = (me + 1 + (r & 7)) % n;
-      144:  150:    r ^= r << 13;
-      144:  151:    r ^= r >> 17;
-      144:  152:    r ^= r << 5;
+       15:  147:    bool stolen = false;
+       15:  148:    u32 n = ctx->n;
+       15:  149:    u32 start = (me + 1 + (r & 7)) % n;
+       15:  150:    r ^= r << 13;
+       15:  151:    r ^= r >> 17;
+       15:  152:    r ^= r << 5;
         -:  153:
-     144*:  154:    for (u32 k = 0; k < n - 1; k++) {
+      15*:  154:    for (u32 k = 0; k < n - 1; k++) {
     #####:  155:      u32 vic = (start + k) % n;
     #####:  156:      if (vic == me) {
     #####:  157:        continue;
@@ -169,12 +169,12 @@
         -:  165:      }
         -:  166:    }
         -:  167:
-     144*:  168:    if (stolen) {
+      15*:  168:    if (stolen) {
     #####:  169:      continue;
         -:  170:    }
         -:  171:
-      144:  172:    if (atomic_load_explicit(&ctx->pending, memory_order_acquire) == 0) {
-      144:  173:      break;
+       15:  172:    if (atomic_load_explicit(&ctx->pending, memory_order_acquire) == 0) {
+       15:  173:      break;
         -:  174:    }
         -:  175:
     #####:  176:    if (idle < 1024) {
@@ -186,67 +186,67 @@
         -:  182:    }
         -:  183:  }
         -:  184:
-      144:  185:  wnf_itrs_flush(me);
-      144:  186:  return NULL;
+       15:  185:  wnf_itrs_flush(me);
+       15:  186:  return NULL;
         -:  187:}
         -:  188:
-      282:  189:static inline Term eval_normalize_par(Term term) {
-      282:  190:  wnf_set_tid(0);
+       16:  189:static inline Term eval_normalize_par(Term term) {
+       16:  190:  wnf_set_tid(0);
         -:  191:
-      282:  192:  u32 root_loc = (u32)heap_alloc(1);
-      282:  193:  heap_set(root_loc, term);
+       16:  192:  u32 root_loc = (u32)heap_alloc(1);
+       16:  193:  heap_set(root_loc, term);
         -:  194:
         -:  195:  EvalNormalizeCtx ctx;
         -:  196:
-      282:  197:  u32 n = thread_get_count();
-      282:  198:  if (n == 0) {
+       16:  197:  u32 n = thread_get_count();
+       16:  198:  if (n == 0) {
     #####:  199:    n = 1;
         -:  200:  }
-      282:  201:  if (n > MAX_THREADS) {
+       16:  201:  if (n > MAX_THREADS) {
     #####:  202:    n = MAX_THREADS;
         -:  203:  }
-      282:  204:  ctx.n = n;
-      282:  205:  atomic_store_explicit(&ctx.pending, 0, memory_order_relaxed);
-      564:  206:  for (u32 i = 0; i < n; i++) {
-      282:  207:    if (!wsq_init(&ctx.W[i].dq, EVAL_NORMALIZE_WS_CAP_POW2)) {
+       16:  204:  ctx.n = n;
+       16:  205:  atomic_store_explicit(&ctx.pending, 0, memory_order_relaxed);
+       32:  206:  for (u32 i = 0; i < n; i++) {
+       16:  207:    if (!wsq_init(&ctx.W[i].dq, EVAL_NORMALIZE_WS_CAP_POW2)) {
     #####:  208:      fprintf(stderr, "eval_normalize: queue allocation failed\n");
     #####:  209:      exit(1);
         -:  210:    }
-      282:  211:    uset_init(&ctx.W[i].seen, EVAL_NORMALIZE_SEEN_INIT);
+       16:  211:    uset_init(&ctx.W[i].seen, EVAL_NORMALIZE_SEEN_INIT);
         -:  212:  }
         -:  213:
-      282:  214:  EvalNormalizeWorker *worker0 = &ctx.W[0];
-      282:  215:  u64 root_task = EVAL_NORMALIZE_TASK(root_loc);
-      282:  216:  if (wsq_push(&worker0->dq, root_task)) {
-      282:  217:    atomic_store_explicit(&ctx.pending, 1, memory_order_relaxed);
+       16:  214:  EvalNormalizeWorker *worker0 = &ctx.W[0];
+       16:  215:  u64 root_task = EVAL_NORMALIZE_TASK(root_loc);
+       16:  216:  if (wsq_push(&worker0->dq, root_task)) {
+       16:  217:    atomic_store_explicit(&ctx.pending, 1, memory_order_relaxed);
         -:  218:  } else {
     #####:  219:    eval_normalize_par_go(&ctx, worker0, root_task);
         -:  220:  }
         -:  221:
         -:  222:  pthread_t tids[MAX_THREADS];
         -:  223:  EvalNormalizeArg args[MAX_THREADS];
-     282*:  224:  for (u32 i = 1; i < n; i++) {
+      16*:  224:  for (u32 i = 1; i < n; i++) {
     #####:  225:    args[i].ctx = &ctx;
     #####:  226:    args[i].tid = i;
     #####:  227:    pthread_create(&tids[i], NULL, eval_normalize_par_worker, &args[i]);
         -:  228:  }
         -:  229:
-      282:  230:  EvalNormalizeArg arg0 = { .ctx = &ctx, .tid = 0 };
-      282:  231:  eval_normalize_par_worker(&arg0);
-      144:  232:  wnf_itrs_flush(0);
+       16:  230:  EvalNormalizeArg arg0 = { .ctx = &ctx, .tid = 0 };
+       16:  231:  eval_normalize_par_worker(&arg0);
+       15:  232:  wnf_itrs_flush(0);
         -:  233:
-     144*:  234:  for (u32 i = 1; i < n; i++) {
+      15*:  234:  for (u32 i = 1; i < n; i++) {
     #####:  235:    pthread_join(tids[i], NULL);
         -:  236:  }
         -:  237:
-      288:  238:  for (u32 i = 0; i < n; i++) {
-      144:  239:    wsq_free(&ctx.W[i].dq);
-      144:  240:    uset_free(&ctx.W[i].seen);
+       30:  238:  for (u32 i = 0; i < n; i++) {
+       15:  239:    wsq_free(&ctx.W[i].dq);
+       15:  240:    uset_free(&ctx.W[i].seen);
         -:  241:  }
         -:  242:
-      144:  243:  return heap_read(root_loc);
+       15:  243:  return heap_read(root_loc);
         -:  244:}
         -:  245:
-      282:  246:fn Term eval_normalize(Term term) {
-      282:  247:  return eval_normalize_par(term);
+       16:  246:fn Term eval_normalize(Term term) {
+       16:  247:  return eval_normalize_par(term);
         -:  248:}

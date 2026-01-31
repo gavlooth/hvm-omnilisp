@@ -1,12 +1,12 @@
         -:    0:Source:../hvm4/clang/heap/take.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-12864033197:    1:fn Term heap_take(u32 loc) {
-12864033197:    2:  if (__builtin_expect(THREAD_COUNT == 1, 1)) {
-12864033197:    3:    Term term = HEAP[loc];
-12864033197:    4:    if (__builtin_expect(term != 0, 1)) {
-12864033197:    5:      return term;
+        -:    0:Runs:17
+    14646:    1:fn Term heap_take(u32 loc) {
+    14646:    2:  if (__builtin_expect(THREAD_COUNT == 1, 1)) {
+    14646:    3:    Term term = HEAP[loc];
+    14646:    4:    if (__builtin_expect(term != 0, 1)) {
+    14646:    5:      return term;
         -:    6:    }
     #####:    7:    fprintf(stderr, "ERROR: heap_take saw zero at %u in single-threaded mode\n", loc);
     #####:    8:    abort();

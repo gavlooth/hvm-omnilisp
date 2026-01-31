@@ -41,6 +41,7 @@ typedef struct {
   int eval_mode;       // -e: Evaluate expression directly
   int interactive;     // -i: Interactive REPL
   int server_port;     // -S: Socket server port (0 = disabled)
+  int hvm4_print;      // -T: Use HVM4's print_term for output
   const char *file;    // Input file
   const char *expr;    // Expression to evaluate
   const char *output;  // -o: Output file
@@ -111,13 +112,14 @@ fn OmniOptions parse_options(int argc, char *argv[]) {
     {"debug",       no_argument,       0, 'd'},
     {"stats",       no_argument,       0, 's'},
     {"collapse",    required_argument, 0, 'C'},
+    {"term-print",  no_argument,       0, 'T'},
     {0, 0, 0, 0}
   };
 
   int opt;
   int opt_index = 0;
 
-  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:", long_options, &opt_index)) != -1) {
+  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:T", long_options, &opt_index)) != -1) {
     switch (opt) {
       case 'h': opts.help = 1; break;
       case 'v': opts.version = 1; break;
@@ -130,6 +132,7 @@ fn OmniOptions parse_options(int argc, char *argv[]) {
       case 'd': opts.debug = 1; break;
       case 's': opts.stats = 1; break;
       case 'C': opts.collapse = atoi(optarg); break;
+      case 'T': opts.hvm4_print = 1; break;
       default: opts.help = 1; break;
     }
   }
@@ -649,7 +652,7 @@ fn int run_compile_only(const char *source, const char *output, int debug) {
   return 0;
 }
 
-fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug) {
+fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug, int hvm4_print) {
   OmniParse parse;
   omni_parse_init(&parse, source);
 
@@ -703,7 +706,12 @@ fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug
   }
 
   printf("Result: ");
-  omni_print_value(result);
+  if (hvm4_print) {
+    // Use HVM4's print_term for coverage testing
+    print_term(result);
+  } else {
+    omni_print_value(result);
+  }
   printf("\n");
 
   if (stats) {
@@ -1007,7 +1015,7 @@ int main(int argc, char *argv[]) {
     } else if (opts.compile_only) {
       result = run_compile_only(opts.expr, opts.output, opts.debug);
     } else {
-      result = run_evaluate(opts.expr, opts.collapse, opts.stats, opts.debug);
+      result = run_evaluate(opts.expr, opts.collapse, opts.stats, opts.debug, opts.hvm4_print);
     }
   } else if (opts.file) {
     // Process file
@@ -1020,7 +1028,7 @@ int main(int argc, char *argv[]) {
       } else if (opts.compile_only) {
         result = run_compile_only(source, opts.output, opts.debug);
       } else {
-        result = run_evaluate(source, opts.collapse, opts.stats, opts.debug);
+        result = run_evaluate(source, opts.collapse, opts.stats, opts.debug, opts.hvm4_print);
       }
       free(source);
     }

@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/term/arity.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:static const u8 TERM_ARITY[TAG_MASK + 1] = {
         -:    2:  [APP] = 2,
         -:    3:  [VAR] = 0,
@@ -54,7 +54,7 @@
         -:   50:  [GOT] = 0,
         -:   51:};
         -:   52:
- 30168745:   53:fn u32 term_arity(Term t) {
- 30168745:   54:  u8 tag = term_tag(t);
- 30168745:   55:  return TERM_ARITY[tag];
+  1304674:   53:fn u32 term_arity(Term t) {
+  1304674:   54:  u8 tag = term_tag(t);
+  1304674:   55:  return TERM_ARITY[tag];
         -:   56:}

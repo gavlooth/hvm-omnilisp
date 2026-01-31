@@ -1,27 +1,27 @@
         -:    0:Source:../hvm4/clang/parse/def.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-    98069:    1:fn void parse_def(PState *s) {
-    98069:    2:  parse_skip(s);
-    98069:    3:  if (parse_at_end(s)) {
-      562:    4:    return;
+        -:    0:Runs:17
+     5824:    1:fn void parse_def(PState *s) {
+     5824:    2:  parse_skip(s);
+     5824:    3:  if (parse_at_end(s)) {
+       32:    4:    return;
         -:    5:  }
-    97507:    6:  if (parse_match(s, "#include")) {
+     5792:    6:  if (parse_match(s, "#include")) {
     #####:    7:    parse_include(s);
     #####:    8:    parse_def(s);
     #####:    9:    return;
         -:   10:  }
-    97507:   11:  if (parse_match(s, "@")) {
-    97507:   12:    u32 nam = parse_name_ref(s);
-    97507:   13:    parse_consume(s, "=");
-    97507:   14:    PARSE_BINDS_LEN = 0;
-    97507:   15:    Term val        = parse_term(s, 0);
-    97507:   16:    u64  loc        = heap_alloc(1);
-    97507:   17:    HEAP[loc]       = val;
-    97507:   18:    BOOK[nam]       = (u32)loc;
-    97507:   19:    parse_def(s);
-    97507:   20:    return;
+     5792:   11:  if (parse_match(s, "@")) {
+     5792:   12:    u32 nam = parse_name_ref(s);
+     5792:   13:    parse_consume(s, "=");
+     5792:   14:    PARSE_BINDS_LEN = 0;
+     5792:   15:    Term val        = parse_term(s, 0);
+     5792:   16:    u64  loc        = heap_alloc(1);
+     5792:   17:    HEAP[loc]       = val;
+     5792:   18:    BOOK[nam]       = (u32)loc;
+     5792:   19:    parse_def(s);
+     5792:   20:    return;
         -:   21:  }
     #####:   22:  parse_error(s, "definition or #include", parse_peek(s));
         -:   23:}

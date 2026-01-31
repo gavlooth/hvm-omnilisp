@@ -1,18 +1,18 @@
         -:    0:Source:../hvm4/clang/heap/alloc.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-17155792743:    1:fn u64 heap_alloc(u64 size) {
-17155792743:    2:  u32 tid = wnf_tid();
-17155792743:    3:  u64 idx = (u64)tid * HEAP_STRIDE;
-17155792743:    4:  u64 at = HEAP_NEXT[idx];
-17155792743:    5:  u64 next = at + size;
-17155792743:    6:  if (__builtin_expect(next <= HEAP_END[idx] && next >= at, 1)) {
-17155792738:    7:    HEAP_NEXT[idx] = next;
-17155792738:    8:    return at;
+        -:    0:Runs:17
+   207217:    1:fn u64 heap_alloc(u64 size) {
+   207217:    2:  u32 tid = wnf_tid();
+   207217:    3:  u64 idx = (u64)tid * HEAP_STRIDE;
+   207217:    4:  u64 at = HEAP_NEXT[idx];
+   207217:    5:  u64 next = at + size;
+   207217:    6:  if (__builtin_expect(next <= HEAP_END[idx] && next >= at, 1)) {
+   207217:    7:    HEAP_NEXT[idx] = next;
+   207217:    8:    return at;
         -:    9:  }
-        5:   10:  fprintf(stderr,
+    #####:   10:  fprintf(stderr,
         -:   11:          "Out of heap memory in thread bank %u (need %llu words)\n",
         -:   12:          tid, size);
-        5:   13:  exit(1);
+    #####:   13:  exit(1);
         -:   14:}

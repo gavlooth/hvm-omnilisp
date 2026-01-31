@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/wnf/itrs_flush.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-      288:    1:fn void wnf_itrs_flush(u32 tid) {
+        -:    0:Runs:17
+       30:    1:fn void wnf_itrs_flush(u32 tid) {
         -:    2:  (void)tid;
-      288:    3:}
+       30:    3:}

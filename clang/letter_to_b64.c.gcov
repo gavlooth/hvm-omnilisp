@@ -1,22 +1,22 @@
         -:    0:Source:../hvm4/clang/nick/letter_to_b64.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
- 20135034:    1:fn int nick_letter_to_b64(char c) {
- 20135034:    2:  if (c == '_') {
-   906587:    3:    return 0;
+        -:    0:Runs:17
+  1234008:    1:fn int nick_letter_to_b64(char c) {
+  1234008:    2:  if (c == '_') {
+    55904:    3:    return 0;
         -:    4:  }
- 19228447:    5:  if (c >= 'a' && c <= 'z') {
- 14740658:    6:    return 1 + (c - 'a');
+  1178104:    5:  if (c >= 'a' && c <= 'z') {
+   906511:    6:    return 1 + (c - 'a');
         -:    7:  }
-  4487789:    8:  if (c >= 'A' && c <= 'Z') {
-  2120622:    9:    return 27 + (c - 'A');
+   271593:    8:  if (c >= 'A' && c <= 'Z') {
+   124711:    9:    return 27 + (c - 'A');
         -:   10:  }
-  2367167:   11:  if (c >= '0' && c <= '9') {
-    39865:   12:    return 53 + (c - '0');
+   146882:   11:  if (c >= '0' && c <= '9') {
+     2257:   12:    return 53 + (c - '0');
         -:   13:  }
-  2327302:   14:  if (c == '$') {
+   144625:   14:  if (c == '$') {
     #####:   15:    return 63;
         -:   16:  }
-  2327302:   17:  return -1;
+   144625:   17:  return -1;
         -:   18:}

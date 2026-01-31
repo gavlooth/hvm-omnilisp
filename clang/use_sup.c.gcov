@@ -1,21 +1,21 @@
         -:    0:Source:../hvm4/clang/wnf/use_sup.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// (λ{f} &L{a,b})
         -:    2:// ----------------- USE-SUP
         -:    3:// ! F &L = f
         -:    4:// &L{(λ{F₀} a), (λ{F₁} b)}
-       16:    5:fn Term wnf_use_sup(Term use, Term sup) {
-       16:    6:  ITRS++;
-       16:    7:  u32  use_loc = term_val(use);
-       16:    8:  Term f       = heap_read(use_loc);
-       16:    9:  u32  lab     = term_ext(sup);
-       16:   10:  u32  sup_loc = term_val(sup);
-       16:   11:  Copy F       = term_clone(lab, f);
-       16:   12:  Term use0    = term_new_use(F.k0);
-       16:   13:  Term use1    = term_new_use(F.k1);
-       16:   14:  Term app0    = term_new_app(use0, heap_read(sup_loc + 0));
-       16:   15:  Term app1    = term_new_app(use1, heap_read(sup_loc + 1));
-       16:   16:  return term_new_sup(lab, app0, app1);
+    #####:    5:fn Term wnf_use_sup(Term use, Term sup) {
+    #####:    6:  ITRS++;
+    #####:    7:  u32  use_loc = term_val(use);
+    #####:    8:  Term f       = heap_read(use_loc);
+    #####:    9:  u32  lab     = term_ext(sup);
+    #####:   10:  u32  sup_loc = term_val(sup);
+    #####:   11:  Copy F       = term_clone(lab, f);
+    #####:   12:  Term use0    = term_new_use(F.k0);
+    #####:   13:  Term use1    = term_new_use(F.k1);
+    #####:   14:  Term app0    = term_new_app(use0, heap_read(sup_loc + 0));
+    #####:   15:  Term app1    = term_new_app(use1, heap_read(sup_loc + 1));
+    #####:   16:  return term_new_sup(lab, app0, app1);
         -:   17:}

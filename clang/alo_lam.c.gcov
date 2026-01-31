@@ -1,17 +1,17 @@
         -:    0:Source:../hvm4/clang/wnf/alo_lam.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// @{s} λx.f
         -:    2:// ------------ ALO-LAM
         -:    3:// x' ← fresh
         -:    4:// λx'.@{x',s}f
-   136185:    5:fn Term wnf_alo_lam(u32 ls_loc, u32 len, u32 lam_ext, u32 book_body_loc) {
-   136185:    6:  u64 lam_body = heap_alloc(1);
-   136185:    7:  u64 bind_ent = heap_alloc(1);
-   136185:    8:  heap_set(bind_ent, ((u64)(u32)lam_body << 32) | ls_loc);
-   136185:    9:  u64 alo_loc = heap_alloc(1);
-   136185:   10:  heap_set(alo_loc, ((u64)(u32)bind_ent << 32) | book_body_loc);
-   136185:   11:  heap_set(lam_body, term_new(0, ALO, len + 1, alo_loc));
-   136185:   12:  return term_new(0, LAM, lam_ext, lam_body);
+      657:    5:fn Term wnf_alo_lam(u32 ls_loc, u32 len, u32 lam_ext, u32 book_body_loc) {
+      657:    6:  u64 lam_body = heap_alloc(1);
+      657:    7:  u64 bind_ent = heap_alloc(1);
+      657:    8:  heap_set(bind_ent, ((u64)(u32)lam_body << 32) | ls_loc);
+      657:    9:  u64 alo_loc = heap_alloc(1);
+      657:   10:  heap_set(alo_loc, ((u64)(u32)bind_ent << 32) | book_body_loc);
+      657:   11:  heap_set(lam_body, term_new(0, ALO, len + 1, alo_loc));
+      657:   12:  return term_new(0, LAM, lam_ext, lam_body);
         -:   13:}

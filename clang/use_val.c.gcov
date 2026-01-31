@@ -1,13 +1,13 @@
         -:    0:Source:../hvm4/clang/wnf/use_val.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// (λ{f} x)
         -:    2:// --------- USE-VAL
         -:    3:// (f x)
-     6817:    4:fn Term wnf_use_val(Term use, Term val) {
-     6817:    5:  ITRS++;
-     6817:    6:  u32  loc = term_val(use);
-     6817:    7:  Term f   = heap_read(loc);
-     6817:    8:  return term_new_app(f, val);
+       53:    4:fn Term wnf_use_val(Term use, Term val) {
+       53:    5:  ITRS++;
+       53:    6:  u32  loc = term_val(use);
+       53:    7:  Term f   = heap_read(loc);
+       53:    8:  return term_new_app(f, val);
         -:    9:}

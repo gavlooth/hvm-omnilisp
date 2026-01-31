@@ -1,0 +1,15 @@
+        -:    0:Source:../hvm4/clang/wnf/mat_inc.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:17
+        -:    1:// (λ{...} ↑x)
+        -:    2:// ------------ MAT-INC
+        -:    3:// ↑(λ{...} x)
+    #####:    4:fn Term wnf_mat_inc(Term mat, Term inc) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  inc_loc = term_val(inc);
+    #####:    7:  Term x       = heap_read(inc_loc);
+    #####:    8:  Term app     = term_new_app(mat, x);
+    #####:    9:  heap_set(inc_loc, app);
+    #####:   10:  return term_new(0, INC, 0, inc_loc);
+        -:   11:}

@@ -1,11 +1,11 @@
         -:    0:Source:../hvm4/clang/heap/read.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-8626149181:    1:fn Term heap_read(u32 loc) {
-8626149181:    2:  Term term = __atomic_load_n(&HEAP[loc], __ATOMIC_RELAXED);
-8626149181:    3:  if (__builtin_expect(term != 0, 1)) {
-8626149181:    4:    return term;
+        -:    0:Runs:17
+    86548:    1:fn Term heap_read(u32 loc) {
+    86548:    2:  Term term = __atomic_load_n(&HEAP[loc], __ATOMIC_RELAXED);
+    86548:    3:  if (__builtin_expect(term != 0, 1)) {
+    86548:    4:    return term;
         -:    5:  }
         -:    6:  do {
     #####:    7:    cpu_relax();

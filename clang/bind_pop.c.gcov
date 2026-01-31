@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/parse/bind_pop.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-   694070:    1:fn void parse_bind_pop(void) {
-   694070:    2:  PARSE_BINDS_LEN--;
-   694070:    3:}
+        -:    0:Runs:17
+    42928:    1:fn void parse_bind_pop(void) {
+    42928:    2:  PARSE_BINDS_LEN--;
+    42928:    3:}

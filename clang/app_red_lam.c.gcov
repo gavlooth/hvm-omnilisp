@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/wnf/app_red_lam.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// ((f ~> λx.g) a)
         -:    2:// --------------- APP-RED-LAM
         -:    3:// x ← a

@@ -1,21 +1,21 @@
         -:    0:Source:../hvm4/clang/sys/file_read.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-      562:    1:fn char *sys_file_read(const char *path) {
-      562:    2:  FILE *fp = fopen(path, "rb");
-      562:    3:  if (!fp) {
+        -:    0:Runs:17
+       32:    1:fn char *sys_file_read(const char *path) {
+       32:    2:  FILE *fp = fopen(path, "rb");
+       32:    3:  if (!fp) {
     #####:    4:    return NULL;
         -:    5:  }
-      562:    6:  fseek(fp, 0, SEEK_END);
-      562:    7:  long len = ftell(fp);
-      562:    8:  fseek(fp, 0, SEEK_SET);
-      562:    9:  char *src = malloc(len + 1);
-      562:   10:  if (!src) {
+       32:    6:  fseek(fp, 0, SEEK_END);
+       32:    7:  long len = ftell(fp);
+       32:    8:  fseek(fp, 0, SEEK_SET);
+       32:    9:  char *src = malloc(len + 1);
+       32:   10:  if (!src) {
     #####:   11:    sys_error("OOM");
         -:   12:  }
-      562:   13:  fread(src, 1, len, fp);
-      562:   14:  src[len] = 0;
-      562:   15:  fclose(fp);
-      562:   16:  return src;
+       32:   13:  fread(src, 1, len, fp);
+       32:   14:  src[len] = 0;
+       32:   15:  fclose(fp);
+       32:   16:  return src;
         -:   17:}

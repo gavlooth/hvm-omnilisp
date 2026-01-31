@@ -1,13 +1,13 @@
         -:    0:Source:../hvm4/clang/thread/set_count.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
-      417:    1:fn void thread_set_count(u32 n) {
-      417:    2:  if (n == 0) {
+        -:    0:Runs:17
+       17:    1:fn void thread_set_count(u32 n) {
+       17:    2:  if (n == 0) {
     #####:    3:    n = 1;
         -:    4:  }
-      417:    5:  if (n > MAX_THREADS) {
+       17:    5:  if (n > MAX_THREADS) {
     #####:    6:    n = MAX_THREADS;
         -:    7:  }
-      417:    8:  THREAD_COUNT = n;
-      417:    9:}
+       17:    8:  THREAD_COUNT = n;
+       17:    9:}

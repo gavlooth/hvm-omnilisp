@@ -1,7 +1,7 @@
         -:    0:Source:omnilisp/nick/omnilisp.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:#pragma once
         -:    2:
         -:    3:// OmniLisp Nick-encoded names
@@ -15,12 +15,12 @@
         -:   11:// Nick Encoding Utilities
         -:   12:// =============================================================================
         -:   13:
-   176648:   14:fn u32 omni_nick(const char *name) {
-   176648:   15:  u32 k = 0;
-   843721:   16:  for (u32 i = 0; name[i] != '\0' && i < 4; i++) {
-   667073:   17:    k = ((k << 6) + nick_letter_to_b64(name[i])) & EXT_MASK;
+     7033:   14:fn u32 omni_nick(const char *name) {
+     7033:   15:  u32 k = 0;
+    33761:   16:  for (u32 i = 0; name[i] != '\0' && i < 4; i++) {
+    26728:   17:    k = ((k << 6) + nick_letter_to_b64(name[i])) & EXT_MASK;
         -:   18:  }
-   176648:   19:  return k;
+     7033:   19:  return k;
         -:   20:}
         -:   21:
         -:   22:// =============================================================================
@@ -69,971 +69,983 @@
         -:   65:static u32 OMNI_NAM_NIL;   // Empty list
         -:   66:static u32 OMNI_NAM_CHR;   // Character
         -:   67:static u32 OMNI_NAM_ARR;   // Array
-        -:   68:static u32 OMNI_NAM_DICT;  // Dictionary
-        -:   69:static u32 OMNI_NAM_FST;   // First
-        -:   70:static u32 OMNI_NAM_SND;   // Second
-        -:   71:
-        -:   72:// Numeric types (HVM4 representation)
-        -:   73:static u32 OMNI_NAM_CST;   // Constant (wrapped integer)
-        -:   74:static u32 OMNI_NAM_FIX;   // Fixed-point: #Fix{hi, lo, scale}
-        -:   75:
-        -:   76:// Pattern matching
-        -:   77:static u32 OMNI_NAM_MAT;   // Match expression
-        -:   78:static u32 OMNI_NAM_MATS;  // Speculative match (^:speculate) - evaluates all branches in parallel
-        -:   79:static u32 OMNI_NAM_NMAT;  // Native match
-        -:   80:static u32 OMNI_NAM_CASE;  // Case clause: #Case{pattern, guard, body}
-        -:   81:static u32 OMNI_NAM_PCTR;  // Constructor pattern: #PCtr{tag, args}
-        -:   82:static u32 OMNI_NAM_PLIT;  // Literal pattern: #PLit{value}
-        -:   83:static u32 OMNI_NAM_PWLD;  // Wildcard pattern: #PWld
-        -:   84:static u32 OMNI_NAM_PVAR;  // Variable pattern: #PVar{index}
-        -:   85:static u32 OMNI_NAM_PAS;   // As pattern: #PAs{name, pattern}
-        -:   86:static u32 OMNI_NAM_PRST;  // Rest pattern: #PRst{name}
-        -:   87:static u32 OMNI_NAM_PGRD;  // Guard: #PGrd{pattern, condition}
-        -:   88:static u32 OMNI_NAM_GUAR;  // Guard expression: #Guar{condition}
-        -:   89:static u32 OMNI_NAM_SPRD;  // Spread pattern: #Sprd{name}
-        -:   90:static u32 OMNI_NAM_DLET;  // Destructuring let: #DLet{pattern, value, body}
-        -:   91:static u32 OMNI_NAM_PARR;  // Array pattern: #PArr{elements}
-        -:   92:static u32 OMNI_NAM_DLAM;  // Destructuring lambda: #DLam{pattern, body}
-        -:   93:static u32 OMNI_NAM_POR;   // Or pattern: #POr{patterns} - (or pat1 pat2 ...)
-        -:   94:static u32 OMNI_NAM_PLST;  // List pattern: #PLst{elements} - (h .. t) or (a b c)
-        -:   95:
-        -:   96:// Named let (Scheme-style loop)
-        -:   97:static u32 OMNI_NAM_NLET;  // Named let (parallel): #NLet{name, init_args, body}
-        -:   98:                           // Default: bindings evaluate in parallel (HVM4 native)
-        -:   99:static u32 OMNI_NAM_NLETS; // Named let (sequential): #NLetS{name, init_args, body}
-        -:  100:                           // With ^:seq: bindings evaluate left-to-right
-        -:  101:
-        -:  102:// Pipe and function utilities
-        -:  103:static u32 OMNI_NAM_PIPE;  // Pipe: #Pipe{value, fns} (NOTE: |> is desugared at parse time)
-        -:  104:static u32 OMNI_NAM_CURY;  // Curry: #Cury{fn, arity} - convert multi-arg to curried form
-        -:  105:static u32 OMNI_NAM_FLIP;  // Flip: #Flip{fn} - swap first two arguments
-        -:  106:static u32 OMNI_NAM_ROTR;  // Rotate: #Rotr{fn} - cycle args left (first to end)
-        -:  107:static u32 OMNI_NAM_COMP;  // Compose: #Comp{fns}
-        -:  108:static u32 OMNI_NAM_APPL;  // Apply: #Appl{fn, args}
-        -:  109:
-        -:  110:// Conditional forms
-        -:  111:static u32 OMNI_NAM_WHEN;  // When: #When{cond, body}
-        -:  112:static u32 OMNI_NAM_UNLS;  // Unless: #Unls{cond, body}
-        -:  113:static u32 OMNI_NAM_COND;  // Cond: #Cond{clauses}
-        -:  114:static u32 OMNI_NAM_CCLS;  // Cond clause: #CCls{test, body}
-        -:  115:
-        -:  116:// Path access (functional)
-        -:  117:static u32 OMNI_NAM_GET;   // Get: #Get{coll, key}
-        -:  118:static u32 OMNI_NAM_PUT;   // Put: #Put{coll, key, val} - functional update
-        -:  119:static u32 OMNI_NAM_UPDT;  // Update: #Updt{coll, key, fn}
-        -:  120:static u32 OMNI_NAM_GTIN;  // GetIn: #GtIn{coll, path}
-        -:  121:static u32 OMNI_NAM_ASIN;  // AssocIn: #AsIn{coll, path, val}
-        -:  122:static u32 OMNI_NAM_UPIN;  // UpdateIn: #UpIn{coll, path, fn}
-        -:  123:
-        -:  124:// Mutation primitives (imperative, side-effecting)
-        -:  125:static u32 OMNI_NAM_SETB;  // set!: #SetB{var, val} - mutate variable binding
-        -:  126:static u32 OMNI_NAM_PUTB;  // put!: #PutB{coll, key, val} - mutate collection in place
-        -:  127:static u32 OMNI_NAM_UPDTB; // update!: #UpdtB{coll, key, fn} - mutate via function
+        -:   68:static u32 OMNI_NAM_AGE;   // Array get: #AGe{arr, idx}
+        -:   69:static u32 OMNI_NAM_ASE;   // Array set: #ASe{arr, idx, val}
+        -:   70:static u32 OMNI_NAM_ALE;   // Array length: #ALe{arr}
+        -:   71:static u32 OMNI_NAM_DICT;  // Dictionary
+        -:   72:static u32 OMNI_NAM_DGE;   // Dict get: #DGe{dict, key}
+        -:   73:static u32 OMNI_NAM_DSE;   // Dict set: #DSe{dict, key, val}
+        -:   74:static u32 OMNI_NAM_FST;   // First
+        -:   75:static u32 OMNI_NAM_SND;   // Second
+        -:   76:
+        -:   77:// Numeric types (HVM4 representation)
+        -:   78:static u32 OMNI_NAM_CST;   // Constant (wrapped integer)
+        -:   79:static u32 OMNI_NAM_FIX;   // Fixed-point: #Fix{hi, lo, scale}
+        -:   80:
+        -:   81:// Pattern matching
+        -:   82:static u32 OMNI_NAM_MAT;   // Match expression
+        -:   83:static u32 OMNI_NAM_MATS;  // Speculative match (^:speculate) - evaluates all branches in parallel
+        -:   84:static u32 OMNI_NAM_NMAT;  // Native match
+        -:   85:static u32 OMNI_NAM_CASE;  // Case clause: #Case{pattern, guard, body}
+        -:   86:static u32 OMNI_NAM_PCTR;  // Constructor pattern: #PCtr{tag, args}
+        -:   87:static u32 OMNI_NAM_PLIT;  // Literal pattern: #PLit{value}
+        -:   88:static u32 OMNI_NAM_PWLD;  // Wildcard pattern: #PWld
+        -:   89:static u32 OMNI_NAM_PVAR;  // Variable pattern: #PVar{index}
+        -:   90:static u32 OMNI_NAM_PAS;   // As pattern: #PAs{name, pattern}
+        -:   91:static u32 OMNI_NAM_PRST;  // Rest pattern: #PRst{name}
+        -:   92:static u32 OMNI_NAM_PGRD;  // Guard: #PGrd{pattern, condition}
+        -:   93:static u32 OMNI_NAM_GUAR;  // Guard expression: #Guar{condition}
+        -:   94:static u32 OMNI_NAM_SPRD;  // Spread pattern: #Sprd{name}
+        -:   95:static u32 OMNI_NAM_DLET;  // Destructuring let: #DLet{pattern, value, body}
+        -:   96:static u32 OMNI_NAM_PARR;  // Array pattern: #PArr{elements}
+        -:   97:static u32 OMNI_NAM_DLAM;  // Destructuring lambda: #DLam{pattern, body}
+        -:   98:static u32 OMNI_NAM_POR;   // Or pattern: #POr{patterns} - (or pat1 pat2 ...)
+        -:   99:static u32 OMNI_NAM_PLST;  // List pattern: #PLst{elements} - (h .. t) or (a b c)
+        -:  100:
+        -:  101:// Named let (Scheme-style loop)
+        -:  102:static u32 OMNI_NAM_NLET;  // Named let (parallel): #NLet{name, init_args, body}
+        -:  103:                           // Default: bindings evaluate in parallel (HVM4 native)
+        -:  104:static u32 OMNI_NAM_NLETS; // Named let (sequential): #NLetS{name, init_args, body}
+        -:  105:                           // With ^:seq: bindings evaluate left-to-right
+        -:  106:
+        -:  107:// Pipe and function utilities
+        -:  108:static u32 OMNI_NAM_PIPE;  // Pipe: #Pipe{value, fns} (NOTE: |> is desugared at parse time)
+        -:  109:static u32 OMNI_NAM_CURY;  // Curry: #Cury{fn, arity} - convert multi-arg to curried form
+        -:  110:static u32 OMNI_NAM_FLIP;  // Flip: #Flip{fn} - swap first two arguments
+        -:  111:static u32 OMNI_NAM_ROTR;  // Rotate: #Rotr{fn} - cycle args left (first to end)
+        -:  112:static u32 OMNI_NAM_COMP;  // Compose: #Comp{fns}
+        -:  113:static u32 OMNI_NAM_APPL;  // Apply: #Appl{fn, args}
+        -:  114:
+        -:  115:// Conditional forms
+        -:  116:static u32 OMNI_NAM_WHEN;  // When: #When{cond, body}
+        -:  117:static u32 OMNI_NAM_UNLS;  // Unless: #Unls{cond, body}
+        -:  118:static u32 OMNI_NAM_COND;  // Cond: #Cond{clauses}
+        -:  119:static u32 OMNI_NAM_CCLS;  // Cond clause: #CCls{test, body}
+        -:  120:
+        -:  121:// Path access (functional)
+        -:  122:static u32 OMNI_NAM_GET;   // Get: #Get{coll, key}
+        -:  123:static u32 OMNI_NAM_PUT;   // Put: #Put{coll, key, val} - functional update
+        -:  124:static u32 OMNI_NAM_UPDT;  // Update: #Updt{coll, key, fn}
+        -:  125:static u32 OMNI_NAM_GTIN;  // GetIn: #GtIn{coll, path}
+        -:  126:static u32 OMNI_NAM_ASIN;  // AssocIn: #AsIn{coll, path, val}
+        -:  127:static u32 OMNI_NAM_UPIN;  // UpdateIn: #UpIn{coll, path, fn}
         -:  128:
-        -:  129:// Iterator Lazy Wrappers (internal HVM4 nodes)
-        -:  130:// These represent SUSPENDED lazy computation over iterators.
-        -:  131:// User-facing functions like (map f iter) dispatch here when the collection
-        -:  132:// is an Iterator type. For List/Array, dispatch goes to eager implementations.
-        -:  133:// See "Collection operations" section for generic dispatch nodes.
-        -:  134:static u32 OMNI_NAM_ITER;  // Iterator: #Iter{state, next_fn}
-        -:  135:static u32 OMNI_NAM_RANG;  // Range: #Rang{start, end, step}
-        -:  136:static u32 OMNI_NAM_IMAP;  // Lazy map wrapper: #IMap{iter, fn}
-        -:  137:static u32 OMNI_NAM_IFLT;  // Lazy filter wrapper: #IFlt{iter, pred}
-        -:  138:static u32 OMNI_NAM_ITKN;  // Lazy take wrapper: #ITkn{iter, n}
-        -:  139:static u32 OMNI_NAM_IDRP;  // Lazy drop wrapper: #IDrp{iter, n}
-        -:  140:static u32 OMNI_NAM_DONE;  // Iterator done marker: #Done
-        -:  141:static u32 OMNI_NAM_IZIP;  // Lazy zip wrapper: #IZip{iters}
-        -:  142:static u32 OMNI_NAM_ICHN;  // Lazy chain wrapper: #IChn{iters}
-        -:  143:static u32 OMNI_NAM_IENM;  // Lazy enumerate wrapper: #IEnm{iter}
-        -:  144:static u32 OMNI_NAM_ITKW;  // Lazy take-while wrapper: #ITkW{iter, pred}
-        -:  145:static u32 OMNI_NAM_IDRW;  // Lazy drop-while wrapper: #IDrW{iter, pred}
-        -:  146:static u32 OMNI_NAM_IFLD;  // Iterator fold (consumes): #IFld{iter, init, fn}
-        -:  147:static u32 OMNI_NAM_IFND;  // Iterator find (consumes): #IFnd{iter, pred}
-        -:  148:static u32 OMNI_NAM_IANY;  // Iterator any? (consumes): #IAny{iter, pred}
-        -:  149:static u32 OMNI_NAM_IALL;  // Iterator all? (consumes): #IAll{iter, pred}
-        -:  150:static u32 OMNI_NAM_INTH;  // Iterator nth (consumes): #INth{iter, n}
-        -:  151:static u32 OMNI_NAM_IFMP;  // Lazy flat-map wrapper: #IFMp{iter, fn}
-        -:  152:static u32 OMNI_NAM_ISTP;  // Lazy step-by wrapper: #IStp{iter, n}
-        -:  153:static u32 OMNI_NAM_ICHK;  // Lazy chunks wrapper: #IChk{iter, n}
-        -:  154:static u32 OMNI_NAM_IWIN;  // Lazy windows wrapper: #IWin{iter, n}
-        -:  155:
-        -:  156:// Math functions (FFI-backed)
-        -:  157:static u32 OMNI_NAM_SQRT;  // sqrt: #Sqrt{x}
-        -:  158:static u32 OMNI_NAM_POW;   // pow: #Pow{base, exp}
-        -:  159:static u32 OMNI_NAM_MEXP;  // exp: #MExp{x}
-        -:  160:static u32 OMNI_NAM_MLOG;  // log: #MLog{x}
-        -:  161:static u32 OMNI_NAM_MSIN;  // sin: #MSin{x}
-        -:  162:static u32 OMNI_NAM_MCOS;  // cos: #MCos{x}
-        -:  163:static u32 OMNI_NAM_MTAN;  // tan: #MTan{x}
-        -:  164:static u32 OMNI_NAM_MASN;  // asin: #MAsn{x}
-        -:  165:static u32 OMNI_NAM_MACS;  // acos: #MAcs{x}
-        -:  166:static u32 OMNI_NAM_MATN;  // atan: #MAtn{x}
-        -:  167:static u32 OMNI_NAM_MABS;  // abs: #MAbs{x}
-        -:  168:static u32 OMNI_NAM_FLOR;  // floor: #Flor{x}
-        -:  169:static u32 OMNI_NAM_MCEI;  // ceil: #MCei{x}
-        -:  170:static u32 OMNI_NAM_ROND;  // round: #Rond{x}
-        -:  171:static u32 OMNI_NAM_RAND;  // random: #Rand{}
-        -:  172:
-        -:  173:// I/O operations (FFI-backed)
-        -:  174:static u32 OMNI_NAM_RDFL;  // read-file: #RdFl{path}
-        -:  175:static u32 OMNI_NAM_WRFL;  // write-file: #WrFl{path, content}
-        -:  176:static u32 OMNI_NAM_APFL;  // append-file: #ApFl{path, content}
-        -:  177:static u32 OMNI_NAM_RDLN;  // read-lines: #RdLn{path}
-        -:  178:static u32 OMNI_NAM_PRNT;  // print: #Prnt{val}
-        -:  179:static u32 OMNI_NAM_PRNL;  // println: #PrnL{val}
-        -:  180:static u32 OMNI_NAM_RDLN2; // read-line (stdin): #RdL2{}
-        -:  181:static u32 OMNI_NAM_GTEV;  // getenv: #GtEv{name}
-        -:  182:static u32 OMNI_NAM_STEV;  // setenv: #StEv{name, val}
-        -:  183:static u32 OMNI_NAM_EXST;  // file-exists?: #Exst{path}
-        -:  184:static u32 OMNI_NAM_ISDR;  // dir?: #IsDr{path}
-        -:  185:static u32 OMNI_NAM_MKDR;  // mkdir: #MkDr{path}
-        -:  186:static u32 OMNI_NAM_LSDR;  // list-dir: #LsDr{path}
-        -:  187:static u32 OMNI_NAM_DLFL;  // delete-file: #DlFl{path}
-        -:  188:static u32 OMNI_NAM_RNFL;  // rename-file: #RnFl{from, to}
-        -:  189:static u32 OMNI_NAM_CPFL;  // copy-file: #CpFl{from, to}
-        -:  190:
-        -:  191:// JSON operations (FFI-backed)
-        -:  192:static u32 OMNI_NAM_JPRS;  // json-parse: #JPrs{str}
-        -:  193:static u32 OMNI_NAM_JSTR;  // json-stringify: #JStr{val}
-        -:  194:static u32 OMNI_NAM_JARR;  // JSON array marker: #JArr (for type distinction)
-        -:  195:static u32 OMNI_NAM_JOBJ;  // JSON object marker: #JObj (for type distinction)
-        -:  196:static u32 OMNI_NAM_JNUL;  // JSON null: #JNul
-        -:  197:
-        -:  198:// DateTime operations (FFI-backed)
-        -:  199:static u32 OMNI_NAM_DTNW;  // datetime-now: #DtNw{}
-        -:  200:static u32 OMNI_NAM_DTPR;  // datetime-parse: #DtPr{str, fmt}
-        -:  201:static u32 OMNI_NAM_DTFM;  // datetime-format: #DtFm{dt, fmt}
-        -:  202:static u32 OMNI_NAM_DTAD;  // datetime-add: #DtAd{dt, duration}
-        -:  203:static u32 OMNI_NAM_DTSB;  // datetime-sub: #DtSb{dt, duration}
-        -:  204:static u32 OMNI_NAM_DTDF;  // datetime-diff: #DtDf{dt1, dt2}
-        -:  205:static u32 OMNI_NAM_DT;    // DateTime value: #Dt{year, month, day, hour, min, sec, nsec}
-        -:  206:static u32 OMNI_NAM_DUR;   // Duration value: #Dur{secs, nsecs}
-        -:  207:static u32 OMNI_NAM_DTYR;  // datetime-year: #DtYr{dt}
-        -:  208:static u32 OMNI_NAM_DTMO;  // datetime-month: #DtMo{dt}
-        -:  209:static u32 OMNI_NAM_DTDY;  // datetime-day: #DtDy{dt}
-        -:  210:static u32 OMNI_NAM_DTHR;  // datetime-hour: #DtHr{dt}
-        -:  211:static u32 OMNI_NAM_DTMI;  // datetime-minute: #DtMi{dt}
-        -:  212:static u32 OMNI_NAM_DTSC;  // datetime-second: #DtSc{dt}
-        -:  213:static u32 OMNI_NAM_DTTS;  // datetime-timestamp: #DtTs{dt}
-        -:  214:static u32 OMNI_NAM_DTFT;  // datetime-from-timestamp: #DtFt{ts}
-        -:  215:
-        -:  216:// Tower/Meta-programming (multi-stage evaluation)
-        -:  217:static u32 OMNI_NAM_LIFT;  // lift: #Lift{expr} - move to meta-level
-        -:  218:static u32 OMNI_NAM_RUN;   // run: #Run{expr} - execute meta-level code
-        -:  219:static u32 OMNI_NAM_EM;    // EM (Eval Meta): #EM{expr} - jump to parent level
-        -:  220:static u32 OMNI_NAM_CLAM;  // clambda: #CLam{env, body} - compiled lambda
-        -:  221:static u32 OMNI_NAM_STAG;  // stage: #Stag{level, expr} - staged expression
-        -:  222:static u32 OMNI_NAM_SPLI;  // splice: #Spli{expr} - splice into code
-        -:  223:static u32 OMNI_NAM_REFL;  // reflect: #Refl{val} - reflect value as code
-        -:  224:static u32 OMNI_NAM_REIF;  // reify: #Reif{code} - reify code as value
-        -:  225:static u32 OMNI_NAM_MLVL;  // meta-level: #MLvl{level} - current meta-level
-        -:  226:static u32 OMNI_NAM_LPAR;  // lazy-parent: #LPar{thunk} - lazy parent reference
-        -:  227:
-        -:  228:// Networking (FFI-backed)
-        -:  229:static u32 OMNI_NAM_SOCK;  // socket: #Sock{handle} - socket handle
-        -:  230:static u32 OMNI_NAM_TCPC;  // tcp-connect: #TcpC{host, port}
-        -:  231:static u32 OMNI_NAM_TCPL;  // tcp-listen: #TcpL{port}
-        -:  232:static u32 OMNI_NAM_TCPA;  // tcp-accept: #TcpA{server_sock}
-        -:  233:static u32 OMNI_NAM_TCPS;  // tcp-send: #TcpS{sock, data}
-        -:  234:static u32 OMNI_NAM_TCPR;  // tcp-recv: #TcpR{sock, max_len}
-        -:  235:static u32 OMNI_NAM_UDPC;  // udp-socket: #UdpC{}
-        -:  236:static u32 OMNI_NAM_UDPB;  // udp-bind: #UdpB{sock, port}
-        -:  237:static u32 OMNI_NAM_UDPS;  // udp-send-to: #UdpS{sock, host, port, data}
-        -:  238:static u32 OMNI_NAM_UDPR;  // udp-recv-from: #UdpR{sock, max_len}
-        -:  239:static u32 OMNI_NAM_SCLS;  // socket-close: #SCls{sock}
-        -:  240:static u32 OMNI_NAM_HTTP;  // http-request: #Http{method, url, headers, body}
-        -:  241:static u32 OMNI_NAM_HGET;  // http-get: #HGet{url}
-        -:  242:static u32 OMNI_NAM_HPOS;  // http-post: #HPos{url, body}
-        -:  243:static u32 OMNI_NAM_HRES;  // http-response: #HRes{status, headers, body}
-        -:  244:
-        -:  245:// Developer Tools
-        -:  246:static u32 OMNI_NAM_INSP;  // inspect: #Insp{val, depth} - examine value structure
-        -:  247:static u32 OMNI_NAM_TYOF;  // type-of: #TyOf{val} - get runtime type
-        -:  248:static u32 OMNI_NAM_DOC;   // doc: #Doc{sym} - get documentation
-        -:  249:static u32 OMNI_NAM_TRCE;  // trace: #Trce{label, val} - debug logging
-        -:  250:static u32 OMNI_NAM_TIME;  // time: #Time{expr} - measure execution time
-        -:  251:static u32 OMNI_NAM_EXPD;  // expand: #Expd{expr} - macro expansion
-        -:  252:static u32 OMNI_NAM_DBUG;  // debug: #Dbug{expr} - debug breakpoint
-        -:  253:static u32 OMNI_NAM_PRTY;  // pprint: #Prty{val} - pretty print
-        -:  254:static u32 OMNI_NAM_SRCE;  // source: #Srce{fn} - get source code
-        -:  255:static u32 OMNI_NAM_PROF;  // profile: #Prof{expr} - profiling wrapper
-        -:  256:
-        -:  257:// Type annotations (erased at runtime, used for dispatch)
-        -:  258:static u32 OMNI_NAM_TANN;  // Type annotation: #TAnn{expr, type}
-        -:  259:static u32 OMNI_NAM_TDSC;  // Type descriptor: #TDsc{name, parent, fields}
-        -:  260:static u32 OMNI_NAM_TVAR;  // Type variable: #TVar{name}
-        -:  261:static u32 OMNI_NAM_TFUN;  // Function type: #TFun{args, ret}
-        -:  262:static u32 OMNI_NAM_TFUNE; // Function type with effects: #TFunE{args, ret, effects}
-        -:  263:static u32 OMNI_NAM_TSUP;  // Superposition type: #TSup{elem}
-        -:  264:static u32 OMNI_NAM_TWSUP; // Weighted superposition: #TWSup{elem}
-        -:  265:static u32 OMNI_NAM_TAPP;  // Type application: #TApp{base, args}
-        -:  266:static u32 OMNI_NAM_VTYP;  // Value type (singleton): #VTyp{value} - {3} = #val 3
-        -:  267:
-        -:  268:// Type definitions
-        -:  269:static u32 OMNI_NAM_TABS;  // Abstract type: #TAbs{name, parent}
-        -:  270:static u32 OMNI_NAM_TSTR;  // Struct type: #TStr{name, parent, fields, mutable}
-        -:  271:static u32 OMNI_NAM_TENM;  // Enum type: #TEnm{name, variants}
-        -:  272:static u32 OMNI_NAM_TUNI;  // Union type: #TUni{name, types}
-        -:  273:static u32 OMNI_NAM_TFLD;  // Field descriptor: #TFld{name, type}
-        -:  274:static u32 OMNI_NAM_TVRN;  // Enum variant: #TVrn{name, fields}
-        -:  275:static u32 OMNI_NAM_TEFF;  // Effect type: #TEff{name, operations}
-        -:  276:                           // e.g., (define {effect Error} ...) → #TEff{Error, ops}
-        -:  277:static u32 OMNI_NAM_TEOP;  // Effect operation: #TEOp{name, params, ret_type}
-        -:  278:                           // e.g., [raise [msg {String}] {bottom}] → #TEOp{raise, params, bottom}
-        -:  279:
-        -:  280:// Metadata
-        -:  281:static u32 OMNI_NAM_META;  // Metadata: #Meta{key, value, target}
-        -:  282:static u32 OMNI_NAM_PURE;  // Purity marker: #Pure{fn} - function has no side effects
-        -:  283:static u32 OMNI_NAM_ASSC;  // Associative marker: #Assc{fn} - function is associative (can use tree reduction)
-        -:  284:static u32 OMNI_NAM_COVR;  // Covariance marker: #Covr{tvar}
-        -:  285:                           // e.g., ^:covar T → type parameter T is covariant
-        -:  286:static u32 OMNI_NAM_CNVR;  // Contravariance marker: #Cnvr{tvar}
-        -:  287:                           // e.g., ^:contravar T → type parameter T is contravariant
-        -:  288:
-        -:  289:// FFI
-        -:  290:static u32 OMNI_NAM_FFI;   // FFI call: #FFI{name, args}
-        -:  291:static u32 OMNI_NAM_HNDL;  // Handle: #Hndl{idx, gen}
-        -:  292:static u32 OMNI_NAM_PTR;   // Raw pointer: #Ptr{hi, lo}
-        -:  293:static u32 OMNI_NAM_PEND;  // Pending future: #Pend{id}
-        -:  294:
-        -:  295:// Algebraic effects
-        -:  296:static u32 OMNI_NAM_PERF;  // Perform: #Perf{tag, payload}
-        -:  297:static u32 OMNI_NAM_HDLE;  // Handle: #Hdle{handlers, body}
-        -:  298:static u32 OMNI_NAM_HDLR;  // Handler instance: #Hdlr{tag, handler_fn}
-        -:  299:static u32 OMNI_NAM_HDEF;  // Handler definition: #HdlrDef{tag, fn_expr}
-        -:  300:static u32 OMNI_NAM_EFF;   // Effect declaration
-        -:  301:static u32 OMNI_NAM_ERWS;  // Effect row signature: #ERws{effects}
-        -:  302:                           // e.g., ^:effects [{Error} {Ask}] → #ERws{[Error, Ask]}
-        -:  303:static u32 OMNI_NAM_EFFR;  // Effect-free check: #Effr{fn} - returns true if fn has empty effect row
-        -:  304:static u32 OMNI_NAM_STPR;  // Staged-pure check: #StPr{code} - compile-time purity analysis of AST
-        -:  305:static u32 OMNI_NAM_MPCH;  // Map-chunks: #MpCh{f, xs, size} - chunked parallel map
-        -:  306:static u32 OMNI_NAM_CPMF;  // Compile-parallel-map factory: #CpMf{f} - generate parallel map code
-        -:  307:
-        -:  308:// Proof-as-Effect system (contract verification)
-        -:  309:// These use the algebraic effects system for proof obligations
-        -:  310:static u32 OMNI_NAM_REQR;  // Require effect (precondition): #Reqr{predicate}
-        -:  311:                           // ^:require P or (require P) → (perform require P)
-        -:  312:static u32 OMNI_NAM_ENSR;  // Ensure effect (postcondition): #Ensr{predicate}
-        -:  313:                           // ^:ensure Q or (ensure Q) → (perform ensure Q)
-        -:  314:static u32 OMNI_NAM_PROV;  // Prove effect: #Prov{goal} - request proof from handler
-        -:  315:
-        -:  316:// Proof terms (Curry-Howard correspondence)
-        -:  317:// Types ↔ Propositions, Terms ↔ Proofs
-        -:  318:static u32 OMNI_NAM_PRRF;  // Proof reflexivity: #PrRf{a} - proof that a = a
-        -:  319:static u32 OMNI_NAM_PRSM;  // Proof symmetry: #PrSm{pf} - if pf : a = b then b = a
-        -:  320:static u32 OMNI_NAM_PRTR;  // Proof transitivity: #PrTr{pf1, pf2} - a=b, b=c → a=c
-        -:  321:static u32 OMNI_NAM_PRCG;  // Proof congruence: #PrCg{f, pf} - a=b → f(a)=f(b)
-        -:  322:static u32 OMNI_NAM_PRJL;  // J eliminator: #PrJl{motive, base, pf} - equality elim
-        -:  323:static u32 OMNI_NAM_PRQD;  // QED marker: #PrQd{proof_term} - completed proof
-        -:  324:static u32 OMNI_NAM_PRBY;  // Proof by: #PrBy{tactic} - proof via tactic application
-        -:  325:static u32 OMNI_NAM_PRSK;  // Proof sketch: #PrSk{hint} - incomplete proof (hole)
-        -:  326:
-        -:  327:// Proof search (SUP-powered parallel exploration)
-        -:  328:static u32 OMNI_NAM_PRSP;  // Proof superposition: #PrSp{branches} - parallel search
-        -:  329:static u32 OMNI_NAM_PRFL;  // Proof failure: #PrFl{reason} - search branch failed
-        -:  330:static u32 OMNI_NAM_PRSC;  // Proof success: #PrSc{proof} - search found proof
+        -:  129:// Mutation primitives (imperative, side-effecting)
+        -:  130:static u32 OMNI_NAM_SETB;  // set!: #SetB{var, val} - mutate variable binding
+        -:  131:static u32 OMNI_NAM_PUTB;  // put!: #PutB{coll, key, val} - mutate collection in place
+        -:  132:static u32 OMNI_NAM_UPDTB; // update!: #UpdtB{coll, key, fn} - mutate via function
+        -:  133:
+        -:  134:// Iterator Lazy Wrappers (internal HVM4 nodes)
+        -:  135:// These represent SUSPENDED lazy computation over iterators.
+        -:  136:// User-facing functions like (map f iter) dispatch here when the collection
+        -:  137:// is an Iterator type. For List/Array, dispatch goes to eager implementations.
+        -:  138:// See "Collection operations" section for generic dispatch nodes.
+        -:  139:static u32 OMNI_NAM_ITER;  // Iterator: #Iter{state, next_fn}
+        -:  140:static u32 OMNI_NAM_RANG;  // Range: #Rang{start, end, step}
+        -:  141:static u32 OMNI_NAM_IMAP;  // Lazy map wrapper: #IMap{iter, fn}
+        -:  142:static u32 OMNI_NAM_IFLT;  // Lazy filter wrapper: #IFlt{iter, pred}
+        -:  143:static u32 OMNI_NAM_ITKN;  // Lazy take wrapper: #ITkn{iter, n}
+        -:  144:static u32 OMNI_NAM_IDRP;  // Lazy drop wrapper: #IDrp{iter, n}
+        -:  145:static u32 OMNI_NAM_DONE;  // Iterator done marker: #Done
+        -:  146:static u32 OMNI_NAM_IZIP;  // Lazy zip wrapper: #IZip{iters}
+        -:  147:static u32 OMNI_NAM_ICHN;  // Lazy chain wrapper: #IChn{iters}
+        -:  148:static u32 OMNI_NAM_IENM;  // Lazy enumerate wrapper: #IEnm{iter}
+        -:  149:static u32 OMNI_NAM_ITKW;  // Lazy take-while wrapper: #ITkW{iter, pred}
+        -:  150:static u32 OMNI_NAM_IDRW;  // Lazy drop-while wrapper: #IDrW{iter, pred}
+        -:  151:static u32 OMNI_NAM_IFLD;  // Iterator fold (consumes): #IFld{iter, init, fn}
+        -:  152:static u32 OMNI_NAM_IFND;  // Iterator find (consumes): #IFnd{iter, pred}
+        -:  153:static u32 OMNI_NAM_IANY;  // Iterator any? (consumes): #IAny{iter, pred}
+        -:  154:static u32 OMNI_NAM_IALL;  // Iterator all? (consumes): #IAll{iter, pred}
+        -:  155:static u32 OMNI_NAM_INTH;  // Iterator nth (consumes): #INth{iter, n}
+        -:  156:static u32 OMNI_NAM_IFMP;  // Lazy flat-map wrapper: #IFMp{iter, fn}
+        -:  157:static u32 OMNI_NAM_ISTP;  // Lazy step-by wrapper: #IStp{iter, n}
+        -:  158:static u32 OMNI_NAM_ICHK;  // Lazy chunks wrapper: #IChk{iter, n}
+        -:  159:static u32 OMNI_NAM_IWIN;  // Lazy windows wrapper: #IWin{iter, n}
+        -:  160:
+        -:  161:// Math functions (FFI-backed)
+        -:  162:static u32 OMNI_NAM_SQRT;  // sqrt: #Sqrt{x}
+        -:  163:static u32 OMNI_NAM_POW;   // pow: #Pow{base, exp}
+        -:  164:static u32 OMNI_NAM_MEXP;  // exp: #MExp{x}
+        -:  165:static u32 OMNI_NAM_MLOG;  // log: #MLog{x}
+        -:  166:static u32 OMNI_NAM_MSIN;  // sin: #MSin{x}
+        -:  167:static u32 OMNI_NAM_MCOS;  // cos: #MCos{x}
+        -:  168:static u32 OMNI_NAM_MTAN;  // tan: #MTan{x}
+        -:  169:static u32 OMNI_NAM_MASN;  // asin: #MAsn{x}
+        -:  170:static u32 OMNI_NAM_MACS;  // acos: #MAcs{x}
+        -:  171:static u32 OMNI_NAM_MATN;  // atan: #MAtn{x}
+        -:  172:static u32 OMNI_NAM_MABS;  // abs: #MAbs{x}
+        -:  173:static u32 OMNI_NAM_FLOR;  // floor: #Flor{x}
+        -:  174:static u32 OMNI_NAM_MCEI;  // ceil: #MCei{x}
+        -:  175:static u32 OMNI_NAM_ROND;  // round: #Rond{x}
+        -:  176:static u32 OMNI_NAM_RAND;  // random: #Rand{}
+        -:  177:
+        -:  178:// I/O operations (FFI-backed)
+        -:  179:static u32 OMNI_NAM_RDFL;  // read-file: #RdFl{path}
+        -:  180:static u32 OMNI_NAM_WRFL;  // write-file: #WrFl{path, content}
+        -:  181:static u32 OMNI_NAM_APFL;  // append-file: #ApFl{path, content}
+        -:  182:static u32 OMNI_NAM_RDLN;  // read-lines: #RdLn{path}
+        -:  183:static u32 OMNI_NAM_PRNT;  // print: #Prnt{val}
+        -:  184:static u32 OMNI_NAM_PRNL;  // println: #PrnL{val}
+        -:  185:static u32 OMNI_NAM_RDLN2; // read-line (stdin): #RdL2{}
+        -:  186:static u32 OMNI_NAM_GTEV;  // getenv: #GtEv{name}
+        -:  187:static u32 OMNI_NAM_STEV;  // setenv: #StEv{name, val}
+        -:  188:static u32 OMNI_NAM_EXST;  // file-exists?: #Exst{path}
+        -:  189:static u32 OMNI_NAM_ISDR;  // dir?: #IsDr{path}
+        -:  190:static u32 OMNI_NAM_MKDR;  // mkdir: #MkDr{path}
+        -:  191:static u32 OMNI_NAM_LSDR;  // list-dir: #LsDr{path}
+        -:  192:static u32 OMNI_NAM_DLFL;  // delete-file: #DlFl{path}
+        -:  193:static u32 OMNI_NAM_RNFL;  // rename-file: #RnFl{from, to}
+        -:  194:static u32 OMNI_NAM_CPFL;  // copy-file: #CpFl{from, to}
+        -:  195:
+        -:  196:// JSON operations (FFI-backed)
+        -:  197:static u32 OMNI_NAM_JPRS;  // json-parse: #JPrs{str}
+        -:  198:static u32 OMNI_NAM_JSTR;  // json-stringify: #JStr{val}
+        -:  199:static u32 OMNI_NAM_JARR;  // JSON array marker: #JArr (for type distinction)
+        -:  200:static u32 OMNI_NAM_JOBJ;  // JSON object marker: #JObj (for type distinction)
+        -:  201:static u32 OMNI_NAM_JNUL;  // JSON null: #JNul
+        -:  202:
+        -:  203:// DateTime operations (FFI-backed)
+        -:  204:static u32 OMNI_NAM_DTNW;  // datetime-now: #DtNw{}
+        -:  205:static u32 OMNI_NAM_DTPR;  // datetime-parse: #DtPr{str, fmt}
+        -:  206:static u32 OMNI_NAM_DTFM;  // datetime-format: #DtFm{dt, fmt}
+        -:  207:static u32 OMNI_NAM_DTAD;  // datetime-add: #DtAd{dt, duration}
+        -:  208:static u32 OMNI_NAM_DTSB;  // datetime-sub: #DtSb{dt, duration}
+        -:  209:static u32 OMNI_NAM_DTDF;  // datetime-diff: #DtDf{dt1, dt2}
+        -:  210:static u32 OMNI_NAM_DT;    // DateTime value: #Dt{year, month, day, hour, min, sec, nsec}
+        -:  211:static u32 OMNI_NAM_DUR;   // Duration value: #Dur{secs, nsecs}
+        -:  212:static u32 OMNI_NAM_DTYR;  // datetime-year: #DtYr{dt}
+        -:  213:static u32 OMNI_NAM_DTMO;  // datetime-month: #DtMo{dt}
+        -:  214:static u32 OMNI_NAM_DTDY;  // datetime-day: #DtDy{dt}
+        -:  215:static u32 OMNI_NAM_DTHR;  // datetime-hour: #DtHr{dt}
+        -:  216:static u32 OMNI_NAM_DTMI;  // datetime-minute: #DtMi{dt}
+        -:  217:static u32 OMNI_NAM_DTSC;  // datetime-second: #DtSc{dt}
+        -:  218:static u32 OMNI_NAM_DTTS;  // datetime-timestamp: #DtTs{dt}
+        -:  219:static u32 OMNI_NAM_DTFT;  // datetime-from-timestamp: #DtFt{ts}
+        -:  220:
+        -:  221:// Tower/Meta-programming (multi-stage evaluation)
+        -:  222:static u32 OMNI_NAM_LIFT;  // lift: #Lift{expr} - move to meta-level
+        -:  223:static u32 OMNI_NAM_RUN;   // run: #Run{expr} - execute meta-level code
+        -:  224:static u32 OMNI_NAM_EM;    // EM (Eval Meta): #EM{expr} - jump to parent level
+        -:  225:static u32 OMNI_NAM_CLAM;  // clambda: #CLam{env, body} - compiled lambda
+        -:  226:static u32 OMNI_NAM_STAG;  // stage: #Stag{level, expr} - staged expression
+        -:  227:static u32 OMNI_NAM_SPLI;  // splice: #Spli{expr} - splice into code
+        -:  228:static u32 OMNI_NAM_REFL;  // reflect: #Refl{val} - reflect value as code
+        -:  229:static u32 OMNI_NAM_REIF;  // reify: #Reif{code} - reify code as value
+        -:  230:static u32 OMNI_NAM_MLVL;  // meta-level: #MLvl{level} - current meta-level
+        -:  231:static u32 OMNI_NAM_LPAR;  // lazy-parent: #LPar{thunk} - lazy parent reference
+        -:  232:
+        -:  233:// Networking (FFI-backed)
+        -:  234:static u32 OMNI_NAM_SOCK;  // socket: #Sock{handle} - socket handle
+        -:  235:static u32 OMNI_NAM_TCPC;  // tcp-connect: #TcpC{host, port}
+        -:  236:static u32 OMNI_NAM_TCPL;  // tcp-listen: #TcpL{port}
+        -:  237:static u32 OMNI_NAM_TCPA;  // tcp-accept: #TcpA{server_sock}
+        -:  238:static u32 OMNI_NAM_TCPS;  // tcp-send: #TcpS{sock, data}
+        -:  239:static u32 OMNI_NAM_TCPR;  // tcp-recv: #TcpR{sock, max_len}
+        -:  240:static u32 OMNI_NAM_UDPC;  // udp-socket: #UdpC{}
+        -:  241:static u32 OMNI_NAM_UDPB;  // udp-bind: #UdpB{sock, port}
+        -:  242:static u32 OMNI_NAM_UDPS;  // udp-send-to: #UdpS{sock, host, port, data}
+        -:  243:static u32 OMNI_NAM_UDPR;  // udp-recv-from: #UdpR{sock, max_len}
+        -:  244:static u32 OMNI_NAM_SCLS;  // socket-close: #SCls{sock}
+        -:  245:static u32 OMNI_NAM_HTTP;  // http-request: #Http{method, url, headers, body}
+        -:  246:static u32 OMNI_NAM_HGET;  // http-get: #HGet{url}
+        -:  247:static u32 OMNI_NAM_HPOS;  // http-post: #HPos{url, body}
+        -:  248:static u32 OMNI_NAM_HRES;  // http-response: #HRes{status, headers, body}
+        -:  249:
+        -:  250:// Developer Tools
+        -:  251:static u32 OMNI_NAM_INSP;  // inspect: #Insp{val, depth} - examine value structure
+        -:  252:static u32 OMNI_NAM_TYOF;  // type-of: #TyOf{val} - get runtime type
+        -:  253:static u32 OMNI_NAM_DOC;   // doc: #Doc{sym} - get documentation
+        -:  254:static u32 OMNI_NAM_TRCE;  // trace: #Trce{label, val} - debug logging
+        -:  255:static u32 OMNI_NAM_TIME;  // time: #Time{expr} - measure execution time
+        -:  256:static u32 OMNI_NAM_EXPD;  // expand: #Expd{expr} - macro expansion
+        -:  257:static u32 OMNI_NAM_DBUG;  // debug: #Dbug{expr} - debug breakpoint
+        -:  258:static u32 OMNI_NAM_PRTY;  // pprint: #Prty{val} - pretty print
+        -:  259:static u32 OMNI_NAM_SRCE;  // source: #Srce{fn} - get source code
+        -:  260:static u32 OMNI_NAM_PROF;  // profile: #Prof{expr} - profiling wrapper
+        -:  261:
+        -:  262:// Type annotations (erased at runtime, used for dispatch)
+        -:  263:static u32 OMNI_NAM_TANN;  // Type annotation: #TAnn{expr, type}
+        -:  264:static u32 OMNI_NAM_TDSC;  // Type descriptor: #TDsc{name, parent, fields}
+        -:  265:static u32 OMNI_NAM_TVAR;  // Type variable: #TVar{name}
+        -:  266:static u32 OMNI_NAM_TFUN;  // Function type: #TFun{args, ret}
+        -:  267:static u32 OMNI_NAM_TFUNE; // Function type with effects: #TFunE{args, ret, effects}
+        -:  268:static u32 OMNI_NAM_TSUP;  // Superposition type: #TSup{elem}
+        -:  269:static u32 OMNI_NAM_TWSUP; // Weighted superposition: #TWSup{elem}
+        -:  270:static u32 OMNI_NAM_TAPP;  // Type application: #TApp{base, args}
+        -:  271:static u32 OMNI_NAM_VTYP;  // Value type (singleton): #VTyp{value} - {3} = #val 3
+        -:  272:
+        -:  273:// Type definitions
+        -:  274:static u32 OMNI_NAM_TABS;  // Abstract type: #TAbs{name, parent}
+        -:  275:static u32 OMNI_NAM_TSTR;  // Struct type: #TStr{name, parent, fields, mutable}
+        -:  276:static u32 OMNI_NAM_TENM;  // Enum type: #TEnm{name, variants}
+        -:  277:static u32 OMNI_NAM_TUNI;  // Union type: #TUni{name, types}
+        -:  278:static u32 OMNI_NAM_TFLD;  // Field descriptor: #TFld{name, type}
+        -:  279:static u32 OMNI_NAM_TVRN;  // Enum variant: #TVrn{name, fields}
+        -:  280:static u32 OMNI_NAM_TEFF;  // Effect type: #TEff{name, operations}
+        -:  281:                           // e.g., (define {effect Error} ...) → #TEff{Error, ops}
+        -:  282:static u32 OMNI_NAM_TEOP;  // Effect operation: #TEOp{name, params, ret_type}
+        -:  283:                           // e.g., [raise [msg {String}] {bottom}] → #TEOp{raise, params, bottom}
+        -:  284:
+        -:  285:// Metadata
+        -:  286:static u32 OMNI_NAM_META;  // Metadata: #Meta{key, value, target}
+        -:  287:static u32 OMNI_NAM_PURE;  // Purity marker: #Pure{fn} - function has no side effects
+        -:  288:static u32 OMNI_NAM_ASSC;  // Associative marker: #Assc{fn} - function is associative (can use tree reduction)
+        -:  289:static u32 OMNI_NAM_COVR;  // Covariance marker: #Covr{tvar}
+        -:  290:                           // e.g., ^:covar T → type parameter T is covariant
+        -:  291:static u32 OMNI_NAM_CNVR;  // Contravariance marker: #Cnvr{tvar}
+        -:  292:                           // e.g., ^:contravar T → type parameter T is contravariant
+        -:  293:
+        -:  294:// FFI
+        -:  295:static u32 OMNI_NAM_FFI;   // FFI call: #FFI{name, args}
+        -:  296:static u32 OMNI_NAM_HNDL;  // Handle: #Hndl{idx, gen}
+        -:  297:static u32 OMNI_NAM_PTR;   // Raw pointer: #Ptr{hi, lo}
+        -:  298:static u32 OMNI_NAM_PEND;  // Pending future: #Pend{id}
+        -:  299:
+        -:  300:// Algebraic effects
+        -:  301:static u32 OMNI_NAM_PERF;  // Perform: #Perf{tag, payload}
+        -:  302:static u32 OMNI_NAM_HDLE;  // Handle: #Hdle{handlers, body}
+        -:  303:static u32 OMNI_NAM_HDLR;  // Handler instance: #Hdlr{tag, handler_fn}
+        -:  304:static u32 OMNI_NAM_HDEF;  // Handler definition: #HdlrDef{tag, fn_expr}
+        -:  305:static u32 OMNI_NAM_EFF;   // Effect declaration
+        -:  306:static u32 OMNI_NAM_ERWS;  // Effect row signature: #ERws{effects}
+        -:  307:                           // e.g., ^:effects [{Error} {Ask}] → #ERws{[Error, Ask]}
+        -:  308:static u32 OMNI_NAM_EFFR;  // Effect-free check: #Effr{fn} - returns true if fn has empty effect row
+        -:  309:static u32 OMNI_NAM_STPR;  // Staged-pure check: #StPr{code} - compile-time purity analysis of AST
+        -:  310:static u32 OMNI_NAM_MPCH;  // Map-chunks: #MpCh{f, xs, size} - chunked parallel map
+        -:  311:static u32 OMNI_NAM_CPMF;  // Compile-parallel-map factory: #CpMf{f} - generate parallel map code
+        -:  312:
+        -:  313:// Proof-as-Effect system (contract verification)
+        -:  314:// These use the algebraic effects system for proof obligations
+        -:  315:static u32 OMNI_NAM_REQR;  // Require effect (precondition): #Reqr{predicate}
+        -:  316:                           // ^:require P or (require P) → (perform require P)
+        -:  317:static u32 OMNI_NAM_ENSR;  // Ensure effect (postcondition): #Ensr{predicate}
+        -:  318:                           // ^:ensure Q or (ensure Q) → (perform ensure Q)
+        -:  319:static u32 OMNI_NAM_PROV;  // Prove effect: #Prov{goal} - request proof from handler
+        -:  320:
+        -:  321:// Proof terms (Curry-Howard correspondence)
+        -:  322:// Types ↔ Propositions, Terms ↔ Proofs
+        -:  323:static u32 OMNI_NAM_PRRF;  // Proof reflexivity: #PrRf{a} - proof that a = a
+        -:  324:static u32 OMNI_NAM_PRSM;  // Proof symmetry: #PrSm{pf} - if pf : a = b then b = a
+        -:  325:static u32 OMNI_NAM_PRTR;  // Proof transitivity: #PrTr{pf1, pf2} - a=b, b=c → a=c
+        -:  326:static u32 OMNI_NAM_PRCG;  // Proof congruence: #PrCg{f, pf} - a=b → f(a)=f(b)
+        -:  327:static u32 OMNI_NAM_PRJL;  // J eliminator: #PrJl{motive, base, pf} - equality elim
+        -:  328:static u32 OMNI_NAM_PRQD;  // QED marker: #PrQd{proof_term} - completed proof
+        -:  329:static u32 OMNI_NAM_PRBY;  // Proof by: #PrBy{tactic} - proof via tactic application
+        -:  330:static u32 OMNI_NAM_PRSK;  // Proof sketch: #PrSk{hint} - incomplete proof (hole)
         -:  331:
-        -:  332:// Concurrency
-        -:  333:static u32 OMNI_NAM_FIBR;  // Fiber: #Fibr{state, cont, mailbox}
-        -:  334:static u32 OMNI_NAM_FORK;  // Fork (HVM4 superposition): #Fork{a, b}
-        -:  335:static u32 OMNI_NAM_AMB;   // Nondeterminism
-        -:  336:static u32 OMNI_NAM_CHOI;  // Choice (nested superposition): #Choi{list}
-        -:  337:static u32 OMNI_NAM_REQT;  // Require test: #Reqt{cond} - reject if cond is false (exploration)
-        -:  338:static u32 OMNI_NAM_EXFR;  // Explore-first: #ExFr{choices, pred} - first matching choice
-        -:  339:static u32 OMNI_NAM_EXAL;  // Explore-all: #ExAl{choices, body} - collect all valid results
-        -:  340:static u32 OMNI_NAM_EXRG;  // Explore-range: #ExRg{lo, hi} - explore integer range
-        -:  341:
-        -:  342:// Speculative Transactions (A3)
-        -:  343:static u32 OMNI_NAM_ROLL;  // Rollback: #Roll{reason} - abort transaction
-        -:  344:static u32 OMNI_NAM_COMT;  // Commit: #Comt{value} - commit transaction successfully
-        -:  345:static u32 OMNI_NAM_SPTX;  // Speculative transaction: #SpTx{strategies} - race strategies
-        -:  346:static u32 OMNI_NAM_WROL;  // With-rollback: #WRol{body, cleanup} - transaction with cleanup
-        -:  347:
-        -:  348:// Ambient Parallelism (A5)
-        -:  349:static u32 OMNI_NAM_PCTX;  // Parallel context: #PCtx{} - get current parallel context
-        -:  350:static u32 OMNI_NAM_FJOI;  // Fork-join: #FJoi{tasks} - parallel task execution
-        -:  351:static u32 OMNI_NAM_WPAR;  // With-parallelism: #WPar{workers, body} - set parallel context
+        -:  332:// Proof search (SUP-powered parallel exploration)
+        -:  333:static u32 OMNI_NAM_PRSP;  // Proof superposition: #PrSp{branches} - parallel search
+        -:  334:static u32 OMNI_NAM_PRFL;  // Proof failure: #PrFl{reason} - search branch failed
+        -:  335:static u32 OMNI_NAM_PRSC;  // Proof success: #PrSc{proof} - search found proof
+        -:  336:
+        -:  337:// Concurrency
+        -:  338:static u32 OMNI_NAM_FIBR;  // Fiber: #Fibr{state, cont, mailbox}
+        -:  339:static u32 OMNI_NAM_FORK;  // Fork (HVM4 superposition): #Fork{a, b}
+        -:  340:static u32 OMNI_NAM_AMB;   // Nondeterminism
+        -:  341:static u32 OMNI_NAM_CHOI;  // Choice (nested superposition): #Choi{list}
+        -:  342:static u32 OMNI_NAM_REQT;  // Require test: #Reqt{cond} - reject if cond is false (exploration)
+        -:  343:static u32 OMNI_NAM_EXFR;  // Explore-first: #ExFr{choices, pred} - first matching choice
+        -:  344:static u32 OMNI_NAM_EXAL;  // Explore-all: #ExAl{choices, body} - collect all valid results
+        -:  345:static u32 OMNI_NAM_EXRG;  // Explore-range: #ExRg{lo, hi} - explore integer range
+        -:  346:
+        -:  347:// Speculative Transactions (A3)
+        -:  348:static u32 OMNI_NAM_ROLL;  // Rollback: #Roll{reason} - abort transaction
+        -:  349:static u32 OMNI_NAM_COMT;  // Commit: #Comt{value} - commit transaction successfully
+        -:  350:static u32 OMNI_NAM_SPTX;  // Speculative transaction: #SpTx{strategies} - race strategies
+        -:  351:static u32 OMNI_NAM_WROL;  // With-rollback: #WRol{body, cleanup} - transaction with cleanup
         -:  352:
-        -:  353:// Probabilistic Effects (A7)
-        -:  354:static u32 OMNI_NAM_BERN;  // Bernoulli distribution: #Bern{prob} - weighted coin
-        -:  355:static u32 OMNI_NAM_CATG;  // Categorical distribution: #Catg{probs} - discrete distribution
-        -:  356:static u32 OMNI_NAM_UNIF;  // Uniform distribution: #Unif{lo, hi} - uniform range
-        -:  357:static u32 OMNI_NAM_BETA;  // Beta distribution: #Beta{alpha, beta} - beta distribution
-        -:  358:static u32 OMNI_NAM_SMPL;  // Sample: #Smpl{dist} - sample from distribution
-        -:  359:static u32 OMNI_NAM_OBSV;  // Observe: #Obsv{cond} - condition on observation
-        -:  360:static u32 OMNI_NAM_FCTR;  // Factor: #Fctr{weight} - weight current execution path
-        -:  361:static u32 OMNI_NAM_FLIP;  // Flip: #Flip{prob} - weighted coin flip (returns bool)
-        -:  362:static u32 OMNI_NAM_ENMR;  // Enumerate-infer: #EnmI{model} - exact probabilistic inference
-        -:  363:static u32 OMNI_NAM_IMPS;  // Importance-sample: #ImpS{model, n} - approximate inference
-        -:  364:static u32 OMNI_NAM_WGTS;  // Weighted superposition: #WgtS{val, weight} - value with probability weight
-        -:  365:static u32 OMNI_NAM_DMIX;  // Mixture distribution: #DMix{dists, weights} - weighted combination
-        -:  366:static u32 OMNI_NAM_DPRD;  // Product distribution: #DPrd{dists} - independent joint distribution
-        -:  367:static u32 OMNI_NAM_DMAP;  // Mapped distribution: #DMap{dist, fn} - transform samples
-        -:  368:
-        -:  369:// Definitions
-        -:  370:static u32 OMNI_NAM_DEF;   // Define: #Def{name, params, body}
-        -:  371:static u32 OMNI_NAM_SLOT;  // Parameter slot: #Slot{name, type}
-        -:  372:
-        -:  373:// Multiple dispatch
-        -:  374:static u32 OMNI_NAM_METH;  // Method: #Meth{name, sig, impl, constraints, effects}
-        -:  375:                           // constraints: list of #TWhr{tvar, bound} from ^:where
-        -:  376:                           // effects: #ERws{effect_types} from ^:effects or NIL
-        -:  377:static u32 OMNI_NAM_GFUN;  // Generic function: #GFun{name, methods}
-        -:  378:static u32 OMNI_NAM_GPRT;  // Generic partial application: #GPrt{name, methods, args, remaining}
-        -:  379:static u32 OMNI_NAM_DISP;  // Dispatch call: #Disp{name, args}
-        -:  380:static u32 OMNI_NAM_SIG;   // Signature: #Sig{types}
-        -:  381:static u32 OMNI_NAM_TWHR;  // Type constraint (^:where): #TWhr{tvar, bound}
-        -:  382:                           // e.g., ^:where [T {Number}] → #TWhr{T, Number}
-        -:  383:static u32 OMNI_NAM_TYCK;  // Type check: #Tyck{value, type}
-        -:  384:
-        -:  385:// Macro system
-        -:  386:static u32 OMNI_NAM_MSYN;  // Syntax macro definition: #MSyn{name, patterns}
-        -:  387:static u32 OMNI_NAM_MPAT;  // Macro pattern: #MPat{pattern, template}
-        -:  388:static u32 OMNI_NAM_MVAR;  // Macro pattern variable: #MVar{name}
-        -:  389:static u32 OMNI_NAM_MRST;  // Macro rest pattern: #MRst{name} for ... patterns
-        -:  390:static u32 OMNI_NAM_MLIT;  // Macro literal: #MLit{value} (matches exactly)
-        -:  391:static u32 OMNI_NAM_MEXP;  // Macro expansion call: #MExp{name, args}
-        -:  392:
-        -:  393:// Module system
-        -:  394:static u32 OMNI_NAM_MODL;  // Module definition: #Modl{name, exports, body}
-        -:  395:static u32 OMNI_NAM_IMPT;  // Import: #Impt{module_name, bindings}
-        -:  396:static u32 OMNI_NAM_EXPT;  // Export list: #Expt{names}
-        -:  397:static u32 OMNI_NAM_QUAL;  // Qualified access: #Qual{module, name}
-        -:  398:static u32 OMNI_NAM_MODA;  // Module alias: #ModAlias{env} - for (import M :as Alias)
-        -:  399:
-        -:  400:// Code/quasiquote
-        -:  401:static u32 OMNI_NAM_COD;   // Code: #Cod{expr}
-        -:  402:static u32 OMNI_NAM_QUOT;  // Quote symbol for (quote expr)
-        -:  403:static u32 OMNI_NAM_QQ;    // Quasiquote: #QQ{expr}
-        -:  404:static u32 OMNI_NAM_UQ;    // Unquote: #UQ{expr}
-        -:  405:static u32 OMNI_NAM_UQS;   // Unquote-splicing: #UQS{expr}
-        -:  406:
-        -:  407:// Runtime support
-        -:  408:static u32 OMNI_NAM_MENV;  // Meta-environment
-        -:  409:static u32 OMNI_NAM_CLO;   // Closure
-        -:  410:static u32 OMNI_NAM_CLOR;  // Recursive closure
-        -:  411:static u32 OMNI_NAM_ERR;   // Error
-        -:  412:static u32 OMNI_NAM_NOTH;  // Nothing
-        -:  413:
-        -:  414:// Delimited continuations
-        -:  415:static u32 OMNI_NAM_PRMT;  // Reset/prompt: #Prmt{body}
-        -:  416:static u32 OMNI_NAM_CTRL;  // Control/shift: #Ctrl{k_idx, body}
-        -:  417:static u32 OMNI_NAM_CLOC;  // CPS closure: #CloC{env, body}
-        -:  418:static u32 OMNI_NAM_CLOK;  // Recursive CPS closure: #CloK{env, body}
-        -:  419:static u32 OMNI_NAM_KONT;  // Captured continuation: #Kont{k}
-        -:  420:
-        -:  421:// Fiber support
-        -:  422:static u32 OMNI_NAM_FYLD;  // Fiber yield marker: #FYld{val, k}
-        -:  423:static u32 OMNI_NAM_FTHK;  // Fiber thunk: #FThk{body}
-        -:  424:static u32 OMNI_NAM_FBRR;  // Fiber running: #FbrR
-        -:  425:static u32 OMNI_NAM_FBRS;  // Fiber suspended: #FbrS
-        -:  426:static u32 OMNI_NAM_FBRD;  // Fiber done: #FbrD
-        -:  427:static u32 OMNI_NAM_YLD;   // Yield expression: #Yld{val}
-        -:  428:
-        -:  429:// Fiber operations (exposed to user)
-        -:  430:static u32 OMNI_NAM_FSPN;  // Fiber spawn: #FSpn{body} - create and start fiber
-        -:  431:static u32 OMNI_NAM_FRSM;  // Fiber resume: #FRsm{fiber, value} - resume suspended fiber
-        -:  432:static u32 OMNI_NAM_FDNP;  // Fiber done?: #FDn?{fiber} - check if fiber completed
-        -:  433:static u32 OMNI_NAM_FRST;  // Fiber result: #FRst{fiber} - get final result
-        -:  434:static u32 OMNI_NAM_FMBX;  // Fiber mailbox: #FMbx{fiber} - get yielded values
-        -:  435:
-        -:  436:// Boolean values
-        -:  437:static u32 OMNI_NAM_TRUE;  // true
-        -:  438:static u32 OMNI_NAM_FALS;  // false
-        -:  439:
-        -:  440:// Collection operations (gradual multiple dispatch)
-        -:  441:// These are the user-facing generic functions using gradual dispatch:
-        -:  442://   - Typed args: compile-time method selection
-        -:  443://   - Untyped args: runtime dispatch based on collection type
-        -:  444:// Behavior by type: List/Array → eager, Iterator → lazy wrapper
-        -:  445:static u32 OMNI_NAM_SET;   // Set: #Set{elements}
-        -:  446:static u32 OMNI_NAM_SORT;  // Sort: #Sort{list, cmp}
-        -:  447:static u32 OMNI_NAM_GRPB;  // Group-by: #GrpB{list, key_fn}
-        -:  448:static u32 OMNI_NAM_ZIP;   // Zip: #Zip{lists} - generic, dispatches to #IZip for iterators
-        -:  449:static u32 OMNI_NAM_FLAT;  // Flatten: #Flat{nested}
-        -:  450:static u32 OMNI_NAM_CONC;  // Concat: #Conc{lists}
-        -:  451:static u32 OMNI_NAM_MAP;   // Map: #Map{fn, coll} - generic dispatch
-        -:  452:static u32 OMNI_NAM_FILT;  // Filter: #Filt{pred, coll} - generic dispatch
-        -:  453:static u32 OMNI_NAM_FOLD;  // Fold: #Fold{fn, init, coll} - generic dispatch
-        -:  454:static u32 OMNI_NAM_TAKE;  // Take: #Take{n, coll} - generic dispatch
-        -:  455:static u32 OMNI_NAM_DROP;  // Drop: #Drop{n, coll} - generic dispatch
-        -:  456:static u32 OMNI_NAM_REV;   // Reverse: #Rev{coll}
-        -:  457:static u32 OMNI_NAM_FIND;  // Find: #Find{pred, coll} - generic dispatch
-        -:  458:static u32 OMNI_NAM_ANY;   // Any?: #Any{pred, coll} - generic dispatch
-        -:  459:static u32 OMNI_NAM_ALL;   // All?: #All{pred, coll} - generic dispatch
-        -:  460:static u32 OMNI_NAM_CONJ;  // Add element: #Conj{coll, val} - generic dispatch
-        -:  461:static u32 OMNI_NAM_REMV;  // Remove element: #Remv{coll, val} - generic dispatch
-        -:  462:static u32 OMNI_NAM_INTR;  // Intersection: #Intr{s1, s2} - generic dispatch
-        -:  463:static u32 OMNI_NAM_UNIN;  // Union: #Unin{s1, s2} - generic dispatch
-        -:  464:static u32 OMNI_NAM_DIFF;  // Difference: #Diff{s1, s2} - generic dispatch
-        -:  465:static u32 OMNI_NAM_KEYS;  // Keys: #Keys{coll} - generic dispatch
-        -:  466:static u32 OMNI_NAM_VALS;  // Values: #Vals{coll} - generic dispatch
-        -:  467:static u32 OMNI_NAM_ENTS;  // Entries: #Ents{coll} - generic dispatch
-        -:  468:static u32 OMNI_NAM_MERG;  // Merge: #Merg{colls} - generic dispatch
-        -:  469:static u32 OMNI_NAM_ASOC;  // Assoc: #Asoc{coll, key, val} (alias for put)
-        -:  470:static u32 OMNI_NAM_DISS;  // Dissoc: #Diss{coll, key} (remove by key)
-        -:  471:static u32 OMNI_NAM_GET;   // Get: #Get{coll, key} - generic dispatch
-        -:  472:static u32 OMNI_NAM_LEN;   // Length: #Len{coll} - generic dispatch
-        -:  473:static u32 OMNI_NAM_EMPT;  // Empty?: #Empt{coll} - generic dispatch
-        -:  474:static u32 OMNI_NAM_CONT;  // Contains?: #Cont{coll, val} - generic dispatch
-        -:  475:static u32 OMNI_NAM_INDX;  // Index-of: #Indx{coll, val} - generic dispatch
-        -:  476:static u32 OMNI_NAM_NTH;   // Nth: #Nth{coll, n} - generic dispatch
-        -:  477:static u32 OMNI_NAM_SLCE;  // Slice: #Slce{coll, start, end} - generic dispatch
-        -:  478:static u32 OMNI_NAM_FRNG;  // From range: #FRng{start, end, step}
-        -:  479:
-        -:  480:// String operations
-        -:  481:static u32 OMNI_NAM_STR;   // String: #Str{chars}
-        -:  482:static u32 OMNI_NAM_SUPR;  // String upper: #SUpR{str}
-        -:  483:static u32 OMNI_NAM_SLWR;  // String lower: #SLwR{str}
-        -:  484:static u32 OMNI_NAM_STRM;  // String trim: #STrm{str}
-        -:  485:static u32 OMNI_NAM_SSPL;  // String split: #SSpl{str, delim}
-        -:  486:static u32 OMNI_NAM_SJOI;  // String join: #SJoi{strs, delim}
-        -:  487:static u32 OMNI_NAM_SRPL;  // String replace: #SRpl{str, old, new}
-        -:  488:static u32 OMNI_NAM_SSUB;  // String substring: #SSub{str, start, len}
-        -:  489:static u32 OMNI_NAM_SIND;  // String index-of: #SInd{str, needle}
-        -:  490:static u32 OMNI_NAM_SSTA;  // String starts-with: #SSta{str, prefix}
-        -:  491:static u32 OMNI_NAM_SEND;  // String ends-with: #SEnd{str, suffix}
-        -:  492:static u32 OMNI_NAM_SCNT;  // String contains: #SCnt{str, needle}
-        -:  493:static u32 OMNI_NAM_SREV;  // String reverse: #SRev{str}
-        -:  494:static u32 OMNI_NAM_SPAD;  // String pad: #SPad{str, len, char, side}
-        -:  495:static u32 OMNI_NAM_SCAP;  // String capitalize: #SCap{str}
-        -:  496:static u32 OMNI_NAM_SCHC;  // String char-at: #SChc{str, idx}
-        -:  497:static u32 OMNI_NAM_SLEN;  // String length: #SLen{str}
-        -:  498:static u32 OMNI_NAM_SEMP;  // String empty?: #SEmp{str}
-        -:  499:static u32 OMNI_NAM_SCMP;  // String compare: #SCmp{str1, str2}
-        -:  500:static u32 OMNI_NAM_SREP;  // String repeat: #SRep{str, n}
-        -:  501:static u32 OMNI_NAM_FMTS;  // Format string: #Fmts{parts} - interpolated string
-        -:  502:                           // parts is list of #Flit{str} and #Fexp{expr} alternating
-        -:  503:static u32 OMNI_NAM_FLIT;  // Format literal part: #Flit{chars}
-        -:  504:static u32 OMNI_NAM_FEXP;  // Format expression part: #Fexp{expr}
-        -:  505:
-        -:  506:// Regex operations
-        -:  507:static u32 OMNI_NAM_REGX;  // Regex literal: #Regx{pattern, flags}
-        -:  508:static u32 OMNI_NAM_RMAT;  // Regex match: #RMat{regex, str}
-        -:  509:static u32 OMNI_NAM_RFND;  // Regex find: #RFnd{regex, str}
-        -:  510:static u32 OMNI_NAM_RFNA;  // Regex find-all: #RFnA{regex, str}
-        -:  511:static u32 OMNI_NAM_RRPL;  // Regex replace: #RRpl{regex, str, replacement}
-        -:  512:static u32 OMNI_NAM_RSPL;  // Regex split: #RSpl{regex, str}
-        -:  513:static u32 OMNI_NAM_RGRP;  // Regex group: #RGrp{match, index}
-        -:  514:static u32 OMNI_NAM_RMRS;  // Regex match result: #RMRs{matched, groups, start, end}
-        -:  515:
-        -:  516:// Grammar DSL (Pika)
-        -:  517:static u32 OMNI_NAM_GRAM;  // Grammar definition: #Gram{name, rules}
-        -:  518:static u32 OMNI_NAM_RULE;  // Grammar rule: #Rule{name, pattern}
-        -:  519:static u32 OMNI_NAM_GSEQ;  // Sequence: #GSeq{patterns}
-        -:  520:static u32 OMNI_NAM_GALT;  // Alternative: #GAlt{patterns}
-        -:  521:static u32 OMNI_NAM_GSTR;  // String literal: #GStr{chars}
-        -:  522:static u32 OMNI_NAM_GCHR;  // Character class: #GChr{chars, negated}
-        -:  523:static u32 OMNI_NAM_GREF;  // Rule reference: #GRef{name}
-        -:  524:static u32 OMNI_NAM_GOPT;  // Optional (?): #GOpt{pattern}
-        -:  525:static u32 OMNI_NAM_GSTA;  // Star (*): #GSta{pattern}
-        -:  526:static u32 OMNI_NAM_GPLS;  // Plus (+): #GPls{pattern}
-        -:  527:static u32 OMNI_NAM_GNOT;  // Not predicate (!): #GNot{pattern}
-        -:  528:static u32 OMNI_NAM_GAND;  // And predicate (&): #GAnd{pattern}
-        -:  529:static u32 OMNI_NAM_GCAP;  // Capture: #GCap{name, pattern}
-        -:  530:static u32 OMNI_NAM_GACT;  // Action: #GAct{pattern, action}
-        -:  531:static u32 OMNI_NAM_GANY;  // Any character (.): #GAny{}
-        -:  532:static u32 OMNI_NAM_PRSR;  // Parser state: #Prsr{input, pos, captures}
-        -:  533:
-        -:  534:// List comprehensions (parallel by default)
-        -:  535:static u32 OMNI_NAM_CMPR;  // Comprehension: #Cmpr{clauses, yield_expr}
-        -:  536:static u32 OMNI_NAM_CFOR;  // For clause: #CFor{var_nick, collection}
-        -:  537:static u32 OMNI_NAM_CWHN;  // When clause: #CWhn{predicate}
-        -:  538:static u32 OMNI_NAM_CYLD;  // Yield marker: #CYld{expr}
-        -:  539:static u32 OMNI_NAM_PRES;  // Parse result: #PRes{success, value, pos}
-        -:  540:
-     1301:  541:fn void omni_names_init(void) {
-     1301:  542:  if (OMNI_NAMES_READY) return;
-        -:  543:
-        -:  544:  // Core expressions
-      417:  545:  OMNI_NAM_LIT  = omni_nick("Lit");
-      417:  546:  OMNI_NAM_SYM  = omni_nick("Sym");
-      417:  547:  OMNI_NAM_VAR  = omni_nick("Var");
-      417:  548:  OMNI_NAM_LAM  = omni_nick("Lam");
-      417:  549:  OMNI_NAM_LAMR = omni_nick("LamR");
-      417:  550:  OMNI_NAM_APP  = omni_nick("App");
-      417:  551:  OMNI_NAM_LET  = omni_nick("Let");
-      417:  552:  OMNI_NAM_LETS = omni_nick("LetS");
-      417:  553:  OMNI_NAM_LETP = omni_nick("LetP");
-      417:  554:  OMNI_NAM_IF   = omni_nick("If");
-      417:  555:  OMNI_NAM_DO   = omni_nick("Do");
-        -:  556:
-        -:  557:  // Arithmetic
-      417:  558:  OMNI_NAM_ADD = omni_nick("Add");
-      417:  559:  OMNI_NAM_SUB = omni_nick("Sub");
-      417:  560:  OMNI_NAM_MUL = omni_nick("Mul");
-      417:  561:  OMNI_NAM_DIV = omni_nick("Div");
-      417:  562:  OMNI_NAM_MOD = omni_nick("Mod");
-      417:  563:  OMNI_NAM_EQL = omni_nick("Eql");
-      417:  564:  OMNI_NAM_NEQ = omni_nick("Neq");
-      417:  565:  OMNI_NAM_LT  = omni_nick("Lt");
-      417:  566:  OMNI_NAM_GT  = omni_nick("Gt");
-      417:  567:  OMNI_NAM_LE  = omni_nick("Le");
-      417:  568:  OMNI_NAM_GE  = omni_nick("Ge");
-      417:  569:  OMNI_NAM_AND = omni_nick("And");
-      417:  570:  OMNI_NAM_OR  = omni_nick("Or");
-      417:  571:  OMNI_NAM_NOT = omni_nick("Not");
-        -:  572:
-        -:  573:  // Type predicates
-      417:  574:  OMNI_NAM_INTP = omni_nick("IntP");
-      417:  575:  OMNI_NAM_LSTP = omni_nick("LstP");
-      417:  576:  OMNI_NAM_NILP = omni_nick("NilP");
-      417:  577:  OMNI_NAM_NUMP = omni_nick("NumP");
+        -:  353:// Ambient Parallelism (A5)
+        -:  354:static u32 OMNI_NAM_PCTX;  // Parallel context: #PCtx{} - get current parallel context
+        -:  355:static u32 OMNI_NAM_FJOI;  // Fork-join: #FJoi{tasks} - parallel task execution
+        -:  356:static u32 OMNI_NAM_WPAR;  // With-parallelism: #WPar{workers, body} - set parallel context
+        -:  357:
+        -:  358:// Probabilistic Effects (A7)
+        -:  359:static u32 OMNI_NAM_BERN;  // Bernoulli distribution: #Bern{prob} - weighted coin
+        -:  360:static u32 OMNI_NAM_CATG;  // Categorical distribution: #Catg{probs} - discrete distribution
+        -:  361:static u32 OMNI_NAM_UNIF;  // Uniform distribution: #Unif{lo, hi} - uniform range
+        -:  362:static u32 OMNI_NAM_BETA;  // Beta distribution: #Beta{alpha, beta} - beta distribution
+        -:  363:static u32 OMNI_NAM_SMPL;  // Sample: #Smpl{dist} - sample from distribution
+        -:  364:static u32 OMNI_NAM_OBSV;  // Observe: #Obsv{cond} - condition on observation
+        -:  365:static u32 OMNI_NAM_FCTR;  // Factor: #Fctr{weight} - weight current execution path
+        -:  366:static u32 OMNI_NAM_FLIP;  // Flip: #Flip{prob} - weighted coin flip (returns bool)
+        -:  367:static u32 OMNI_NAM_ENMR;  // Enumerate-infer: #EnmI{model} - exact probabilistic inference
+        -:  368:static u32 OMNI_NAM_IMPS;  // Importance-sample: #ImpS{model, n} - approximate inference
+        -:  369:static u32 OMNI_NAM_WGTS;  // Weighted superposition: #WgtS{val, weight} - value with probability weight
+        -:  370:static u32 OMNI_NAM_DMIX;  // Mixture distribution: #DMix{dists, weights} - weighted combination
+        -:  371:static u32 OMNI_NAM_DPRD;  // Product distribution: #DPrd{dists} - independent joint distribution
+        -:  372:static u32 OMNI_NAM_DMAP;  // Mapped distribution: #DMap{dist, fn} - transform samples
+        -:  373:
+        -:  374:// Definitions
+        -:  375:static u32 OMNI_NAM_DEF;   // Define: #Def{name, params, body}
+        -:  376:static u32 OMNI_NAM_SLOT;  // Parameter slot: #Slot{name, type}
+        -:  377:
+        -:  378:// Multiple dispatch
+        -:  379:static u32 OMNI_NAM_METH;  // Method: #Meth{name, sig, impl, constraints, effects}
+        -:  380:                           // constraints: list of #TWhr{tvar, bound} from ^:where
+        -:  381:                           // effects: #ERws{effect_types} from ^:effects or NIL
+        -:  382:static u32 OMNI_NAM_GFUN;  // Generic function: #GFun{name, methods}
+        -:  383:static u32 OMNI_NAM_GPRT;  // Generic partial application: #GPrt{name, methods, args, remaining}
+        -:  384:static u32 OMNI_NAM_DISP;  // Dispatch call: #Disp{name, args}
+        -:  385:static u32 OMNI_NAM_SIG;   // Signature: #Sig{types}
+        -:  386:static u32 OMNI_NAM_TWHR;  // Type constraint (^:where): #TWhr{tvar, bound}
+        -:  387:                           // e.g., ^:where [T {Number}] → #TWhr{T, Number}
+        -:  388:static u32 OMNI_NAM_TYCK;  // Type check: #Tyck{value, type}
+        -:  389:
+        -:  390:// Macro system
+        -:  391:static u32 OMNI_NAM_MSYN;  // Syntax macro definition: #MSyn{name, patterns}
+        -:  392:static u32 OMNI_NAM_MPAT;  // Macro pattern: #MPat{pattern, template}
+        -:  393:static u32 OMNI_NAM_MVAR;  // Macro pattern variable: #MVar{name}
+        -:  394:static u32 OMNI_NAM_MRST;  // Macro rest pattern: #MRst{name} for ... patterns
+        -:  395:static u32 OMNI_NAM_MLIT;  // Macro literal: #MLit{value} (matches exactly)
+        -:  396:static u32 OMNI_NAM_MEXP;  // Macro expansion call: #MExp{name, args}
+        -:  397:
+        -:  398:// Module system
+        -:  399:static u32 OMNI_NAM_MODL;  // Module definition: #Modl{name, exports, body}
+        -:  400:static u32 OMNI_NAM_IMPT;  // Import: #Impt{module_name, bindings}
+        -:  401:static u32 OMNI_NAM_EXPT;  // Export list: #Expt{names}
+        -:  402:static u32 OMNI_NAM_QUAL;  // Qualified access: #Qual{module, name}
+        -:  403:static u32 OMNI_NAM_MODA;  // Module alias: #ModAlias{env} - for (import M :as Alias)
+        -:  404:
+        -:  405:// Code/quasiquote
+        -:  406:static u32 OMNI_NAM_COD;   // Code: #Cod{expr}
+        -:  407:static u32 OMNI_NAM_QUOT;  // Quote symbol for (quote expr)
+        -:  408:static u32 OMNI_NAM_QQ;    // Quasiquote: #QQ{expr}
+        -:  409:static u32 OMNI_NAM_UQ;    // Unquote: #UQ{expr}
+        -:  410:static u32 OMNI_NAM_UQS;   // Unquote-splicing: #UQS{expr}
+        -:  411:
+        -:  412:// Runtime support
+        -:  413:static u32 OMNI_NAM_MENV;  // Meta-environment
+        -:  414:static u32 OMNI_NAM_CLO;   // Closure
+        -:  415:static u32 OMNI_NAM_CLOR;  // Recursive closure
+        -:  416:static u32 OMNI_NAM_ERR;   // Error
+        -:  417:static u32 OMNI_NAM_NOTH;  // Nothing
+        -:  418:
+        -:  419:// Delimited continuations
+        -:  420:static u32 OMNI_NAM_PRMT;  // Reset/prompt: #Prmt{body}
+        -:  421:static u32 OMNI_NAM_CTRL;  // Control/shift: #Ctrl{k_idx, body}
+        -:  422:static u32 OMNI_NAM_CLOC;  // CPS closure: #CloC{env, body}
+        -:  423:static u32 OMNI_NAM_CLOK;  // Recursive CPS closure: #CloK{env, body}
+        -:  424:static u32 OMNI_NAM_KONT;  // Captured continuation: #Kont{k}
+        -:  425:
+        -:  426:// Fiber support
+        -:  427:static u32 OMNI_NAM_FYLD;  // Fiber yield marker: #FYld{val, k}
+        -:  428:static u32 OMNI_NAM_FTHK;  // Fiber thunk: #FThk{body}
+        -:  429:static u32 OMNI_NAM_FBRR;  // Fiber running: #FbrR
+        -:  430:static u32 OMNI_NAM_FBRS;  // Fiber suspended: #FbrS
+        -:  431:static u32 OMNI_NAM_FBRD;  // Fiber done: #FbrD
+        -:  432:static u32 OMNI_NAM_YLD;   // Yield expression: #Yld{val}
+        -:  433:
+        -:  434:// Fiber operations (exposed to user)
+        -:  435:static u32 OMNI_NAM_FSPN;  // Fiber spawn: #FSpn{body} - create and start fiber
+        -:  436:static u32 OMNI_NAM_FRSM;  // Fiber resume: #FRsm{fiber, value} - resume suspended fiber
+        -:  437:static u32 OMNI_NAM_FDNP;  // Fiber done?: #FDn?{fiber} - check if fiber completed
+        -:  438:static u32 OMNI_NAM_FRST;  // Fiber result: #FRst{fiber} - get final result
+        -:  439:static u32 OMNI_NAM_FMBX;  // Fiber mailbox: #FMbx{fiber} - get yielded values
+        -:  440:
+        -:  441:// Boolean values
+        -:  442:static u32 OMNI_NAM_TRUE;  // true
+        -:  443:static u32 OMNI_NAM_FALS;  // false
+        -:  444:
+        -:  445:// Collection operations (gradual multiple dispatch)
+        -:  446:// These are the user-facing generic functions using gradual dispatch:
+        -:  447://   - Typed args: compile-time method selection
+        -:  448://   - Untyped args: runtime dispatch based on collection type
+        -:  449:// Behavior by type: List/Array → eager, Iterator → lazy wrapper
+        -:  450:static u32 OMNI_NAM_SET;   // Set: #Set{elements}
+        -:  451:static u32 OMNI_NAM_SORT;  // Sort: #Sort{list, cmp}
+        -:  452:static u32 OMNI_NAM_GRPB;  // Group-by: #GrpB{list, key_fn}
+        -:  453:static u32 OMNI_NAM_ZIP;   // Zip: #Zip{lists} - generic, dispatches to #IZip for iterators
+        -:  454:static u32 OMNI_NAM_FLAT;  // Flatten: #Flat{nested}
+        -:  455:static u32 OMNI_NAM_CONC;  // Concat: #Conc{lists}
+        -:  456:static u32 OMNI_NAM_MAP;   // Map: #Map{fn, coll} - generic dispatch
+        -:  457:static u32 OMNI_NAM_FILT;  // Filter: #Filt{pred, coll} - generic dispatch
+        -:  458:static u32 OMNI_NAM_FOLD;  // Fold: #Fold{fn, init, coll} - generic dispatch
+        -:  459:static u32 OMNI_NAM_FLDR;  // Foldr: #FldR{fn, init, coll} - right fold
+        -:  460:static u32 OMNI_NAM_TAKE;  // Take: #Take{n, coll} - generic dispatch
+        -:  461:static u32 OMNI_NAM_DROP;  // Drop: #Drop{n, coll} - generic dispatch
+        -:  462:static u32 OMNI_NAM_REV;   // Reverse: #Rev{coll}
+        -:  463:static u32 OMNI_NAM_FIND;  // Find: #Find{pred, coll} - generic dispatch
+        -:  464:static u32 OMNI_NAM_ANY;   // Any?: #Any{pred, coll} - generic dispatch
+        -:  465:static u32 OMNI_NAM_ALL;   // All?: #All{pred, coll} - generic dispatch
+        -:  466:static u32 OMNI_NAM_CONJ;  // Add element: #Conj{coll, val} - generic dispatch
+        -:  467:static u32 OMNI_NAM_REMV;  // Remove element: #Remv{coll, val} - generic dispatch
+        -:  468:static u32 OMNI_NAM_INTR;  // Intersection: #Intr{s1, s2} - generic dispatch
+        -:  469:static u32 OMNI_NAM_UNIN;  // Union: #Unin{s1, s2} - generic dispatch
+        -:  470:static u32 OMNI_NAM_DIFF;  // Difference: #Diff{s1, s2} - generic dispatch
+        -:  471:static u32 OMNI_NAM_KEYS;  // Keys: #Keys{coll} - generic dispatch
+        -:  472:static u32 OMNI_NAM_VALS;  // Values: #Vals{coll} - generic dispatch
+        -:  473:static u32 OMNI_NAM_ENTS;  // Entries: #Ents{coll} - generic dispatch
+        -:  474:static u32 OMNI_NAM_MERG;  // Merge: #Merg{colls} - generic dispatch
+        -:  475:static u32 OMNI_NAM_ASOC;  // Assoc: #Asoc{coll, key, val} (alias for put)
+        -:  476:static u32 OMNI_NAM_DISS;  // Dissoc: #Diss{coll, key} (remove by key)
+        -:  477:static u32 OMNI_NAM_GET;   // Get: #Get{coll, key} - generic dispatch
+        -:  478:static u32 OMNI_NAM_LEN;   // Length: #Len{coll} - generic dispatch
+        -:  479:static u32 OMNI_NAM_EMPT;  // Empty?: #Empt{coll} - generic dispatch
+        -:  480:static u32 OMNI_NAM_CONT;  // Contains?: #Cont{coll, val} - generic dispatch
+        -:  481:static u32 OMNI_NAM_INDX;  // Index-of: #Indx{coll, val} - generic dispatch
+        -:  482:static u32 OMNI_NAM_NTH;   // Nth: #Nth{coll, n} - generic dispatch
+        -:  483:static u32 OMNI_NAM_SLCE;  // Slice: #Slce{coll, start, end} - generic dispatch
+        -:  484:static u32 OMNI_NAM_FRNG;  // From range: #FRng{start, end, step}
+        -:  485:
+        -:  486:// String operations
+        -:  487:static u32 OMNI_NAM_STR;   // String: #Str{chars}
+        -:  488:static u32 OMNI_NAM_SUPR;  // String upper: #SUpR{str}
+        -:  489:static u32 OMNI_NAM_SLWR;  // String lower: #SLwR{str}
+        -:  490:static u32 OMNI_NAM_STRM;  // String trim: #STrm{str}
+        -:  491:static u32 OMNI_NAM_SSPL;  // String split: #SSpl{str, delim}
+        -:  492:static u32 OMNI_NAM_SJOI;  // String join: #SJoi{strs, delim}
+        -:  493:static u32 OMNI_NAM_SRPL;  // String replace: #SRpl{str, old, new}
+        -:  494:static u32 OMNI_NAM_SSUB;  // String substring: #SSub{str, start, len}
+        -:  495:static u32 OMNI_NAM_SIND;  // String index-of: #SInd{str, needle}
+        -:  496:static u32 OMNI_NAM_SSTA;  // String starts-with: #SSta{str, prefix}
+        -:  497:static u32 OMNI_NAM_SEND;  // String ends-with: #SEnd{str, suffix}
+        -:  498:static u32 OMNI_NAM_SCNT;  // String contains: #SCnt{str, needle}
+        -:  499:static u32 OMNI_NAM_SREV;  // String reverse: #SRev{str}
+        -:  500:static u32 OMNI_NAM_SPAD;  // String pad: #SPad{str, len, char, side}
+        -:  501:static u32 OMNI_NAM_SCAP;  // String capitalize: #SCap{str}
+        -:  502:static u32 OMNI_NAM_SCHC;  // String char-at: #SChc{str, idx}
+        -:  503:static u32 OMNI_NAM_SLEN;  // String length: #SLen{str}
+        -:  504:static u32 OMNI_NAM_SEMP;  // String empty?: #SEmp{str}
+        -:  505:static u32 OMNI_NAM_SCMP;  // String compare: #SCmp{str1, str2}
+        -:  506:static u32 OMNI_NAM_SREP;  // String repeat: #SRep{str, n}
+        -:  507:static u32 OMNI_NAM_FMTS;  // Format string: #Fmts{parts} - interpolated string
+        -:  508:                           // parts is list of #Flit{str} and #Fexp{expr} alternating
+        -:  509:static u32 OMNI_NAM_FLIT;  // Format literal part: #Flit{chars}
+        -:  510:static u32 OMNI_NAM_FEXP;  // Format expression part: #Fexp{expr}
+        -:  511:
+        -:  512:// Regex operations
+        -:  513:static u32 OMNI_NAM_REGX;  // Regex literal: #Regx{pattern, flags}
+        -:  514:static u32 OMNI_NAM_RMAT;  // Regex match: #RMat{regex, str}
+        -:  515:static u32 OMNI_NAM_RFND;  // Regex find: #RFnd{regex, str}
+        -:  516:static u32 OMNI_NAM_RFNA;  // Regex find-all: #RFnA{regex, str}
+        -:  517:static u32 OMNI_NAM_RRPL;  // Regex replace: #RRpl{regex, str, replacement}
+        -:  518:static u32 OMNI_NAM_RSPL;  // Regex split: #RSpl{regex, str}
+        -:  519:static u32 OMNI_NAM_RGRP;  // Regex group: #RGrp{match, index}
+        -:  520:static u32 OMNI_NAM_RMRS;  // Regex match result: #RMRs{matched, groups, start, end}
+        -:  521:
+        -:  522:// Grammar DSL (Pika)
+        -:  523:static u32 OMNI_NAM_GRAM;  // Grammar definition: #Gram{name, rules}
+        -:  524:static u32 OMNI_NAM_RULE;  // Grammar rule: #Rule{name, pattern}
+        -:  525:static u32 OMNI_NAM_GSEQ;  // Sequence: #GSeq{patterns}
+        -:  526:static u32 OMNI_NAM_GALT;  // Alternative: #GAlt{patterns}
+        -:  527:static u32 OMNI_NAM_GSTR;  // String literal: #GStr{chars}
+        -:  528:static u32 OMNI_NAM_GCHR;  // Character class: #GChr{chars, negated}
+        -:  529:static u32 OMNI_NAM_GREF;  // Rule reference: #GRef{name}
+        -:  530:static u32 OMNI_NAM_GOPT;  // Optional (?): #GOpt{pattern}
+        -:  531:static u32 OMNI_NAM_GSTA;  // Star (*): #GSta{pattern}
+        -:  532:static u32 OMNI_NAM_GPLS;  // Plus (+): #GPls{pattern}
+        -:  533:static u32 OMNI_NAM_GNOT;  // Not predicate (!): #GNot{pattern}
+        -:  534:static u32 OMNI_NAM_GAND;  // And predicate (&): #GAnd{pattern}
+        -:  535:static u32 OMNI_NAM_GCAP;  // Capture: #GCap{name, pattern}
+        -:  536:static u32 OMNI_NAM_GACT;  // Action: #GAct{pattern, action}
+        -:  537:static u32 OMNI_NAM_GANY;  // Any character (.): #GAny{}
+        -:  538:static u32 OMNI_NAM_PRSR;  // Parser state: #Prsr{input, pos, captures}
+        -:  539:
+        -:  540:// List comprehensions (parallel by default)
+        -:  541:static u32 OMNI_NAM_CMPR;  // Comprehension: #Cmpr{clauses, yield_expr}
+        -:  542:static u32 OMNI_NAM_CFOR;  // For clause: #CFor{var_nick, collection}
+        -:  543:static u32 OMNI_NAM_CWHN;  // When clause: #CWhn{predicate}
+        -:  544:static u32 OMNI_NAM_CYLD;  // Yield marker: #CYld{expr}
+        -:  545:static u32 OMNI_NAM_PRES;  // Parse result: #PRes{success, value, pos}
+        -:  546:
+       51:  547:fn void omni_names_init(void) {
+       51:  548:  if (OMNI_NAMES_READY) return;
+        -:  549:
+        -:  550:  // Core expressions
+       17:  551:  OMNI_NAM_LIT  = omni_nick("Lit");
+       17:  552:  OMNI_NAM_SYM  = omni_nick("Sym");
+       17:  553:  OMNI_NAM_VAR  = omni_nick("Var");
+       17:  554:  OMNI_NAM_LAM  = omni_nick("Lam");
+       17:  555:  OMNI_NAM_LAMR = omni_nick("LamR");
+       17:  556:  OMNI_NAM_APP  = omni_nick("App");
+       17:  557:  OMNI_NAM_LET  = omni_nick("Let");
+       17:  558:  OMNI_NAM_LETS = omni_nick("LetS");
+       17:  559:  OMNI_NAM_LETP = omni_nick("LetP");
+       17:  560:  OMNI_NAM_IF   = omni_nick("If");
+       17:  561:  OMNI_NAM_DO   = omni_nick("Do");
+        -:  562:
+        -:  563:  // Arithmetic
+       17:  564:  OMNI_NAM_ADD = omni_nick("Add");
+       17:  565:  OMNI_NAM_SUB = omni_nick("Sub");
+       17:  566:  OMNI_NAM_MUL = omni_nick("Mul");
+       17:  567:  OMNI_NAM_DIV = omni_nick("Div");
+       17:  568:  OMNI_NAM_MOD = omni_nick("Mod");
+       17:  569:  OMNI_NAM_EQL = omni_nick("Eql");
+       17:  570:  OMNI_NAM_NEQ = omni_nick("Neq");
+       17:  571:  OMNI_NAM_LT  = omni_nick("Lt");
+       17:  572:  OMNI_NAM_GT  = omni_nick("Gt");
+       17:  573:  OMNI_NAM_LE  = omni_nick("Le");
+       17:  574:  OMNI_NAM_GE  = omni_nick("Ge");
+       17:  575:  OMNI_NAM_AND = omni_nick("And");
+       17:  576:  OMNI_NAM_OR  = omni_nick("Or");
+       17:  577:  OMNI_NAM_NOT = omni_nick("Not");
         -:  578:
-        -:  579:  // Data structures
-      417:  580:  OMNI_NAM_CON  = NAM_CON;  // Use HVM4's CON
-      417:  581:  OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
-      417:  582:  OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
-      417:  583:  OMNI_NAM_ARR  = omni_nick("Arr");
-      417:  584:  OMNI_NAM_DICT = omni_nick("Dict");
-      417:  585:  OMNI_NAM_FST  = omni_nick("Fst");
-      417:  586:  OMNI_NAM_SND  = omni_nick("Snd");
-        -:  587:
-        -:  588:  // Numeric
-      417:  589:  OMNI_NAM_CST = omni_nick("Cst");
-      417:  590:  OMNI_NAM_FIX = omni_nick("Fix");
-        -:  591:
-        -:  592:  // Pattern matching
-      417:  593:  OMNI_NAM_MAT  = omni_nick("Mat");
-      417:  594:  OMNI_NAM_MATS = omni_nick("MatS");  // Speculative match (^:speculate)
-      417:  595:  OMNI_NAM_NMAT = omni_nick("NMat");
-      417:  596:  OMNI_NAM_CASE = omni_nick("Case");
-      417:  597:  OMNI_NAM_PCTR = omni_nick("PCtr");
-      417:  598:  OMNI_NAM_PLIT = omni_nick("PLit");
-      417:  599:  OMNI_NAM_PWLD = omni_nick("PWld");
-      417:  600:  OMNI_NAM_PVAR = omni_nick("PVar");
-      417:  601:  OMNI_NAM_PAS  = omni_nick("PAs");
-      417:  602:  OMNI_NAM_PRST = omni_nick("PRst");
-      417:  603:  OMNI_NAM_PGRD = omni_nick("PGrd");
-      417:  604:  OMNI_NAM_GUAR = omni_nick("Guar");
-      417:  605:  OMNI_NAM_SPRD = omni_nick("Sprd");
-      417:  606:  OMNI_NAM_DLET = omni_nick("DLet");
-      417:  607:  OMNI_NAM_PARR = omni_nick("PArr");
-      417:  608:  OMNI_NAM_DLAM = omni_nick("DLam");
-      417:  609:  OMNI_NAM_POR  = omni_nick("POr");
-      417:  610:  OMNI_NAM_PLST = omni_nick("PLst");
-        -:  611:
-        -:  612:  // Named let (Scheme-style loop)
-      417:  613:  OMNI_NAM_NLET = omni_nick("NLet");   // Parallel (default)
-      417:  614:  OMNI_NAM_NLETS = omni_nick("NLeS");  // Sequential (^:seq)
-        -:  615:
-        -:  616:  // Pipe and function utilities
-      417:  617:  OMNI_NAM_PIPE = omni_nick("Pipe");
-      417:  618:  OMNI_NAM_CURY = omni_nick("Cury");
-      417:  619:  OMNI_NAM_FLIP = omni_nick("Flip");
-      417:  620:  OMNI_NAM_ROTR = omni_nick("Rotr");
-      417:  621:  OMNI_NAM_COMP = omni_nick("Comp");
-      417:  622:  OMNI_NAM_APPL = omni_nick("Appl");
-        -:  623:
-        -:  624:  // Conditional forms
-      417:  625:  OMNI_NAM_WHEN = omni_nick("When");
-      417:  626:  OMNI_NAM_UNLS = omni_nick("Unls");
-      417:  627:  OMNI_NAM_COND = omni_nick("Cond");
-      417:  628:  OMNI_NAM_CCLS = omni_nick("CCls");
-        -:  629:
-        -:  630:  // Path access (functional)
-      417:  631:  OMNI_NAM_GET  = omni_nick("Get");
-      417:  632:  OMNI_NAM_PUT  = omni_nick("Put");
-      417:  633:  OMNI_NAM_UPDT = omni_nick("Updt");
-      417:  634:  OMNI_NAM_GTIN = omni_nick("GtIn");
-      417:  635:  OMNI_NAM_ASIN = omni_nick("AsIn");
-      417:  636:  OMNI_NAM_UPIN = omni_nick("UpIn");
-        -:  637:
-        -:  638:  // Mutation primitives
-      417:  639:  OMNI_NAM_SETB  = omni_nick("SetB");
-      417:  640:  OMNI_NAM_PUTB  = omni_nick("PutB");
-      417:  641:  OMNI_NAM_UPDTB = omni_nick("UpdB");
-        -:  642:
-        -:  643:  // Iterators
-      417:  644:  OMNI_NAM_ITER = omni_nick("Iter");
-      417:  645:  OMNI_NAM_RANG = omni_nick("Rang");
-      417:  646:  OMNI_NAM_IMAP = omni_nick("IMap");
-      417:  647:  OMNI_NAM_IFLT = omni_nick("IFlt");
-      417:  648:  OMNI_NAM_ITKN = omni_nick("ITkn");
-      417:  649:  OMNI_NAM_IDRP = omni_nick("IDrp");
-      417:  650:  OMNI_NAM_DONE = omni_nick("Done");
-      417:  651:  OMNI_NAM_IZIP = omni_nick("IZip");
-      417:  652:  OMNI_NAM_ICHN = omni_nick("IChn");
-      417:  653:  OMNI_NAM_IENM = omni_nick("IEnm");
-      417:  654:  OMNI_NAM_ITKW = omni_nick("ITkW");
-      417:  655:  OMNI_NAM_IDRW = omni_nick("IDrW");
-      417:  656:  OMNI_NAM_IFLD = omni_nick("IFld");
-      417:  657:  OMNI_NAM_IFND = omni_nick("IFnd");
-      417:  658:  OMNI_NAM_IANY = omni_nick("IAny");
-      417:  659:  OMNI_NAM_IALL = omni_nick("IAll");
-      417:  660:  OMNI_NAM_INTH = omni_nick("INth");
-      417:  661:  OMNI_NAM_IFMP = omni_nick("IFMp");
-      417:  662:  OMNI_NAM_ISTP = omni_nick("IStp");
-      417:  663:  OMNI_NAM_ICHK = omni_nick("IChk");
-      417:  664:  OMNI_NAM_IWIN = omni_nick("IWin");
-        -:  665:
-        -:  666:  // Math functions
-      417:  667:  OMNI_NAM_SQRT = omni_nick("Sqrt");
-      417:  668:  OMNI_NAM_POW  = omni_nick("Pow");
-      417:  669:  OMNI_NAM_MEXP = omni_nick("MExp");
-      417:  670:  OMNI_NAM_MLOG = omni_nick("MLog");
-      417:  671:  OMNI_NAM_MSIN = omni_nick("MSin");
-      417:  672:  OMNI_NAM_MCOS = omni_nick("MCos");
-      417:  673:  OMNI_NAM_MTAN = omni_nick("MTan");
-      417:  674:  OMNI_NAM_MASN = omni_nick("MAsn");
-      417:  675:  OMNI_NAM_MACS = omni_nick("MAcs");
-      417:  676:  OMNI_NAM_MATN = omni_nick("MAtn");
-      417:  677:  OMNI_NAM_MABS = omni_nick("MAbs");
-      417:  678:  OMNI_NAM_FLOR = omni_nick("Flor");
-      417:  679:  OMNI_NAM_MCEI = omni_nick("MCei");
-      417:  680:  OMNI_NAM_ROND = omni_nick("Rond");
-      417:  681:  OMNI_NAM_RAND = omni_nick("Rand");
-        -:  682:
-        -:  683:  // I/O operations
-      417:  684:  OMNI_NAM_RDFL = omni_nick("RdFl");
-      417:  685:  OMNI_NAM_WRFL = omni_nick("WrFl");
-      417:  686:  OMNI_NAM_APFL = omni_nick("ApFl");
-      417:  687:  OMNI_NAM_RDLN = omni_nick("RdLn");
-      417:  688:  OMNI_NAM_PRNT = omni_nick("Prnt");
-      417:  689:  OMNI_NAM_PRNL = omni_nick("PrnL");
-      417:  690:  OMNI_NAM_RDLN2 = omni_nick("RdL2");
-      417:  691:  OMNI_NAM_GTEV = omni_nick("GtEv");
-      417:  692:  OMNI_NAM_STEV = omni_nick("StEv");
-      417:  693:  OMNI_NAM_EXST = omni_nick("Exst");
-      417:  694:  OMNI_NAM_ISDR = omni_nick("IsDr");
-      417:  695:  OMNI_NAM_MKDR = omni_nick("MkDr");
-      417:  696:  OMNI_NAM_LSDR = omni_nick("LsDr");
-      417:  697:  OMNI_NAM_DLFL = omni_nick("DlFl");
-      417:  698:  OMNI_NAM_RNFL = omni_nick("RnFl");
-      417:  699:  OMNI_NAM_CPFL = omni_nick("CpFl");
-        -:  700:
-        -:  701:  // JSON operations
-      417:  702:  OMNI_NAM_JPRS = omni_nick("JPrs");
-      417:  703:  OMNI_NAM_JSTR = omni_nick("JStr");
-      417:  704:  OMNI_NAM_JARR = omni_nick("JArr");
-      417:  705:  OMNI_NAM_JOBJ = omni_nick("JObj");
-      417:  706:  OMNI_NAM_JNUL = omni_nick("JNul");
-        -:  707:
-        -:  708:  // DateTime operations
-      417:  709:  OMNI_NAM_DTNW = omni_nick("DtNw");
-      417:  710:  OMNI_NAM_DTPR = omni_nick("DtPr");
-      417:  711:  OMNI_NAM_DTFM = omni_nick("DtFm");
-      417:  712:  OMNI_NAM_DTAD = omni_nick("DtAd");
-      417:  713:  OMNI_NAM_DTSB = omni_nick("DtSb");
-      417:  714:  OMNI_NAM_DTDF = omni_nick("DtDf");
-      417:  715:  OMNI_NAM_DT   = omni_nick("Dt");
-      417:  716:  OMNI_NAM_DUR  = omni_nick("Dur");
-      417:  717:  OMNI_NAM_DTYR = omni_nick("DtYr");
-      417:  718:  OMNI_NAM_DTMO = omni_nick("DtMo");
-      417:  719:  OMNI_NAM_DTDY = omni_nick("DtDy");
-      417:  720:  OMNI_NAM_DTHR = omni_nick("DtHr");
-      417:  721:  OMNI_NAM_DTMI = omni_nick("DtMi");
-      417:  722:  OMNI_NAM_DTSC = omni_nick("DtSc");
-      417:  723:  OMNI_NAM_DTTS = omni_nick("DtTs");
-      417:  724:  OMNI_NAM_DTFT = omni_nick("DtFt");
-        -:  725:
-        -:  726:  // Tower/Meta-programming
-      417:  727:  OMNI_NAM_LIFT = omni_nick("Lift");
-      417:  728:  OMNI_NAM_RUN  = omni_nick("Run");
-      417:  729:  OMNI_NAM_EM   = omni_nick("EM");
-      417:  730:  OMNI_NAM_CLAM = omni_nick("CLam");
-      417:  731:  OMNI_NAM_STAG = omni_nick("Stag");
-      417:  732:  OMNI_NAM_SPLI = omni_nick("Spli");
-      417:  733:  OMNI_NAM_REFL = omni_nick("Refl");
-      417:  734:  OMNI_NAM_REIF = omni_nick("Reif");
-      417:  735:  OMNI_NAM_MLVL = omni_nick("MLvl");
-      417:  736:  OMNI_NAM_LPAR = omni_nick("LPar");
-        -:  737:
-        -:  738:  // Networking (FFI-backed)
-      417:  739:  OMNI_NAM_SOCK = omni_nick("Sock");
-      417:  740:  OMNI_NAM_TCPC = omni_nick("TcpC");
-      417:  741:  OMNI_NAM_TCPL = omni_nick("TcpL");
-      417:  742:  OMNI_NAM_TCPA = omni_nick("TcpA");
-      417:  743:  OMNI_NAM_TCPS = omni_nick("TcpS");
-      417:  744:  OMNI_NAM_TCPR = omni_nick("TcpR");
-      417:  745:  OMNI_NAM_UDPC = omni_nick("UdpC");
-      417:  746:  OMNI_NAM_UDPB = omni_nick("UdpB");
-      417:  747:  OMNI_NAM_UDPS = omni_nick("UdpS");
-      417:  748:  OMNI_NAM_UDPR = omni_nick("UdpR");
-      417:  749:  OMNI_NAM_SCLS = omni_nick("SCls");
-      417:  750:  OMNI_NAM_HTTP = omni_nick("Http");
-      417:  751:  OMNI_NAM_HGET = omni_nick("HGet");
-      417:  752:  OMNI_NAM_HPOS = omni_nick("HPos");
-      417:  753:  OMNI_NAM_HRES = omni_nick("HRes");
-        -:  754:
-        -:  755:  // Developer Tools
-      417:  756:  OMNI_NAM_INSP = omni_nick("Insp");
-      417:  757:  OMNI_NAM_TYOF = omni_nick("TyOf");
-      417:  758:  OMNI_NAM_DOC  = omni_nick("Doc");
-      417:  759:  OMNI_NAM_TRCE = omni_nick("Trce");
-      417:  760:  OMNI_NAM_TIME = omni_nick("Time");
-      417:  761:  OMNI_NAM_EXPD = omni_nick("Expd");
-      417:  762:  OMNI_NAM_DBUG = omni_nick("Dbug");
-      417:  763:  OMNI_NAM_PRTY = omni_nick("Prty");
-      417:  764:  OMNI_NAM_SRCE = omni_nick("Srce");
-      417:  765:  OMNI_NAM_PROF = omni_nick("Prof");
-        -:  766:
-        -:  767:  // Type annotations
-      417:  768:  OMNI_NAM_TANN = omni_nick("TAnn");
-      417:  769:  OMNI_NAM_TDSC = omni_nick("TDsc");
-      417:  770:  OMNI_NAM_TVAR = omni_nick("TVar");
-      417:  771:  OMNI_NAM_TFUN = omni_nick("TFun");
-      417:  772:  OMNI_NAM_TFUNE = omni_nick("TFunE");
-      417:  773:  OMNI_NAM_TSUP = omni_nick("TSup");
-      417:  774:  OMNI_NAM_TWSUP = omni_nick("TWSup");
-      417:  775:  OMNI_NAM_TAPP = omni_nick("TApp");
-      417:  776:  OMNI_NAM_VTYP = omni_nick("VTyp");
+        -:  579:  // Type predicates
+       17:  580:  OMNI_NAM_INTP = omni_nick("IntP");
+       17:  581:  OMNI_NAM_LSTP = omni_nick("LstP");
+       17:  582:  OMNI_NAM_NILP = omni_nick("NilP");
+       17:  583:  OMNI_NAM_NUMP = omni_nick("NumP");
+        -:  584:
+        -:  585:  // Data structures
+       17:  586:  OMNI_NAM_CON  = NAM_CON;  // Use HVM4's CON
+       17:  587:  OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
+       17:  588:  OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
+       17:  589:  OMNI_NAM_ARR  = omni_nick("Arr");
+       17:  590:  OMNI_NAM_AGE  = omni_nick("AGe");
+       17:  591:  OMNI_NAM_ASE  = omni_nick("ASe");
+       17:  592:  OMNI_NAM_ALE  = omni_nick("ALe");
+       17:  593:  OMNI_NAM_DICT = omni_nick("Dict");
+       17:  594:  OMNI_NAM_DGE  = omni_nick("DGe");
+       17:  595:  OMNI_NAM_DSE  = omni_nick("DSe");
+       17:  596:  OMNI_NAM_FST  = omni_nick("Fst");
+       17:  597:  OMNI_NAM_SND  = omni_nick("Snd");
+        -:  598:
+        -:  599:  // Numeric
+       17:  600:  OMNI_NAM_CST = omni_nick("Cst");
+       17:  601:  OMNI_NAM_FIX = omni_nick("Fix");
+        -:  602:
+        -:  603:  // Pattern matching
+       17:  604:  OMNI_NAM_MAT  = omni_nick("Mat");
+       17:  605:  OMNI_NAM_MATS = omni_nick("MatS");  // Speculative match (^:speculate)
+       17:  606:  OMNI_NAM_NMAT = omni_nick("NMat");
+       17:  607:  OMNI_NAM_CASE = omni_nick("Case");
+       17:  608:  OMNI_NAM_PCTR = omni_nick("PCtr");
+       17:  609:  OMNI_NAM_PLIT = omni_nick("PLit");
+       17:  610:  OMNI_NAM_PWLD = omni_nick("PWld");
+       17:  611:  OMNI_NAM_PVAR = omni_nick("PVar");
+       17:  612:  OMNI_NAM_PAS  = omni_nick("PAs");
+       17:  613:  OMNI_NAM_PRST = omni_nick("PRst");
+       17:  614:  OMNI_NAM_PGRD = omni_nick("PGrd");
+       17:  615:  OMNI_NAM_GUAR = omni_nick("Guar");
+       17:  616:  OMNI_NAM_SPRD = omni_nick("Sprd");
+       17:  617:  OMNI_NAM_DLET = omni_nick("DLet");
+       17:  618:  OMNI_NAM_PARR = omni_nick("PArr");
+       17:  619:  OMNI_NAM_DLAM = omni_nick("DLam");
+       17:  620:  OMNI_NAM_POR  = omni_nick("POr");
+       17:  621:  OMNI_NAM_PLST = omni_nick("PLst");
+        -:  622:
+        -:  623:  // Named let (Scheme-style loop)
+       17:  624:  OMNI_NAM_NLET = omni_nick("NLet");   // Parallel (default)
+       17:  625:  OMNI_NAM_NLETS = omni_nick("NLeS");  // Sequential (^:seq)
+        -:  626:
+        -:  627:  // Pipe and function utilities
+       17:  628:  OMNI_NAM_PIPE = omni_nick("Pipe");
+       17:  629:  OMNI_NAM_CURY = omni_nick("Cury");
+       17:  630:  OMNI_NAM_FLIP = omni_nick("Flip");
+       17:  631:  OMNI_NAM_ROTR = omni_nick("Rotr");
+       17:  632:  OMNI_NAM_COMP = omni_nick("Comp");
+       17:  633:  OMNI_NAM_APPL = omni_nick("Appl");
+        -:  634:
+        -:  635:  // Conditional forms
+       17:  636:  OMNI_NAM_WHEN = omni_nick("When");
+       17:  637:  OMNI_NAM_UNLS = omni_nick("Unls");
+       17:  638:  OMNI_NAM_COND = omni_nick("Cond");
+       17:  639:  OMNI_NAM_CCLS = omni_nick("CCls");
+        -:  640:
+        -:  641:  // Path access (functional)
+       17:  642:  OMNI_NAM_GET  = omni_nick("Get");
+       17:  643:  OMNI_NAM_PUT  = omni_nick("Put");
+       17:  644:  OMNI_NAM_UPDT = omni_nick("Updt");
+       17:  645:  OMNI_NAM_GTIN = omni_nick("GtIn");
+       17:  646:  OMNI_NAM_ASIN = omni_nick("AsIn");
+       17:  647:  OMNI_NAM_UPIN = omni_nick("UpIn");
+        -:  648:
+        -:  649:  // Mutation primitives
+       17:  650:  OMNI_NAM_SETB  = omni_nick("SetB");
+       17:  651:  OMNI_NAM_PUTB  = omni_nick("PutB");
+       17:  652:  OMNI_NAM_UPDTB = omni_nick("UpdB");
+        -:  653:
+        -:  654:  // Iterators
+       17:  655:  OMNI_NAM_ITER = omni_nick("Iter");
+       17:  656:  OMNI_NAM_RANG = omni_nick("Rang");
+       17:  657:  OMNI_NAM_IMAP = omni_nick("IMap");
+       17:  658:  OMNI_NAM_IFLT = omni_nick("IFlt");
+       17:  659:  OMNI_NAM_ITKN = omni_nick("ITkn");
+       17:  660:  OMNI_NAM_IDRP = omni_nick("IDrp");
+       17:  661:  OMNI_NAM_DONE = omni_nick("Done");
+       17:  662:  OMNI_NAM_IZIP = omni_nick("IZip");
+       17:  663:  OMNI_NAM_ICHN = omni_nick("IChn");
+       17:  664:  OMNI_NAM_IENM = omni_nick("IEnm");
+       17:  665:  OMNI_NAM_ITKW = omni_nick("ITkW");
+       17:  666:  OMNI_NAM_IDRW = omni_nick("IDrW");
+       17:  667:  OMNI_NAM_IFLD = omni_nick("IFld");
+       17:  668:  OMNI_NAM_IFND = omni_nick("IFnd");
+       17:  669:  OMNI_NAM_IANY = omni_nick("IAny");
+       17:  670:  OMNI_NAM_IALL = omni_nick("IAll");
+       17:  671:  OMNI_NAM_INTH = omni_nick("INth");
+       17:  672:  OMNI_NAM_IFMP = omni_nick("IFMp");
+       17:  673:  OMNI_NAM_ISTP = omni_nick("IStp");
+       17:  674:  OMNI_NAM_ICHK = omni_nick("IChk");
+       17:  675:  OMNI_NAM_IWIN = omni_nick("IWin");
+        -:  676:
+        -:  677:  // Math functions
+       17:  678:  OMNI_NAM_SQRT = omni_nick("Sqrt");
+       17:  679:  OMNI_NAM_POW  = omni_nick("Pow");
+       17:  680:  OMNI_NAM_MEXP = omni_nick("MExp");
+       17:  681:  OMNI_NAM_MLOG = omni_nick("MLog");
+       17:  682:  OMNI_NAM_MSIN = omni_nick("MSin");
+       17:  683:  OMNI_NAM_MCOS = omni_nick("MCos");
+       17:  684:  OMNI_NAM_MTAN = omni_nick("MTan");
+       17:  685:  OMNI_NAM_MASN = omni_nick("MAsn");
+       17:  686:  OMNI_NAM_MACS = omni_nick("MAcs");
+       17:  687:  OMNI_NAM_MATN = omni_nick("MAtn");
+       17:  688:  OMNI_NAM_MABS = omni_nick("MAbs");
+       17:  689:  OMNI_NAM_FLOR = omni_nick("Flor");
+       17:  690:  OMNI_NAM_MCEI = omni_nick("MCei");
+       17:  691:  OMNI_NAM_ROND = omni_nick("Rond");
+       17:  692:  OMNI_NAM_RAND = omni_nick("Rand");
+        -:  693:
+        -:  694:  // I/O operations
+       17:  695:  OMNI_NAM_RDFL = omni_nick("RdFl");
+       17:  696:  OMNI_NAM_WRFL = omni_nick("WrFl");
+       17:  697:  OMNI_NAM_APFL = omni_nick("ApFl");
+       17:  698:  OMNI_NAM_RDLN = omni_nick("RdLn");
+       17:  699:  OMNI_NAM_PRNT = omni_nick("Prnt");
+       17:  700:  OMNI_NAM_PRNL = omni_nick("PrnL");
+       17:  701:  OMNI_NAM_RDLN2 = omni_nick("RdL2");
+       17:  702:  OMNI_NAM_GTEV = omni_nick("GtEv");
+       17:  703:  OMNI_NAM_STEV = omni_nick("StEv");
+       17:  704:  OMNI_NAM_EXST = omni_nick("Exst");
+       17:  705:  OMNI_NAM_ISDR = omni_nick("IsDr");
+       17:  706:  OMNI_NAM_MKDR = omni_nick("MkDr");
+       17:  707:  OMNI_NAM_LSDR = omni_nick("LsDr");
+       17:  708:  OMNI_NAM_DLFL = omni_nick("DlFl");
+       17:  709:  OMNI_NAM_RNFL = omni_nick("RnFl");
+       17:  710:  OMNI_NAM_CPFL = omni_nick("CpFl");
+        -:  711:
+        -:  712:  // JSON operations
+       17:  713:  OMNI_NAM_JPRS = omni_nick("JPrs");
+       17:  714:  OMNI_NAM_JSTR = omni_nick("JStr");
+       17:  715:  OMNI_NAM_JARR = omni_nick("JArr");
+       17:  716:  OMNI_NAM_JOBJ = omni_nick("JObj");
+       17:  717:  OMNI_NAM_JNUL = omni_nick("JNul");
+        -:  718:
+        -:  719:  // DateTime operations
+       17:  720:  OMNI_NAM_DTNW = omni_nick("DtNw");
+       17:  721:  OMNI_NAM_DTPR = omni_nick("DtPr");
+       17:  722:  OMNI_NAM_DTFM = omni_nick("DtFm");
+       17:  723:  OMNI_NAM_DTAD = omni_nick("DtAd");
+       17:  724:  OMNI_NAM_DTSB = omni_nick("DtSb");
+       17:  725:  OMNI_NAM_DTDF = omni_nick("DtDf");
+       17:  726:  OMNI_NAM_DT   = omni_nick("Dt");
+       17:  727:  OMNI_NAM_DUR  = omni_nick("Dur");
+       17:  728:  OMNI_NAM_DTYR = omni_nick("DtYr");
+       17:  729:  OMNI_NAM_DTMO = omni_nick("DtMo");
+       17:  730:  OMNI_NAM_DTDY = omni_nick("DtDy");
+       17:  731:  OMNI_NAM_DTHR = omni_nick("DtHr");
+       17:  732:  OMNI_NAM_DTMI = omni_nick("DtMi");
+       17:  733:  OMNI_NAM_DTSC = omni_nick("DtSc");
+       17:  734:  OMNI_NAM_DTTS = omni_nick("DtTs");
+       17:  735:  OMNI_NAM_DTFT = omni_nick("DtFt");
+        -:  736:
+        -:  737:  // Tower/Meta-programming
+       17:  738:  OMNI_NAM_LIFT = omni_nick("Lift");
+       17:  739:  OMNI_NAM_RUN  = omni_nick("Run");
+       17:  740:  OMNI_NAM_EM   = omni_nick("EM");
+       17:  741:  OMNI_NAM_CLAM = omni_nick("CLam");
+       17:  742:  OMNI_NAM_STAG = omni_nick("Stag");
+       17:  743:  OMNI_NAM_SPLI = omni_nick("Spli");
+       17:  744:  OMNI_NAM_REFL = omni_nick("Refl");
+       17:  745:  OMNI_NAM_REIF = omni_nick("Reif");
+       17:  746:  OMNI_NAM_MLVL = omni_nick("MLvl");
+       17:  747:  OMNI_NAM_LPAR = omni_nick("LPar");
+        -:  748:
+        -:  749:  // Networking (FFI-backed)
+       17:  750:  OMNI_NAM_SOCK = omni_nick("Sock");
+       17:  751:  OMNI_NAM_TCPC = omni_nick("TcpC");
+       17:  752:  OMNI_NAM_TCPL = omni_nick("TcpL");
+       17:  753:  OMNI_NAM_TCPA = omni_nick("TcpA");
+       17:  754:  OMNI_NAM_TCPS = omni_nick("TcpS");
+       17:  755:  OMNI_NAM_TCPR = omni_nick("TcpR");
+       17:  756:  OMNI_NAM_UDPC = omni_nick("UdpC");
+       17:  757:  OMNI_NAM_UDPB = omni_nick("UdpB");
+       17:  758:  OMNI_NAM_UDPS = omni_nick("UdpS");
+       17:  759:  OMNI_NAM_UDPR = omni_nick("UdpR");
+       17:  760:  OMNI_NAM_SCLS = omni_nick("SCls");
+       17:  761:  OMNI_NAM_HTTP = omni_nick("Http");
+       17:  762:  OMNI_NAM_HGET = omni_nick("HGet");
+       17:  763:  OMNI_NAM_HPOS = omni_nick("HPos");
+       17:  764:  OMNI_NAM_HRES = omni_nick("HRes");
+        -:  765:
+        -:  766:  // Developer Tools
+       17:  767:  OMNI_NAM_INSP = omni_nick("Insp");
+       17:  768:  OMNI_NAM_TYOF = omni_nick("TyOf");
+       17:  769:  OMNI_NAM_DOC  = omni_nick("Doc");
+       17:  770:  OMNI_NAM_TRCE = omni_nick("Trce");
+       17:  771:  OMNI_NAM_TIME = omni_nick("Time");
+       17:  772:  OMNI_NAM_EXPD = omni_nick("Expd");
+       17:  773:  OMNI_NAM_DBUG = omni_nick("Dbug");
+       17:  774:  OMNI_NAM_PRTY = omni_nick("Prty");
+       17:  775:  OMNI_NAM_SRCE = omni_nick("Srce");
+       17:  776:  OMNI_NAM_PROF = omni_nick("Prof");
         -:  777:
-        -:  778:  // Type definitions
-      417:  779:  OMNI_NAM_TABS = omni_nick("TAbs");
-      417:  780:  OMNI_NAM_TSTR = omni_nick("TStr");
-      417:  781:  OMNI_NAM_TENM = omni_nick("TEnm");
-      417:  782:  OMNI_NAM_TUNI = omni_nick("TUni");
-      417:  783:  OMNI_NAM_TFLD = omni_nick("TFld");
-      417:  784:  OMNI_NAM_TVRN = omni_nick("TVrn");
-      417:  785:  OMNI_NAM_TEFF = omni_nick("TEff");  // Effect type definition
-      417:  786:  OMNI_NAM_TEOP = omni_nick("TEOp");  // Effect operation
-        -:  787:
-        -:  788:  // Metadata
-      417:  789:  OMNI_NAM_META = omni_nick("Meta");
-      417:  790:  OMNI_NAM_PURE = omni_nick("Pure");  // Purity marker
-      417:  791:  OMNI_NAM_ASSC = omni_nick("Assc");  // Associative marker
-      417:  792:  OMNI_NAM_COVR = omni_nick("Covr");  // Covariance marker
-      417:  793:  OMNI_NAM_CNVR = omni_nick("Cnvr");  // Contravariance marker
-        -:  794:
-        -:  795:  // FFI
-      417:  796:  OMNI_NAM_FFI  = omni_nick("FFI");
-      417:  797:  OMNI_NAM_HNDL = omni_nick("Hndl");
-      417:  798:  OMNI_NAM_PTR  = omni_nick("Ptr");
-      417:  799:  OMNI_NAM_PEND = omni_nick("Pend");
-        -:  800:
-        -:  801:  // Effects
-      417:  802:  OMNI_NAM_PERF = omni_nick("Perf");
-      417:  803:  OMNI_NAM_HDLE = omni_nick("Hdle");
-      417:  804:  OMNI_NAM_HDLR = omni_nick("Hdlr");
-      417:  805:  OMNI_NAM_HDEF = omni_nick("HDef");
-      417:  806:  OMNI_NAM_EFF  = omni_nick("Eff");
-      417:  807:  OMNI_NAM_ERWS = omni_nick("ERws");  // Effect row signature
-      417:  808:  OMNI_NAM_EFFR = omni_nick("Effr");  // Effect-free check
-      417:  809:  OMNI_NAM_STPR = omni_nick("StPr");  // Staged-pure check
-      417:  810:  OMNI_NAM_MPCH = omni_nick("MpCh");  // Map-chunks
-      417:  811:  OMNI_NAM_CPMF = omni_nick("CpMf");  // Compile-parallel-map factory
-        -:  812:
-        -:  813:  // Proof-as-Effect system
-      417:  814:  OMNI_NAM_REQR = omni_nick("Reqr");  // Require (precondition)
-      417:  815:  OMNI_NAM_ENSR = omni_nick("Ensr");  // Ensure (postcondition)
-      417:  816:  OMNI_NAM_PROV = omni_nick("Prov");  // Prove (request proof)
-        -:  817:
-        -:  818:  // Proof terms
-      417:  819:  OMNI_NAM_PRRF = omni_nick("PrRf");  // Reflexivity
-      417:  820:  OMNI_NAM_PRSM = omni_nick("PrSm");  // Symmetry
-      417:  821:  OMNI_NAM_PRTR = omni_nick("PrTr");  // Transitivity
-      417:  822:  OMNI_NAM_PRCG = omni_nick("PrCg");  // Congruence
-      417:  823:  OMNI_NAM_PRJL = omni_nick("PrJl");  // J eliminator
-      417:  824:  OMNI_NAM_PRQD = omni_nick("PrQd");  // QED marker
-      417:  825:  OMNI_NAM_PRBY = omni_nick("PrBy");  // Proof by tactic
-      417:  826:  OMNI_NAM_PRSK = omni_nick("PrSk");  // Proof sketch (hole)
-        -:  827:
-        -:  828:  // Proof search
-      417:  829:  OMNI_NAM_PRSP = omni_nick("PrSp");  // Superposition (parallel)
-      417:  830:  OMNI_NAM_PRFL = omni_nick("PrFl");  // Failure
-      417:  831:  OMNI_NAM_PRSC = omni_nick("PrSc");  // Success
-        -:  832:
-        -:  833:  // Concurrency
-      417:  834:  OMNI_NAM_FIBR = omni_nick("Fibr");
-      417:  835:  OMNI_NAM_FORK = omni_nick("Fork");
-      417:  836:  OMNI_NAM_AMB  = omni_nick("Amb");
-      417:  837:  OMNI_NAM_CHOI = omni_nick("Choi");  // Choice (nested superposition)
-      417:  838:  OMNI_NAM_REQT = omni_nick("Reqt");  // Require test (exploration)
-      417:  839:  OMNI_NAM_EXFR = omni_nick("ExFr");  // Explore-first
-      417:  840:  OMNI_NAM_EXAL = omni_nick("ExAl");  // Explore-all
-      417:  841:  OMNI_NAM_EXRG = omni_nick("ExRg");  // Explore-range
-        -:  842:
-        -:  843:  // Speculative Transactions (A3)
-      417:  844:  OMNI_NAM_ROLL = omni_nick("Roll");  // Rollback
-      417:  845:  OMNI_NAM_COMT = omni_nick("Comt");  // Commit
-      417:  846:  OMNI_NAM_SPTX = omni_nick("SpTx");  // Speculative transaction
-      417:  847:  OMNI_NAM_WROL = omni_nick("WRol");  // With-rollback
-        -:  848:
-        -:  849:  // Ambient Parallelism (A5)
-      417:  850:  OMNI_NAM_PCTX = omni_nick("PCtx");  // Parallel context
-      417:  851:  OMNI_NAM_FJOI = omni_nick("FJoi");  // Fork-join
-      417:  852:  OMNI_NAM_WPAR = omni_nick("WPar");  // With-parallelism
+        -:  778:  // Type annotations
+       17:  779:  OMNI_NAM_TANN = omni_nick("TAnn");
+       17:  780:  OMNI_NAM_TDSC = omni_nick("TDsc");
+       17:  781:  OMNI_NAM_TVAR = omni_nick("TVar");
+       17:  782:  OMNI_NAM_TFUN = omni_nick("TFun");
+       17:  783:  OMNI_NAM_TFUNE = omni_nick("TFunE");
+       17:  784:  OMNI_NAM_TSUP = omni_nick("TSup");
+       17:  785:  OMNI_NAM_TWSUP = omni_nick("TWSup");
+       17:  786:  OMNI_NAM_TAPP = omni_nick("TApp");
+       17:  787:  OMNI_NAM_VTYP = omni_nick("VTyp");
+        -:  788:
+        -:  789:  // Type definitions
+       17:  790:  OMNI_NAM_TABS = omni_nick("TAbs");
+       17:  791:  OMNI_NAM_TSTR = omni_nick("TStr");
+       17:  792:  OMNI_NAM_TENM = omni_nick("TEnm");
+       17:  793:  OMNI_NAM_TUNI = omni_nick("TUni");
+       17:  794:  OMNI_NAM_TFLD = omni_nick("TFld");
+       17:  795:  OMNI_NAM_TVRN = omni_nick("TVrn");
+       17:  796:  OMNI_NAM_TEFF = omni_nick("TEff");  // Effect type definition
+       17:  797:  OMNI_NAM_TEOP = omni_nick("TEOp");  // Effect operation
+        -:  798:
+        -:  799:  // Metadata
+       17:  800:  OMNI_NAM_META = omni_nick("Meta");
+       17:  801:  OMNI_NAM_PURE = omni_nick("Pure");  // Purity marker
+       17:  802:  OMNI_NAM_ASSC = omni_nick("Assc");  // Associative marker
+       17:  803:  OMNI_NAM_COVR = omni_nick("Covr");  // Covariance marker
+       17:  804:  OMNI_NAM_CNVR = omni_nick("Cnvr");  // Contravariance marker
+        -:  805:
+        -:  806:  // FFI
+       17:  807:  OMNI_NAM_FFI  = omni_nick("FFI");
+       17:  808:  OMNI_NAM_HNDL = omni_nick("Hndl");
+       17:  809:  OMNI_NAM_PTR  = omni_nick("Ptr");
+       17:  810:  OMNI_NAM_PEND = omni_nick("Pend");
+        -:  811:
+        -:  812:  // Effects
+       17:  813:  OMNI_NAM_PERF = omni_nick("Perf");
+       17:  814:  OMNI_NAM_HDLE = omni_nick("Hdle");
+       17:  815:  OMNI_NAM_HDLR = omni_nick("Hdlr");
+       17:  816:  OMNI_NAM_HDEF = omni_nick("HDef");
+       17:  817:  OMNI_NAM_EFF  = omni_nick("Eff");
+       17:  818:  OMNI_NAM_ERWS = omni_nick("ERws");  // Effect row signature
+       17:  819:  OMNI_NAM_EFFR = omni_nick("Effr");  // Effect-free check
+       17:  820:  OMNI_NAM_STPR = omni_nick("StPr");  // Staged-pure check
+       17:  821:  OMNI_NAM_MPCH = omni_nick("MpCh");  // Map-chunks
+       17:  822:  OMNI_NAM_CPMF = omni_nick("CpMf");  // Compile-parallel-map factory
+        -:  823:
+        -:  824:  // Proof-as-Effect system
+       17:  825:  OMNI_NAM_REQR = omni_nick("Reqr");  // Require (precondition)
+       17:  826:  OMNI_NAM_ENSR = omni_nick("Ensr");  // Ensure (postcondition)
+       17:  827:  OMNI_NAM_PROV = omni_nick("Prov");  // Prove (request proof)
+        -:  828:
+        -:  829:  // Proof terms
+       17:  830:  OMNI_NAM_PRRF = omni_nick("PrRf");  // Reflexivity
+       17:  831:  OMNI_NAM_PRSM = omni_nick("PrSm");  // Symmetry
+       17:  832:  OMNI_NAM_PRTR = omni_nick("PrTr");  // Transitivity
+       17:  833:  OMNI_NAM_PRCG = omni_nick("PrCg");  // Congruence
+       17:  834:  OMNI_NAM_PRJL = omni_nick("PrJl");  // J eliminator
+       17:  835:  OMNI_NAM_PRQD = omni_nick("PrQd");  // QED marker
+       17:  836:  OMNI_NAM_PRBY = omni_nick("PrBy");  // Proof by tactic
+       17:  837:  OMNI_NAM_PRSK = omni_nick("PrSk");  // Proof sketch (hole)
+        -:  838:
+        -:  839:  // Proof search
+       17:  840:  OMNI_NAM_PRSP = omni_nick("PrSp");  // Superposition (parallel)
+       17:  841:  OMNI_NAM_PRFL = omni_nick("PrFl");  // Failure
+       17:  842:  OMNI_NAM_PRSC = omni_nick("PrSc");  // Success
+        -:  843:
+        -:  844:  // Concurrency
+       17:  845:  OMNI_NAM_FIBR = omni_nick("Fibr");
+       17:  846:  OMNI_NAM_FORK = omni_nick("Fork");
+       17:  847:  OMNI_NAM_AMB  = omni_nick("Amb");
+       17:  848:  OMNI_NAM_CHOI = omni_nick("Choi");  // Choice (nested superposition)
+       17:  849:  OMNI_NAM_REQT = omni_nick("Reqt");  // Require test (exploration)
+       17:  850:  OMNI_NAM_EXFR = omni_nick("ExFr");  // Explore-first
+       17:  851:  OMNI_NAM_EXAL = omni_nick("ExAl");  // Explore-all
+       17:  852:  OMNI_NAM_EXRG = omni_nick("ExRg");  // Explore-range
         -:  853:
-        -:  854:  // Probabilistic Effects (A7)
-      417:  855:  OMNI_NAM_BERN = omni_nick("Bern");  // Bernoulli distribution
-      417:  856:  OMNI_NAM_CATG = omni_nick("Catg");  // Categorical distribution
-      417:  857:  OMNI_NAM_UNIF = omni_nick("Unif");  // Uniform distribution
-      417:  858:  OMNI_NAM_BETA = omni_nick("Beta");  // Beta distribution
-      417:  859:  OMNI_NAM_SMPL = omni_nick("Smpl");  // Sample
-      417:  860:  OMNI_NAM_OBSV = omni_nick("Obsv");  // Observe
-      417:  861:  OMNI_NAM_FCTR = omni_nick("Fctr");  // Factor
-      417:  862:  OMNI_NAM_FLIP = omni_nick("Flip");  // Flip (weighted coin)
-      417:  863:  OMNI_NAM_ENMR = omni_nick("EnmI");  // Enumerate-infer
-      417:  864:  OMNI_NAM_IMPS = omni_nick("ImpS");  // Importance-sample
-      417:  865:  OMNI_NAM_WGTS = omni_nick("WgtS");  // Weighted superposition
-      417:  866:  OMNI_NAM_DMIX = omni_nick("DMix");  // Mixture distribution
-      417:  867:  OMNI_NAM_DPRD = omni_nick("DPrd");  // Product distribution
-      417:  868:  OMNI_NAM_DMAP = omni_nick("DMap");  // Mapped distribution
-        -:  869:
-        -:  870:  // Definitions
-      417:  871:  OMNI_NAM_DEF  = omni_nick("Def");
-      417:  872:  OMNI_NAM_SLOT = omni_nick("Slot");
-        -:  873:
-        -:  874:  // Multiple dispatch
-      417:  875:  OMNI_NAM_METH = omni_nick("Meth");
-      417:  876:  OMNI_NAM_GFUN = omni_nick("GFun");
-      417:  877:  OMNI_NAM_GPRT = omni_nick("GPrt");  // Generic partial application
-      417:  878:  OMNI_NAM_DISP = omni_nick("Disp");
-      417:  879:  OMNI_NAM_SIG  = omni_nick("Sig");
-      417:  880:  OMNI_NAM_TWHR = omni_nick("TWhr");  // Type where constraint
-      417:  881:  OMNI_NAM_TYCK = omni_nick("Tyck");  // Type check
-        -:  882:
-        -:  883:  // Macro system
-      417:  884:  OMNI_NAM_MSYN = omni_nick("MSyn");
-      417:  885:  OMNI_NAM_MPAT = omni_nick("MPat");
-      417:  886:  OMNI_NAM_MVAR = omni_nick("MVar");
-      417:  887:  OMNI_NAM_MRST = omni_nick("MRst");
-      417:  888:  OMNI_NAM_MLIT = omni_nick("MLit");
-      417:  889:  OMNI_NAM_MEXP = omni_nick("MExp");
-        -:  890:
-        -:  891:  // Module system
-      417:  892:  OMNI_NAM_MODL = omni_nick("Modl");
-      417:  893:  OMNI_NAM_IMPT = omni_nick("Impt");
-      417:  894:  OMNI_NAM_EXPT = omni_nick("Expt");
-      417:  895:  OMNI_NAM_QUAL = omni_nick("Qual");
-      417:  896:  OMNI_NAM_MODA = omni_nick("ModA");
-        -:  897:
-        -:  898:  // Code/quasiquote
-      417:  899:  OMNI_NAM_COD  = omni_nick("Cod");
-      417:  900:  OMNI_NAM_QUOT = omni_nick("quot");
-      417:  901:  OMNI_NAM_QQ   = omni_nick("QQ");
-      417:  902:  OMNI_NAM_UQ  = omni_nick("UQ");
-      417:  903:  OMNI_NAM_UQS = omni_nick("UQS");
-        -:  904:
-        -:  905:  // Runtime
-      417:  906:  OMNI_NAM_MENV = omni_nick("MEnv");
-      417:  907:  OMNI_NAM_CLO  = omni_nick("Clo");
-      417:  908:  OMNI_NAM_CLOR = omni_nick("CloR");
-      417:  909:  OMNI_NAM_ERR  = omni_nick("Err");
-      417:  910:  OMNI_NAM_NOTH = omni_nick("Noth");
-        -:  911:
-        -:  912:  // Delimited continuations
-      417:  913:  OMNI_NAM_PRMT = omni_nick("Prmt");
-      417:  914:  OMNI_NAM_CTRL = omni_nick("Ctrl");
-      417:  915:  OMNI_NAM_CLOC = omni_nick("CloC");
-      417:  916:  OMNI_NAM_CLOK = omni_nick("CloK");
-      417:  917:  OMNI_NAM_KONT = omni_nick("Kont");
-        -:  918:
-        -:  919:  // Fiber support
-      417:  920:  OMNI_NAM_FYLD = omni_nick("FYld");
-      417:  921:  OMNI_NAM_FTHK = omni_nick("FThk");
-      417:  922:  OMNI_NAM_FBRR = omni_nick("FbrR");
-      417:  923:  OMNI_NAM_FBRS = omni_nick("FbrS");
-      417:  924:  OMNI_NAM_FBRD = omni_nick("FbrD");
-      417:  925:  OMNI_NAM_YLD  = omni_nick("Yld");
-        -:  926:
-        -:  927:  // Fiber operations (exposed to user)
-      417:  928:  OMNI_NAM_FSPN = omni_nick("FSpn");
-      417:  929:  OMNI_NAM_FRSM = omni_nick("FRsm");
-      417:  930:  OMNI_NAM_FDNP = omni_nick("FDn?");
-      417:  931:  OMNI_NAM_FRST = omni_nick("FRst");
-      417:  932:  OMNI_NAM_FMBX = omni_nick("FMbx");
-        -:  933:
-        -:  934:  // Booleans
-      417:  935:  OMNI_NAM_TRUE = omni_nick("True");
-      417:  936:  OMNI_NAM_FALS = omni_nick("Fals");
+        -:  854:  // Speculative Transactions (A3)
+       17:  855:  OMNI_NAM_ROLL = omni_nick("Roll");  // Rollback
+       17:  856:  OMNI_NAM_COMT = omni_nick("Comt");  // Commit
+       17:  857:  OMNI_NAM_SPTX = omni_nick("SpTx");  // Speculative transaction
+       17:  858:  OMNI_NAM_WROL = omni_nick("WRol");  // With-rollback
+        -:  859:
+        -:  860:  // Ambient Parallelism (A5)
+       17:  861:  OMNI_NAM_PCTX = omni_nick("PCtx");  // Parallel context
+       17:  862:  OMNI_NAM_FJOI = omni_nick("FJoi");  // Fork-join
+       17:  863:  OMNI_NAM_WPAR = omni_nick("WPar");  // With-parallelism
+        -:  864:
+        -:  865:  // Probabilistic Effects (A7)
+       17:  866:  OMNI_NAM_BERN = omni_nick("Bern");  // Bernoulli distribution
+       17:  867:  OMNI_NAM_CATG = omni_nick("Catg");  // Categorical distribution
+       17:  868:  OMNI_NAM_UNIF = omni_nick("Unif");  // Uniform distribution
+       17:  869:  OMNI_NAM_BETA = omni_nick("Beta");  // Beta distribution
+       17:  870:  OMNI_NAM_SMPL = omni_nick("Smpl");  // Sample
+       17:  871:  OMNI_NAM_OBSV = omni_nick("Obsv");  // Observe
+       17:  872:  OMNI_NAM_FCTR = omni_nick("Fctr");  // Factor
+       17:  873:  OMNI_NAM_FLIP = omni_nick("Flip");  // Flip (weighted coin)
+       17:  874:  OMNI_NAM_ENMR = omni_nick("EnmI");  // Enumerate-infer
+       17:  875:  OMNI_NAM_IMPS = omni_nick("ImpS");  // Importance-sample
+       17:  876:  OMNI_NAM_WGTS = omni_nick("WgtS");  // Weighted superposition
+       17:  877:  OMNI_NAM_DMIX = omni_nick("DMix");  // Mixture distribution
+       17:  878:  OMNI_NAM_DPRD = omni_nick("DPrd");  // Product distribution
+       17:  879:  OMNI_NAM_DMAP = omni_nick("DMap");  // Mapped distribution
+        -:  880:
+        -:  881:  // Definitions
+       17:  882:  OMNI_NAM_DEF  = omni_nick("Def");
+       17:  883:  OMNI_NAM_SLOT = omni_nick("Slot");
+        -:  884:
+        -:  885:  // Multiple dispatch
+       17:  886:  OMNI_NAM_METH = omni_nick("Meth");
+       17:  887:  OMNI_NAM_GFUN = omni_nick("GFun");
+       17:  888:  OMNI_NAM_GPRT = omni_nick("GPrt");  // Generic partial application
+       17:  889:  OMNI_NAM_DISP = omni_nick("Disp");
+       17:  890:  OMNI_NAM_SIG  = omni_nick("Sig");
+       17:  891:  OMNI_NAM_TWHR = omni_nick("TWhr");  // Type where constraint
+       17:  892:  OMNI_NAM_TYCK = omni_nick("Tyck");  // Type check
+        -:  893:
+        -:  894:  // Macro system
+       17:  895:  OMNI_NAM_MSYN = omni_nick("MSyn");
+       17:  896:  OMNI_NAM_MPAT = omni_nick("MPat");
+       17:  897:  OMNI_NAM_MVAR = omni_nick("MVar");
+       17:  898:  OMNI_NAM_MRST = omni_nick("MRst");
+       17:  899:  OMNI_NAM_MLIT = omni_nick("MLit");
+       17:  900:  OMNI_NAM_MEXP = omni_nick("MExp");
+        -:  901:
+        -:  902:  // Module system
+       17:  903:  OMNI_NAM_MODL = omni_nick("Modl");
+       17:  904:  OMNI_NAM_IMPT = omni_nick("Impt");
+       17:  905:  OMNI_NAM_EXPT = omni_nick("Expt");
+       17:  906:  OMNI_NAM_QUAL = omni_nick("Qual");
+       17:  907:  OMNI_NAM_MODA = omni_nick("ModA");
+        -:  908:
+        -:  909:  // Code/quasiquote
+       17:  910:  OMNI_NAM_COD  = omni_nick("Cod");
+       17:  911:  OMNI_NAM_QUOT = omni_nick("quot");
+       17:  912:  OMNI_NAM_QQ   = omni_nick("QQ");
+       17:  913:  OMNI_NAM_UQ  = omni_nick("UQ");
+       17:  914:  OMNI_NAM_UQS = omni_nick("UQS");
+        -:  915:
+        -:  916:  // Runtime
+       17:  917:  OMNI_NAM_MENV = omni_nick("MEnv");
+       17:  918:  OMNI_NAM_CLO  = omni_nick("Clo");
+       17:  919:  OMNI_NAM_CLOR = omni_nick("CloR");
+       17:  920:  OMNI_NAM_ERR  = omni_nick("Err");
+       17:  921:  OMNI_NAM_NOTH = omni_nick("Noth");
+        -:  922:
+        -:  923:  // Delimited continuations
+       17:  924:  OMNI_NAM_PRMT = omni_nick("Prmt");
+       17:  925:  OMNI_NAM_CTRL = omni_nick("Ctrl");
+       17:  926:  OMNI_NAM_CLOC = omni_nick("CloC");
+       17:  927:  OMNI_NAM_CLOK = omni_nick("CloK");
+       17:  928:  OMNI_NAM_KONT = omni_nick("Kont");
+        -:  929:
+        -:  930:  // Fiber support
+       17:  931:  OMNI_NAM_FYLD = omni_nick("FYld");
+       17:  932:  OMNI_NAM_FTHK = omni_nick("FThk");
+       17:  933:  OMNI_NAM_FBRR = omni_nick("FbrR");
+       17:  934:  OMNI_NAM_FBRS = omni_nick("FbrS");
+       17:  935:  OMNI_NAM_FBRD = omni_nick("FbrD");
+       17:  936:  OMNI_NAM_YLD  = omni_nick("Yld");
         -:  937:
-        -:  938:  // Collection operations
-      417:  939:  OMNI_NAM_SET  = omni_nick("Set");
-      417:  940:  OMNI_NAM_SORT = omni_nick("Sort");
-      417:  941:  OMNI_NAM_GRPB = omni_nick("GrpB");
-      417:  942:  OMNI_NAM_ZIP  = omni_nick("Zip");
-      417:  943:  OMNI_NAM_FLAT = omni_nick("Flat");
-      417:  944:  OMNI_NAM_CONC = omni_nick("Conc");
-      417:  945:  OMNI_NAM_MAP  = omni_nick("Map");
-      417:  946:  OMNI_NAM_FILT = omni_nick("Filt");
-      417:  947:  OMNI_NAM_FOLD = omni_nick("Fold");
-      417:  948:  OMNI_NAM_TAKE = omni_nick("Take");
-      417:  949:  OMNI_NAM_DROP = omni_nick("Drop");
-      417:  950:  OMNI_NAM_REV  = omni_nick("Rev");
-      417:  951:  OMNI_NAM_FIND = omni_nick("Find");
-      417:  952:  OMNI_NAM_ANY  = omni_nick("Any");
-      417:  953:  OMNI_NAM_ALL  = omni_nick("All");
-      417:  954:  OMNI_NAM_CONJ = omni_nick("Conj");
-      417:  955:  OMNI_NAM_REMV = omni_nick("Remv");
-      417:  956:  OMNI_NAM_INTR = omni_nick("Intr");
-      417:  957:  OMNI_NAM_UNIN = omni_nick("Unin");
-      417:  958:  OMNI_NAM_DIFF = omni_nick("Diff");
-      417:  959:  OMNI_NAM_KEYS = omni_nick("Keys");
-      417:  960:  OMNI_NAM_VALS = omni_nick("Vals");
-      417:  961:  OMNI_NAM_ENTS = omni_nick("Ents");
-      417:  962:  OMNI_NAM_MERG = omni_nick("Merg");
-      417:  963:  OMNI_NAM_ASOC = omni_nick("Asoc");
-      417:  964:  OMNI_NAM_DISS = omni_nick("Diss");
-      417:  965:  OMNI_NAM_GET  = omni_nick("Get");
-      417:  966:  OMNI_NAM_LEN  = omni_nick("Len");
-      417:  967:  OMNI_NAM_EMPT = omni_nick("Empt");
-      417:  968:  OMNI_NAM_CONT = omni_nick("Cont");
-      417:  969:  OMNI_NAM_INDX = omni_nick("Indx");
-      417:  970:  OMNI_NAM_NTH  = omni_nick("Nth");
-      417:  971:  OMNI_NAM_SLCE = omni_nick("Slce");
-      417:  972:  OMNI_NAM_FRNG = omni_nick("FRng");
-        -:  973:
-        -:  974:  // String operations
-      417:  975:  OMNI_NAM_STR  = omni_nick("Str");
-      417:  976:  OMNI_NAM_SUPR = omni_nick("SUpR");
-      417:  977:  OMNI_NAM_SLWR = omni_nick("SLwR");
-      417:  978:  OMNI_NAM_STRM = omni_nick("STrm");
-      417:  979:  OMNI_NAM_SSPL = omni_nick("SSpl");
-      417:  980:  OMNI_NAM_SJOI = omni_nick("SJoi");
-      417:  981:  OMNI_NAM_SRPL = omni_nick("SRpl");
-      417:  982:  OMNI_NAM_SSUB = omni_nick("SSub");
-      417:  983:  OMNI_NAM_SIND = omni_nick("SInd");
-      417:  984:  OMNI_NAM_SSTA = omni_nick("SSta");
-      417:  985:  OMNI_NAM_SEND = omni_nick("SEnd");
-      417:  986:  OMNI_NAM_SCNT = omni_nick("SCnt");
-      417:  987:  OMNI_NAM_SREV = omni_nick("SRev");
-      417:  988:  OMNI_NAM_SPAD = omni_nick("SPad");
-      417:  989:  OMNI_NAM_SCAP = omni_nick("SCap");
-      417:  990:  OMNI_NAM_SCHC = omni_nick("SChc");
-      417:  991:  OMNI_NAM_SLEN = omni_nick("SLen");
-      417:  992:  OMNI_NAM_SEMP = omni_nick("SEmp");
-      417:  993:  OMNI_NAM_SCMP = omni_nick("SCmp");
-      417:  994:  OMNI_NAM_SREP = omni_nick("SRep");
-      417:  995:  OMNI_NAM_FMTS = omni_nick("Fmts");
-      417:  996:  OMNI_NAM_FLIT = omni_nick("Flit");
-      417:  997:  OMNI_NAM_FEXP = omni_nick("Fexp");
-        -:  998:
-        -:  999:  // Regex operations
-      417: 1000:  OMNI_NAM_REGX = omni_nick("Regx");
-      417: 1001:  OMNI_NAM_RMAT = omni_nick("RMat");
-      417: 1002:  OMNI_NAM_RFND = omni_nick("RFnd");
-      417: 1003:  OMNI_NAM_RFNA = omni_nick("RFnA");
-      417: 1004:  OMNI_NAM_RRPL = omni_nick("RRpl");
-      417: 1005:  OMNI_NAM_RSPL = omni_nick("RSpl");
-      417: 1006:  OMNI_NAM_RGRP = omni_nick("RGrp");
-      417: 1007:  OMNI_NAM_RMRS = omni_nick("RMRs");
-        -: 1008:
-        -: 1009:  // Grammar DSL
-      417: 1010:  OMNI_NAM_GRAM = omni_nick("Gram");
-      417: 1011:  OMNI_NAM_RULE = omni_nick("Rule");
-      417: 1012:  OMNI_NAM_GSEQ = omni_nick("GSeq");
-      417: 1013:  OMNI_NAM_GALT = omni_nick("GAlt");
-      417: 1014:  OMNI_NAM_GSTR = omni_nick("GStr");
-      417: 1015:  OMNI_NAM_GCHR = omni_nick("GChr");
-      417: 1016:  OMNI_NAM_GREF = omni_nick("GRef");
-      417: 1017:  OMNI_NAM_GOPT = omni_nick("GOpt");
-      417: 1018:  OMNI_NAM_GSTA = omni_nick("GSta");
-      417: 1019:  OMNI_NAM_GPLS = omni_nick("GPls");
-      417: 1020:  OMNI_NAM_GNOT = omni_nick("GNot");
-      417: 1021:  OMNI_NAM_GAND = omni_nick("GAnd");
-      417: 1022:  OMNI_NAM_GCAP = omni_nick("GCap");
-      417: 1023:  OMNI_NAM_GACT = omni_nick("GAct");
-      417: 1024:  OMNI_NAM_GANY = omni_nick("GAny");
-      417: 1025:  OMNI_NAM_PRSR = omni_nick("Prsr");
-      417: 1026:  OMNI_NAM_PRES = omni_nick("PRes");
-        -: 1027:
-        -: 1028:  // List comprehensions
-      417: 1029:  OMNI_NAM_CMPR = omni_nick("Cmpr");
-      417: 1030:  OMNI_NAM_CFOR = omni_nick("CFor");
-      417: 1031:  OMNI_NAM_CWHN = omni_nick("CWhn");
-      417: 1032:  OMNI_NAM_CYLD = omni_nick("CYld");
-        -: 1033:
-      417: 1034:  OMNI_NAMES_READY = 1;
-        -: 1035:}
+        -:  938:  // Fiber operations (exposed to user)
+       17:  939:  OMNI_NAM_FSPN = omni_nick("FSpn");
+       17:  940:  OMNI_NAM_FRSM = omni_nick("FRsm");
+       17:  941:  OMNI_NAM_FDNP = omni_nick("FDn?");
+       17:  942:  OMNI_NAM_FRST = omni_nick("FRst");
+       17:  943:  OMNI_NAM_FMBX = omni_nick("FMbx");
+        -:  944:
+        -:  945:  // Booleans
+       17:  946:  OMNI_NAM_TRUE = omni_nick("True");
+       17:  947:  OMNI_NAM_FALS = omni_nick("Fals");
+        -:  948:
+        -:  949:  // Collection operations
+       17:  950:  OMNI_NAM_SET  = omni_nick("Set");
+       17:  951:  OMNI_NAM_SORT = omni_nick("Sort");
+       17:  952:  OMNI_NAM_GRPB = omni_nick("GrpB");
+       17:  953:  OMNI_NAM_ZIP  = omni_nick("Zip");
+       17:  954:  OMNI_NAM_FLAT = omni_nick("Flat");
+       17:  955:  OMNI_NAM_CONC = omni_nick("Conc");
+       17:  956:  OMNI_NAM_MAP  = omni_nick("Map");
+       17:  957:  OMNI_NAM_FILT = omni_nick("Filt");
+       17:  958:  OMNI_NAM_FOLD = omni_nick("Fold");
+       17:  959:  OMNI_NAM_FLDR = omni_nick("FldR");
+       17:  960:  OMNI_NAM_TAKE = omni_nick("Take");
+       17:  961:  OMNI_NAM_DROP = omni_nick("Drop");
+       17:  962:  OMNI_NAM_REV  = omni_nick("Rev");
+       17:  963:  OMNI_NAM_FIND = omni_nick("Find");
+       17:  964:  OMNI_NAM_ANY  = omni_nick("Any");
+       17:  965:  OMNI_NAM_ALL  = omni_nick("All");
+       17:  966:  OMNI_NAM_CONJ = omni_nick("Conj");
+       17:  967:  OMNI_NAM_REMV = omni_nick("Remv");
+       17:  968:  OMNI_NAM_INTR = omni_nick("Intr");
+       17:  969:  OMNI_NAM_UNIN = omni_nick("Unin");
+       17:  970:  OMNI_NAM_DIFF = omni_nick("Diff");
+       17:  971:  OMNI_NAM_KEYS = omni_nick("Keys");
+       17:  972:  OMNI_NAM_VALS = omni_nick("Vals");
+       17:  973:  OMNI_NAM_ENTS = omni_nick("Ents");
+       17:  974:  OMNI_NAM_MERG = omni_nick("Merg");
+       17:  975:  OMNI_NAM_ASOC = omni_nick("Asoc");
+       17:  976:  OMNI_NAM_DISS = omni_nick("Diss");
+       17:  977:  OMNI_NAM_GET  = omni_nick("Get");
+       17:  978:  OMNI_NAM_LEN  = omni_nick("Len");
+       17:  979:  OMNI_NAM_EMPT = omni_nick("Empt");
+       17:  980:  OMNI_NAM_CONT = omni_nick("Cont");
+       17:  981:  OMNI_NAM_INDX = omni_nick("Indx");
+       17:  982:  OMNI_NAM_NTH  = omni_nick("Nth");
+       17:  983:  OMNI_NAM_SLCE = omni_nick("Slce");
+       17:  984:  OMNI_NAM_FRNG = omni_nick("FRng");
+        -:  985:
+        -:  986:  // String operations
+       17:  987:  OMNI_NAM_STR  = omni_nick("Str");
+       17:  988:  OMNI_NAM_SUPR = omni_nick("SUpR");
+       17:  989:  OMNI_NAM_SLWR = omni_nick("SLwR");
+       17:  990:  OMNI_NAM_STRM = omni_nick("STrm");
+       17:  991:  OMNI_NAM_SSPL = omni_nick("SSpl");
+       17:  992:  OMNI_NAM_SJOI = omni_nick("SJoi");
+       17:  993:  OMNI_NAM_SRPL = omni_nick("SRpl");
+       17:  994:  OMNI_NAM_SSUB = omni_nick("SSub");
+       17:  995:  OMNI_NAM_SIND = omni_nick("SInd");
+       17:  996:  OMNI_NAM_SSTA = omni_nick("SSta");
+       17:  997:  OMNI_NAM_SEND = omni_nick("SEnd");
+       17:  998:  OMNI_NAM_SCNT = omni_nick("SCnt");
+       17:  999:  OMNI_NAM_SREV = omni_nick("SRev");
+       17: 1000:  OMNI_NAM_SPAD = omni_nick("SPad");
+       17: 1001:  OMNI_NAM_SCAP = omni_nick("SCap");
+       17: 1002:  OMNI_NAM_SCHC = omni_nick("SChc");
+       17: 1003:  OMNI_NAM_SLEN = omni_nick("SLen");
+       17: 1004:  OMNI_NAM_SEMP = omni_nick("SEmp");
+       17: 1005:  OMNI_NAM_SCMP = omni_nick("SCmp");
+       17: 1006:  OMNI_NAM_SREP = omni_nick("SRep");
+       17: 1007:  OMNI_NAM_FMTS = omni_nick("Fmts");
+       17: 1008:  OMNI_NAM_FLIT = omni_nick("Flit");
+       17: 1009:  OMNI_NAM_FEXP = omni_nick("Fexp");
+        -: 1010:
+        -: 1011:  // Regex operations
+       17: 1012:  OMNI_NAM_REGX = omni_nick("Regx");
+       17: 1013:  OMNI_NAM_RMAT = omni_nick("RMat");
+       17: 1014:  OMNI_NAM_RFND = omni_nick("RFnd");
+       17: 1015:  OMNI_NAM_RFNA = omni_nick("RFnA");
+       17: 1016:  OMNI_NAM_RRPL = omni_nick("RRpl");
+       17: 1017:  OMNI_NAM_RSPL = omni_nick("RSpl");
+       17: 1018:  OMNI_NAM_RGRP = omni_nick("RGrp");
+       17: 1019:  OMNI_NAM_RMRS = omni_nick("RMRs");
+        -: 1020:
+        -: 1021:  // Grammar DSL
+       17: 1022:  OMNI_NAM_GRAM = omni_nick("Gram");
+       17: 1023:  OMNI_NAM_RULE = omni_nick("Rule");
+       17: 1024:  OMNI_NAM_GSEQ = omni_nick("GSeq");
+       17: 1025:  OMNI_NAM_GALT = omni_nick("GAlt");
+       17: 1026:  OMNI_NAM_GSTR = omni_nick("GStr");
+       17: 1027:  OMNI_NAM_GCHR = omni_nick("GChr");
+       17: 1028:  OMNI_NAM_GREF = omni_nick("GRef");
+       17: 1029:  OMNI_NAM_GOPT = omni_nick("GOpt");
+       17: 1030:  OMNI_NAM_GSTA = omni_nick("GSta");
+       17: 1031:  OMNI_NAM_GPLS = omni_nick("GPls");
+       17: 1032:  OMNI_NAM_GNOT = omni_nick("GNot");
+       17: 1033:  OMNI_NAM_GAND = omni_nick("GAnd");
+       17: 1034:  OMNI_NAM_GCAP = omni_nick("GCap");
+       17: 1035:  OMNI_NAM_GACT = omni_nick("GAct");
+       17: 1036:  OMNI_NAM_GANY = omni_nick("GAny");
+       17: 1037:  OMNI_NAM_PRSR = omni_nick("Prsr");
+       17: 1038:  OMNI_NAM_PRES = omni_nick("PRes");
+        -: 1039:
+        -: 1040:  // List comprehensions
+       17: 1041:  OMNI_NAM_CMPR = omni_nick("Cmpr");
+       17: 1042:  OMNI_NAM_CFOR = omni_nick("CFor");
+       17: 1043:  OMNI_NAM_CWHN = omni_nick("CWhn");
+       17: 1044:  OMNI_NAM_CYLD = omni_nick("CYld");
+        -: 1045:
+       17: 1046:  OMNI_NAMES_READY = 1;
+        -: 1047:}

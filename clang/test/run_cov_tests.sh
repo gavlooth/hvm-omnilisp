@@ -142,4 +142,37 @@ echo ""
 echo "============================="
 echo -e "Results: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}, Total: $TOTAL"
 
+# ==============================================================================
+# HVM4 print_term coverage
+# Exercise HVM4's print_term function for term.c coverage
+# ==============================================================================
+echo ""
+echo "Running HVM4 print_term coverage tests..."
+
+# Test expressions that exercise different term types and print_term code paths
+PRINT_EXPRS=(
+    "1"                           # NUM
+    "'foo"                        # SYM
+    "true"                        # True
+    "false"                       # False
+    "'()"                         # NIL
+    "'(1 2 3)"                    # List/CON
+    "[1 2 3]"                     # Array
+    "(lambda [x] x)"              # Closure
+    "(lambda [x] (+ x x))"        # Closure with dup
+    "(+ 1 2)"                     # Simple computation
+    "(if true 1 2)"               # Conditional
+    "(match 1 1 :one 2 :two)"     # Pattern match
+    "(let [x 10] x)"              # Let binding
+    "(do 1 2 3)"                  # Sequence
+    "\\a"                          # Character
+    "\"hello\""                   # String
+)
+
+for expr in "${PRINT_EXPRS[@]}"; do
+    "$OMNILISP" -T -e "$expr" > /dev/null 2>&1
+done
+
+echo "  print_term coverage exercises complete"
+
 exit 0

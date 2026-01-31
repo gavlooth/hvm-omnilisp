@@ -1,14 +1,14 @@
         -:    0:Source:../hvm4/clang/parse/starts_with.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
- 63747098:    1:fn int parse_starts_with(PState *s, const char *str) {
- 63747098:    2:  u32 i = 0;
- 70948847:    3:  while (str[i]) {
- 64905661:    4:    if (parse_peek_at(s, i) != str[i]) {
- 57703912:    5:      return 0;
+        -:    0:Runs:17
+  3978000:    1:fn int parse_starts_with(PState *s, const char *str) {
+  3978000:    2:  u32 i = 0;
+  4423280:    3:  while (str[i]) {
+  4048704:    4:    if (parse_peek_at(s, i) != str[i]) {
+  3603424:    5:      return 0;
         -:    6:    }
-  7201749:    7:    i++;
+   445280:    7:    i++;
         -:    8:  }
-  6043186:    9:  return 1;
+   374576:    9:  return 1;
         -:   10:}

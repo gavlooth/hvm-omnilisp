@@ -1,13 +1,13 @@
         -:    0:Source:../hvm4/clang/term/new/op2.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// Op2(opr, x, y): binary operation, strict on x first
         -:    2:// Layout: heap_read(loc+0) = x, heap_read(loc+1) = y
         -:    3:// EXT field = operation code (OP_ADD, OP_MUL, etc.)
-4288686150:    4:fn Term term_new_op2(u32 opr, Term x, Term y) {
-4288686150:    5:  u32 loc = heap_alloc(2);
-4288686147:    6:  heap_write(loc + 0, x);
-4288686147:    7:  heap_write(loc + 1, y);
-4288686147:    8:  return term_new(0, OP2, opr, loc);
+     1696:    4:fn Term term_new_op2(u32 opr, Term x, Term y) {
+     1696:    5:  u32 loc = heap_alloc(2);
+     1696:    6:  heap_write(loc + 0, x);
+     1696:    7:  heap_write(loc + 1, y);
+     1696:    8:  return term_new(0, OP2, opr, loc);
         -:    9:}

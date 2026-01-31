@@ -1,22 +1,22 @@
         -:    0:Source:../hvm4/clang/wnf/alo_dup.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// @{s} ! x &L = v; t
         -:    2:// ------------------ ALO-DUP
         -:    3:// x' ← fresh
         -:    4:// ! x' &L = @{s} v
         -:    5:// @{x',s} t
-   621651:    6:fn Term wnf_alo_dup(u32 ls_loc, u32 len, u32 book_loc, u32 lab) {
-   621651:    7:  u64 dup_term_val  = heap_alloc(1);
-   621651:    8:  u64 bind_ent = heap_alloc(1);
-   621651:    9:  heap_set(bind_ent, ((u64)(u32)dup_term_val << 32) | ls_loc);
-   621651:   10:  u64 alo0 = heap_alloc(1);
-   621651:   11:  heap_set(alo0, ((u64)ls_loc << 32) | (book_loc + 0));
-   621651:   12:  heap_set(dup_term_val, term_new(0, ALO, len, alo0));
-   621651:   13:  u64 alo1 = heap_alloc(1);
-   621651:   14:  heap_set(alo1, ((u64)ls_loc << 32) | (book_loc + 0));
-   621651:   15:  u64 alo2 = heap_alloc(1);
-   621651:   16:  heap_set(alo2, ((u64)(u32)bind_ent << 32) | (book_loc + 1));
-   621651:   17:  return term_new_dup(lab, term_new(0, ALO, len, alo1), term_new(0, ALO, len + 1, alo2));
+     6939:    6:fn Term wnf_alo_dup(u32 ls_loc, u32 len, u32 book_loc, u32 lab) {
+     6939:    7:  u64 dup_term_val  = heap_alloc(1);
+     6939:    8:  u64 bind_ent = heap_alloc(1);
+     6939:    9:  heap_set(bind_ent, ((u64)(u32)dup_term_val << 32) | ls_loc);
+     6939:   10:  u64 alo0 = heap_alloc(1);
+     6939:   11:  heap_set(alo0, ((u64)ls_loc << 32) | (book_loc + 0));
+     6939:   12:  heap_set(dup_term_val, term_new(0, ALO, len, alo0));
+     6939:   13:  u64 alo1 = heap_alloc(1);
+     6939:   14:  heap_set(alo1, ((u64)ls_loc << 32) | (book_loc + 0));
+     6939:   15:  u64 alo2 = heap_alloc(1);
+     6939:   16:  heap_set(alo2, ((u64)(u32)bind_ent << 32) | (book_loc + 1));
+     6939:   17:  return term_new_dup(lab, term_new(0, ALO, len, alo1), term_new(0, ALO, len + 1, alo2));
         -:   18:}

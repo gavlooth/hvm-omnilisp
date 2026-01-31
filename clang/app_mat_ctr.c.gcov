@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/wnf/app_mat_ctr.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// (λ{#K:h; m} #K{a,b})
         -:    2:// -------------------- APP-MAT-CTR-MAT
         -:    3:// (h a b)
@@ -9,24 +9,24 @@
         -:    5:// (λ{#K:h; m} #L{a,b})
         -:    6:// -------------------- APP-MAT-CTR-MIS
         -:    7:// (m #L{a,b})
-   124286:    8:fn Term wnf_app_mat_ctr(Term mat, Term ctr) {
-   124286:    9:  ITRS++;
-   124286:   10:  u32 mat_ext = term_ext(mat);
-   124286:   11:  u32 ctr_ext = term_ext(ctr);
-   124286:   12:  u32 mat_loc = term_val(mat);
-   124286:   13:  if (mat_ext != ctr_ext) {
-   108609:   14:    Term g = heap_read(mat_loc + 1);
-   108609:   15:    return term_new_app_at(mat_loc, g, ctr);
+     1228:    8:fn Term wnf_app_mat_ctr(Term mat, Term ctr) {
+     1228:    9:  ITRS++;
+     1228:   10:  u32 mat_ext = term_ext(mat);
+     1228:   11:  u32 ctr_ext = term_ext(ctr);
+     1228:   12:  u32 mat_loc = term_val(mat);
+     1228:   13:  if (mat_ext != ctr_ext) {
+     1087:   14:    Term g = heap_read(mat_loc + 1);
+     1087:   15:    return term_new_app_at(mat_loc, g, ctr);
         -:   16:  }
-    15677:   17:  u32 ari = term_tag(ctr) - C00;
-    15677:   18:  Term res = heap_read(mat_loc);
-    15677:   19:  if (ari == 0) {
-     1298:   20:    return res;
+      141:   17:  u32 ari = term_tag(ctr) - C00;
+      141:   18:  Term res = heap_read(mat_loc);
+      141:   19:  if (ari == 0) {
+       12:   20:    return res;
         -:   21:  }
-    14379:   22:  u32 ctr_loc = term_val(ctr);
-    14379:   23:  u64 apps = heap_alloc(2 * (u64)ari);
-    55099:   24:  for (u32 i = 0; i < ari; i++) {
-    40720:   25:    res = term_new_app_at((u32)(apps + 2 * (u64)i), res, heap_read(ctr_loc + i));
+      129:   22:  u32 ctr_loc = term_val(ctr);
+      129:   23:  u64 apps = heap_alloc(2 * (u64)ari);
+      476:   24:  for (u32 i = 0; i < ari; i++) {
+      347:   25:    res = term_new_app_at((u32)(apps + 2 * (u64)i), res, heap_read(ctr_loc + i));
         -:   26:  }
-    14379:   27:  return res;
+      129:   27:  return res;
         -:   28:}

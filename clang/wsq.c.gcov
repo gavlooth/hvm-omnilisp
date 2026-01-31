@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/data/wsq.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// data/wsq.c - Chase-Lev work-stealing deque for u64 tasks.
         -:    2://
         -:    3:// Context
@@ -45,85 +45,85 @@
         -:   41:} WsDeque;
         -:   42:
         -:   43:// Allocate aligned memory for the ring buffer.
-      282:   44:static inline void *wsq_aligned_alloc(size_t alignment, size_t nbytes) {
-      282:   45:  void *ptr = NULL;
-      282:   46:  size_t size = ((nbytes + alignment - 1) / alignment) * alignment;
-      282:   47:  int err = posix_memalign(&ptr, alignment, size);
-      282:   48:  if (err) {
+       16:   44:static inline void *wsq_aligned_alloc(size_t alignment, size_t nbytes) {
+       16:   45:  void *ptr = NULL;
+       16:   46:  size_t size = ((nbytes + alignment - 1) / alignment) * alignment;
+       16:   47:  int err = posix_memalign(&ptr, alignment, size);
+       16:   48:  if (err) {
     #####:   49:    return NULL;
         -:   50:  }
-      282:   51:  return ptr;
+       16:   51:  return ptr;
         -:   52:}
         -:   53:
         -:   54:// Initialize a deque with 2^capacity_pow2 slots.
-      282:   55:static inline int wsq_init(WsDeque *q, u32 capacity_pow2) {
-      282:   56:  size_t cap = (size_t)1 << capacity_pow2;
-      282:   57:  q->buf = (u64 *)wsq_aligned_alloc(WSQ_L1, cap * sizeof(u64));
-      282:   58:  if (!q->buf) {
+       16:   55:static inline int wsq_init(WsDeque *q, u32 capacity_pow2) {
+       16:   56:  size_t cap = (size_t)1 << capacity_pow2;
+       16:   57:  q->buf = (u64 *)wsq_aligned_alloc(WSQ_L1, cap * sizeof(u64));
+       16:   58:  if (!q->buf) {
     #####:   59:    return 0;
         -:   60:  }
-      282:   61:  q->cap  = cap;
-      282:   62:  q->mask = cap - 1;
-      282:   63:  atomic_store_explicit(&q->top.v, 0, memory_order_relaxed);
-      282:   64:  atomic_store_explicit(&q->bot.v, 0, memory_order_relaxed);
-      282:   65:  return 1;
+       16:   61:  q->cap  = cap;
+       16:   62:  q->mask = cap - 1;
+       16:   63:  atomic_store_explicit(&q->top.v, 0, memory_order_relaxed);
+       16:   64:  atomic_store_explicit(&q->bot.v, 0, memory_order_relaxed);
+       16:   65:  return 1;
         -:   66:}
         -:   67:
         -:   68:// Release the deque buffer.
-      144:   69:static inline void wsq_free(WsDeque *q) {
-      144:   70:  if (q && q->buf) {
-      144:   71:    free(q->buf);
-      144:   72:    q->buf = NULL;
+       15:   69:static inline void wsq_free(WsDeque *q) {
+       15:   70:  if (q && q->buf) {
+       15:   71:    free(q->buf);
+       15:   72:    q->buf = NULL;
         -:   73:  }
-      144:   74:}
+       15:   74:}
         -:   75:
         -:   76:// Owner push to the bottom; returns 1 on success, 0 if full.
-    71936:   77:static inline int wsq_push(WsDeque *q, u64 x) {
-    71936:   78:  size_t b = atomic_load_explicit(&q->bot.v, memory_order_relaxed);
-    71936:   79:  size_t t = atomic_load_explicit(&q->top.v, memory_order_acquire);
-    71936:   80:  if (b - t >= q->cap) {
+       31:   77:static inline int wsq_push(WsDeque *q, u64 x) {
+       31:   78:  size_t b = atomic_load_explicit(&q->bot.v, memory_order_relaxed);
+       31:   79:  size_t t = atomic_load_explicit(&q->top.v, memory_order_acquire);
+       31:   80:  if (b - t >= q->cap) {
     #####:   81:    return 0;
         -:   82:  }
-    71936:   83:  __builtin_prefetch(&q->buf[b & q->mask], 1, 1);
-    71936:   84:  q->buf[b & q->mask] = x;
-    71936:   85:  atomic_store_explicit(&q->bot.v, b + 1, memory_order_release);
-    71936:   86:  return 1;
+       31:   83:  __builtin_prefetch(&q->buf[b & q->mask], 1, 1);
+       31:   84:  q->buf[b & q->mask] = x;
+       31:   85:  atomic_store_explicit(&q->bot.v, b + 1, memory_order_release);
+       31:   86:  return 1;
         -:   87:}
         -:   88:
         -:   89:// Owner pop from the bottom; returns 1 on success, 0 if empty or lost race.
-    38481:   90:static inline int wsq_pop(WsDeque *q, u64 *out) {
-    38481:   91:  size_t b = atomic_load_explicit(&q->bot.v, memory_order_relaxed);
-    38481:   92:  if (b == 0) {
+       46:   90:static inline int wsq_pop(WsDeque *q, u64 *out) {
+       46:   91:  size_t b = atomic_load_explicit(&q->bot.v, memory_order_relaxed);
+       46:   92:  if (b == 0) {
     #####:   93:    return 0;
         -:   94:  }
-    38481:   95:  size_t b1 = b - 1;
-    38481:   96:  __builtin_prefetch(&q->buf[b1 & q->mask], 0, 1);
-    38481:   97:  atomic_store_explicit(&q->bot.v, b1, memory_order_release);
-    38481:   98:  atomic_thread_fence(memory_order_acq_rel);
+       46:   95:  size_t b1 = b - 1;
+       46:   96:  __builtin_prefetch(&q->buf[b1 & q->mask], 0, 1);
+       46:   97:  atomic_store_explicit(&q->bot.v, b1, memory_order_release);
+       46:   98:  atomic_thread_fence(memory_order_acq_rel);
         -:   99:
-    38481:  100:  size_t t = atomic_load_explicit(&q->top.v, memory_order_acquire);
-    38481:  101:  if (t <= b1) {
-    38337:  102:    u64 x = q->buf[b1 & q->mask];
-    38337:  103:    if (t == b1) {
-     1241:  104:      size_t expected = t;
-     1241:  105:      bool ok = atomic_compare_exchange_strong_explicit(
+       46:  100:  size_t t = atomic_load_explicit(&q->top.v, memory_order_acquire);
+       46:  101:  if (t <= b1) {
+       31:  102:    u64 x = q->buf[b1 & q->mask];
+       31:  103:    if (t == b1) {
+       31:  104:      size_t expected = t;
+       31:  105:      bool ok = atomic_compare_exchange_strong_explicit(
         -:  106:        &q->top.v,
         -:  107:        &expected,
         -:  108:        t + 1,
         -:  109:        memory_order_acq_rel,
         -:  110:        memory_order_acquire
         -:  111:      );
-     1241:  112:      if (!ok) {
+       31:  112:      if (!ok) {
     #####:  113:        atomic_store_explicit(&q->bot.v, t + 1, memory_order_release);
     #####:  114:        return 0;
         -:  115:      }
-     1241:  116:      atomic_store_explicit(&q->bot.v, t + 1, memory_order_release);
+       31:  116:      atomic_store_explicit(&q->bot.v, t + 1, memory_order_release);
         -:  117:    }
-    38337:  118:    *out = x;
-    38337:  119:    return 1;
+       31:  118:    *out = x;
+       31:  119:    return 1;
         -:  120:  } else {
-      144:  121:    atomic_store_explicit(&q->bot.v, t, memory_order_release);
-      144:  122:    return 0;
+       15:  121:    atomic_store_explicit(&q->bot.v, t, memory_order_release);
+       15:  122:    return 0;
         -:  123:  }
         -:  124:}
         -:  125:

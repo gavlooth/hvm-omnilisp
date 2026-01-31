@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/print/utf8.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:422
+        -:    0:Runs:17
         -:    1:// Print a Unicode codepoint as UTF-8
         -:    2:// Emits a codepoint as UTF-8 without validation (used by CHR/STR sugar).
     #####:    3:fn void print_utf8(FILE *f, u32 c) {

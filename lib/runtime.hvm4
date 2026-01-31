@@ -657,6 +657,10 @@
     #Sym: λ&s. @type_Symbol
     #CON: λ&h. λ&t. @type_List
     #NIL: @type_List
+    #Arr: λ&len. λ&data. @type_Array
+    #Dict: λ&entries. @type_Dict
+    #Iter: λ&state. λ&next_fn. @type_Iterator
+    #Rang: λ&s. λ&e. λ&st. @type_Range
     #Clo: λ&e. λ&b. @type_Function
     #CloR: λ&e. λ&b. @type_Function
     #Hndl: λ&idx. λ&gen. @type_Handle
@@ -2054,17 +2058,24 @@
 // =============================================================================
 
 // Built-in type descriptors: #TDsc{name, parent, fields}
-@type_Any     = #TDsc{1063905, #NIL, #NIL}       // omni_nick("Any")
-@type_Nothing = #TDsc{1312104, @type_Any, #NIL}  // omni_nick("Noth")
-@type_Int     = #TDsc{1183078, @type_Any, #NIL}  // omni_nick("Int")
-@type_Float   = #TDsc{1054108, @type_Any, #NIL}  // omni_nick("Flot")
-@type_Bool    = #TDsc{1246058, @type_Any, #NIL}  // omni_nick("Bool")
-@type_Char    = #TDsc{1315586, @type_Any, #NIL}  // omni_nick("Char")
-@type_Symbol  = #TDsc{1266085, @type_Any, #NIL}  // omni_nick("Sym")
-@type_String  = #TDsc{1381028, @type_Any, #NIL}  // omni_nick("Str")
-@type_List    = #TDsc{1385800, @type_Any, #NIL}  // omni_nick("List")
-@type_Function = #TDsc{1122734, @type_Any, #NIL} // omni_nick("Fun")
-@type_Handle  = #TDsc{1125896, @type_Any, #NIL}  // omni_nick("Hndl")
+@type_Any      = #TDsc{1063905, #NIL, #NIL}        // omni_nick("Any")
+@type_Nothing  = #TDsc{1312104, @type_Any, #NIL}   // omni_nick("Noth")
+@type_Int      = #TDsc{1183078, @type_Any, #NIL}   // omni_nick("Int")
+@type_Float    = #TDsc{1054108, @type_Any, #NIL}   // omni_nick("Flot")
+@type_Bool     = #TDsc{1246058, @type_Any, #NIL}   // omni_nick("Bool")
+@type_Char     = #TDsc{1315586, @type_Any, #NIL}   // omni_nick("Char")
+@type_Symbol   = #TDsc{1266085, @type_Any, #NIL}   // omni_nick("Sym")
+@type_String   = #TDsc{1381028, @type_Any, #NIL}   // omni_nick("Str")
+@type_Function = #TDsc{1122734, @type_Any, #NIL}   // omni_nick("Fun")
+@type_Handle   = #TDsc{1125896, @type_Any, #NIL}   // omni_nick("Hndl")
+
+// Sequence types (abstract parent for polymorphic dispatch)
+@type_Sequence = #TDsc{1364839, @type_Any, #NIL}   // omni_nick("Seq")
+@type_List     = #TDsc{1385800, @type_Sequence, #NIL}  // omni_nick("List")
+@type_Array    = #TDsc{1183681, @type_Sequence, #NIL}  // omni_nick("Arr")
+@type_Dict     = #TDsc{1316711, @type_Any, #NIL}   // omni_nick("Dict")
+@type_Iterator = #TDsc{1231188, @type_Sequence, #NIL}  // omni_nick("Iter")
+@type_Range    = #TDsc{1381735, @type_Sequence, #NIL}  // omni_nick("Rang")
 
 // =============================================================================
 // List Helpers
@@ -2130,21 +2141,107 @@
       f(h)(tail_result)
   }(xs)
 
+// =============================================================================
+// Polymorphic Sequence Operations
+// =============================================================================
+// These functions dispatch on type: List, Array, Dict, Iterator
+// All use @omni_apply to invoke OmniLisp closures properly
+
 // Map with @omni_apply - applies OmniLisp function to each element
+// Polymorphic: List → List, Array → Array, Dict → Dict (over values), Iterator → Iterator
 @omni_map_apply = λ&menv. λ&fn. λ&xs.
   λ{
+    // List
     #NIL: #NIL
     #CON: λ&h. λ&t.
       #CON{@omni_apply(menv)(fn)(h), @omni_map_apply(menv)(fn)(t)}
+    // Array - map over data, preserve length
+    #Arr: λ&len. λ&data.
+      #Arr{len, @omni_map_apply(menv)(fn)(data)}
+    // Dict - map over values, preserve keys
+    #Dict: λ&entries.
+      #Dict{@omni_map_apply(menv)(λ&pair.
+        λ{#CON: λ&k. λ&rest.
+          λ{#CON: λ&v. λ&u.
+            #CON{k, #CON{@omni_apply(menv)(fn)(v), #NIL}}
+          }(rest)
+        }(pair)
+      )(entries)}
+    // Iterator - lazy map
+    #Iter: λ&state. λ&next_fn.
+      #Iter{xs, λ&i. @omni_map_iter_next(menv)(fn)(i)}
+    // Range - convert to mapped iterator
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{xs, λ&i. @omni_map_iter_next(menv)(fn)(i)}
   }(xs)
 
+// Helper: map iterator next function
+@omni_map_iter_next = λ&menv. λ&fn. λ&iter.
+  (λ&stepped.
+    λ{
+      #Some: λ&v. λ&rest. #Some{@omni_apply(menv)(fn)(v), @omni_map_apply(menv)(fn)(rest)}
+      #None: #None{}
+    }(stepped)
+  )(@omni_iter_next(iter))
+
+// Generic iterator step (handles Iter and Rang)
+@omni_iter_next = λ&iter.
+  λ{
+    #Iter: λ&state. λ&next_fn. next_fn(state)
+    #Rang: λ&cur. λ&end. λ&step.
+      λ{
+        1: #None{}
+        _: #Some{cur, #Rang{(cur + step), end, step}}
+      }((cur >= end))
+    _: λ&u_. #None{}
+  }(iter)
+
 // Filter with @omni_apply - keeps elements where predicate returns truthy
+// Polymorphic: List → List, Array → Array, Dict → Dict (by value), Iterator → Iterator
 @omni_filter_apply = λ&menv. λ&pred. λ&xs.
   λ{
+    // List
     #NIL: #NIL
     #CON: λ&h. λ&t.
       @omni_filter_one(menv)(pred)(h)(@omni_filter_apply(menv)(pred)(t))
+    // Array - filter data, recompute length
+    #Arr: λ&len. λ&data.
+      (λ&filtered. #Arr{@omni_list_length(filtered), filtered})(@omni_filter_apply(menv)(pred)(data))
+    // Dict - filter by value predicate
+    #Dict: λ&entries.
+      #Dict{@omni_filter_apply(menv)(λ&pair.
+        λ{#CON: λ&k. λ&rest.
+          λ{#CON: λ&v. λ&u. @omni_apply(menv)(pred)(v)}(rest)
+        }(pair)
+      )(entries)}
+    // Iterator - lazy filter
+    #Iter: λ&state. λ&next_fn.
+      #Iter{xs, λ&i. @omni_filter_iter_next(menv)(pred)(i)}
+    // Range - convert to filtered iterator
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{xs, λ&i. @omni_filter_iter_next(menv)(pred)(i)}
   }(xs)
+
+// Helper: filter iterator next function
+@omni_filter_iter_next = λ&menv. λ&pred. λ&iter.
+  (λ&stepped.
+    λ{
+      #Some: λ&v. λ&rest.
+        @omni_filter_iter_check(menv)(pred)(v)(rest)
+      #None: #None{}
+    }(stepped)
+  )(@omni_iter_next(iter))
+
+// Helper: check filter predicate and continue if false
+@omni_filter_iter_check = λ&menv. λ&pred. λ&v. λ&rest.
+  (λ&result.
+    λ{
+      #Fals: @omni_filter_iter_next(menv)(pred)(rest)
+      #Noth: @omni_filter_iter_next(menv)(pred)(rest)
+      #Cst: λ&n. λ{0: @omni_filter_iter_next(menv)(pred)(rest); _: λ&u_. #Some{v, @omni_filter_apply(menv)(pred)(rest)}}(n)
+      _: λ&u_. #Some{v, @omni_filter_apply(menv)(pred)(rest)}
+    }(result)
+  )(@omni_apply(menv)(pred)(v))
 
 // Helper: filter a single element, prepend if truthy
 @omni_filter_one = λ&menv. λ&pred. λ&h. λ&tail.
@@ -2158,21 +2255,61 @@
   )(@omni_apply(menv)(pred)(h))
 
 // Left fold with @omni_apply - applies curried OmniLisp function
+// Polymorphic: List, Array, Dict (values), Iterator
 @omni_foldl_apply = λ&menv. λ&fn. λ&acc. λ&xs.
   λ{
+    // List
     #NIL: acc
     #CON: λ&h. λ&t.
       (λ&new_acc. @omni_foldl_apply(menv)(fn)(new_acc)(t))(@omni_apply(menv)(@omni_apply(menv)(fn)(acc))(h))
+    // Array - fold over data
+    #Arr: λ&len. λ&data.
+      @omni_foldl_apply(menv)(fn)(acc)(data)
+    // Dict - fold over values
+    #Dict: λ&entries.
+      @omni_foldl_apply(menv)(λ&a. λ&pair.
+        λ{#CON: λ&k. λ&rest.
+          λ{#CON: λ&v. λ&u. @omni_apply(menv)(@omni_apply(menv)(fn)(a))(v)}(rest)
+        }(pair)
+      )(acc)(entries)
+    // Iterator - materialize and fold
+    #Iter: λ&state. λ&next_fn.
+      @omni_foldl_iter(menv)(fn)(acc)(xs)
+    // Range - iterate and fold
+    #Rang: λ&s. λ&e. λ&st.
+      @omni_foldl_iter(menv)(fn)(acc)(xs)
   }(xs)
 
+// Helper: fold over iterator
+@omni_foldl_iter = λ&menv. λ&fn. λ&acc. λ&iter.
+  (λ&stepped.
+    λ{
+      #Some: λ&v. λ&rest.
+        (λ&new_acc. @omni_foldl_iter(menv)(fn)(new_acc)(rest))(@omni_apply(menv)(@omni_apply(menv)(fn)(acc))(v))
+      #None: acc
+    }(stepped)
+  )(@omni_iter_next(iter))
+
 // Right fold with @omni_apply
+// Polymorphic: List, Array (note: foldr on iterators would need to materialize)
 @omni_foldr_apply = λ&menv. λ&fn. λ&acc. λ&xs.
   λ{
+    // List
     #NIL: acc
     #CON: λ&h. λ&t.
       (λ&tail_result.
         @omni_apply(menv)(@omni_apply(menv)(fn)(h))(tail_result)
       )(@omni_foldr_apply(menv)(fn)(acc)(t))
+    // Array - foldr over data
+    #Arr: λ&len. λ&data.
+      @omni_foldr_apply(menv)(fn)(acc)(data)
+    // Dict - foldr over values
+    #Dict: λ&entries.
+      @omni_foldr_apply(menv)(λ&elem. λ&a.
+        λ{#CON: λ&k. λ&rest.
+          λ{#CON: λ&v. λ&u. @omni_apply(menv)(@omni_apply(menv)(fn)(v))(a)}(rest)
+        }(elem)
+      )(acc)(entries)
   }(xs)
 
 // =============================================================================
