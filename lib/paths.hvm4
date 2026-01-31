@@ -32,9 +32,12 @@
 // Works with: arrays (by index), dicts (by key), lists (by index)
 @omni_get = λcoll. λkey.
   λ{
-    // Array: get by index
-    #Arr: λ&elems.
-      @omni_list_nth(key)(elems)
+    // Array: get by index - format is #Arr{len, data}
+    #Arr: λ&len. λ&elems.
+      λ{
+        #Cst: λ&n. @omni_list_nth(n)(elems)
+        _: #Noth
+      }(key)
 
     // Dict: get by key
     #Dict: λ&pairs.

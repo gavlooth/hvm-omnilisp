@@ -65,7 +65,12 @@ static u32 OMNI_NAM_CON;   // Cons cell
 static u32 OMNI_NAM_NIL;   // Empty list
 static u32 OMNI_NAM_CHR;   // Character
 static u32 OMNI_NAM_ARR;   // Array
+static u32 OMNI_NAM_AGE;   // Array get: #AGe{arr, idx}
+static u32 OMNI_NAM_ASE;   // Array set: #ASe{arr, idx, val}
+static u32 OMNI_NAM_ALE;   // Array length: #ALe{arr}
 static u32 OMNI_NAM_DICT;  // Dictionary
+static u32 OMNI_NAM_DGE;   // Dict get: #DGe{dict, key}
+static u32 OMNI_NAM_DSE;   // Dict set: #DSe{dict, key, val}
 static u32 OMNI_NAM_FST;   // First
 static u32 OMNI_NAM_SND;   // Second
 
@@ -581,7 +586,12 @@ fn void omni_names_init(void) {
   OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
   OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
   OMNI_NAM_ARR  = omni_nick("Arr");
+  OMNI_NAM_AGE  = omni_nick("AGe");
+  OMNI_NAM_ASE  = omni_nick("ASe");
+  OMNI_NAM_ALE  = omni_nick("ALe");
   OMNI_NAM_DICT = omni_nick("Dict");
+  OMNI_NAM_DGE  = omni_nick("DGe");
+  OMNI_NAM_DSE  = omni_nick("DSe");
   OMNI_NAM_FST  = omni_nick("Fst");
   OMNI_NAM_SND  = omni_nick("Snd");
 

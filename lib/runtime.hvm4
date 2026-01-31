@@ -257,16 +257,59 @@
     #Gt: λ&a. λ&b.
       (λ&av. (λ&va. (λ&bv. @omni_gt(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
 
+    // Boolean AND with short-circuit evaluation
+    #And: λ&a. λ&b.
+      (λ&av.
+        λ{
+          #Fals: #Fals{}
+          #Cst: λ&n. λ{0: #Fals{}; _: λ&u_. @omni_eval(menv)(b)}(n)
+          _: λ&u_. @omni_eval(menv)(b)
+        }(av)
+      )(@omni_eval(menv)(a))
+
+    // Boolean OR with short-circuit evaluation
+    #Or: λ&a. λ&b.
+      (λ&av.
+        λ{
+          #True: #True{}
+          #Cst: λ&n. λ{0: @omni_eval(menv)(b); _: λ&u_. av}(n)
+          #Fals: @omni_eval(menv)(b)
+          _: λ&u_. av
+        }(av)
+      )(@omni_eval(menv)(a))
+
+    // Boolean NOT
+    #Not: λ&a.
+      (λ&av. @omni_not(av))(@omni_eval(menv)(a))
+
+    // Array literal - evaluate elements and compute length
+    #Arr: λ&elems.
+      (λ&evaluated.
+        #Arr{@omni_list_length(evaluated), evaluated}
+      )(@omni_eval_list(menv)(elems))
+
+    // Dict literal - evaluate all key-value pairs
+    #Dict: λ&entries.
+      #Dict{@omni_eval_dict_entries(menv)(entries)}
+
     // Type check: (type? value {Type})
     #Tyck: λ&val. λ&type.
       (λ&v. @omni_type_check(v)(type))(@omni_eval(menv)(val))
 
-    // First/Second of pair
+    // First/Second of pair (also works on arrays)
     #Fst: λ&p.
-      (λ&pv. λ{#CON: λ&h. λ&t. h}(pv))(@omni_eval(menv)(p))
+      (λ&pv. λ{
+        #CON: λ&h. λ&t. h
+        #Arr: λ&len. λ&data. λ{#CON: λ&h. λ&t. h; _: λ&u_. #Noth{}}(data)
+        _: λ&u_. #Noth{}
+      }(pv))(@omni_eval(menv)(p))
 
     #Snd: λ&p.
-      (λ&pv. λ{#CON: λ&h. λ&t. t}(pv))(@omni_eval(menv)(p))
+      (λ&pv. λ{
+        #CON: λ&h. λ&t. t
+        #Arr: λ&len. λ&data. λ{#CON: λ&h. λ&t. t; _: λ&u_. #NIL}(data)
+        _: λ&u_. #NIL
+      }(pv))(@omni_eval(menv)(p))
 
     // ==========================================================================
     // Tower / Meta-programming Operations
@@ -382,11 +425,17 @@
     // Path Access (functional)
     // ==========================================================================
 
-    // Get: (get coll key) → value or nothing
-    #Get: λ&coll_expr. λ&key_expr.
-      (λ&coll.
-        (λ&key. @omni_get(coll)(key))(@omni_eval(menv)(key_expr))
-      )(@omni_eval(menv)(coll_expr))
+    // Get: (get coll key default?) → value or default or nothing
+    // u_coll, u_key, u_default are unevaluated AST expressions
+    #Get: λ&u_coll. λ&u_key. λ&u_default.
+      (λ&coll. λ&key.
+        (λ&result.
+          λ{
+            #Noth: @omni_eval(menv)(u_default)
+            _: λ&u_. result
+          }(result)
+        )(@omni_get(coll)(key))
+      )(@omni_eval(menv)(u_coll))(@omni_eval(menv)(u_key))
 
     // GetIn: (get-in coll path) → nested value or nothing
     #GtIn: λ&coll_expr. λ&path_expr.
@@ -441,6 +490,10 @@
     // Unquote-splicing: should only appear inside quasiquote
     #UQS: λ&expr.
       #Err{#sym_unquote_splice_outside_qq}
+
+    // Code wrapper: unwrap and evaluate the contents
+    #Cod: λ&inner.
+      @omni_eval(menv)(inner)
 
     // Default: return as-is
     _: λ&u_. exp
@@ -746,6 +799,42 @@
         @omni_eval_list_cps(menv)(t)(λ&tv.
           (k(#CON{hv, tv}))))
   }(xs)
+
+// Evaluate dict entries (list of (key value) pairs)
+@omni_eval_dict_entries = λ&menv. λ&entries.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&key. λ&val_rest.
+          λ{
+            #CON: λ&val. λ&ux.
+              #CON{#CON{@omni_eval(menv)(key), #CON{@omni_eval(menv)(val), #NIL}},
+                   @omni_eval_dict_entries(menv)(rest)}
+            _: λ&u_. @omni_eval_dict_entries(menv)(rest)
+          }(val_rest)
+        _: λ&u_. @omni_eval_dict_entries(menv)(rest)
+      }(pair)
+  }(entries)
+
+// Evaluate dict entries in CPS mode (for use inside reset/handle)
+@omni_eval_dict_entries_cps = λ&menv. λ&entries. λ&k.
+  λ{
+    #NIL: (k(#NIL))
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&key. λ&val_rest.
+          λ{
+            #CON: λ&val. λ&ux.
+              @omni_eval_cps(menv)(key)(λ&kv.
+                @omni_eval_cps(menv)(val)(λ&vv.
+                  @omni_eval_dict_entries_cps(menv)(rest)(λ&rest_evaled.
+                    (k(#CON{#CON{kv, #CON{vv, #NIL}}, rest_evaled})))))
+            _: λ&u_. @omni_eval_dict_entries_cps(menv)(rest)(k)
+          }(val_rest)
+        _: λ&u_. @omni_eval_dict_entries_cps(menv)(rest)(k)
+      }(pair)
+  }(entries)
 
 // =============================================================================
 // Arithmetic
@@ -1152,6 +1241,40 @@
         @omni_eval_cps(#MEnv{env, handlers, parent, level})(val)(λ&yv.
           // Capture current continuation as fiber resumption point
           #FYld{yv, #Kont{kont}})
+
+      // Boolean AND with short-circuit (CPS)
+      #And: λ&a. λ&b.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&av.
+          λ{
+            #Fals: (kont(#Fals{}))
+            #Cst: λ&n. λ{0: (kont(#Fals{})); _: λ&u_. @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont)}(n)
+            _: λ&u_. @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont)
+          }(av))
+
+      // Boolean OR with short-circuit (CPS)
+      #Or: λ&a. λ&b.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&av.
+          λ{
+            #True: (kont(#True{}))
+            #Fals: @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont)
+            #Cst: λ&n. λ{0: @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont); _: λ&u_. (kont(av))}(n)
+            _: λ&u_. (kont(av))
+          }(av))
+
+      // Boolean NOT (CPS)
+      #Not: λ&a.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&av.
+          (kont(@omni_not(av))))
+
+      // Array literal (CPS)
+      #Arr: λ&elems.
+        @omni_eval_list_cps(#MEnv{env, handlers, parent, level})(elems)(λ&evaluated.
+          (kont(#Arr{@omni_list_length(evaluated), evaluated})))
+
+      // Dict literal (CPS)
+      #Dict: λ&entries.
+        @omni_eval_dict_entries_cps(#MEnv{env, handlers, parent, level})(entries)(λ&evaluated.
+          (kont(#Dict{evaluated})))
 
       // For other forms, fall back to direct evaluation then continue
       _ : λ&u_. (kont(@omni_eval(#MEnv{env, handlers, parent, level})(e)))
@@ -1988,32 +2111,37 @@
 // =============================================================================
 
 // Get value from collection by key
+// Key can be #Cst{n} for indexed access or #Sym{s} for alist/dict lookup
+// Uses same pattern as @nth for extracting from list
+// Note: key is consumed by the switch, so we extract what we need in each branch
 @omni_get = λ&coll. λ&key.
   λ{
-    // List: key is index
-    #CON: λ&h. λ&t.
+    // Numeric key - use @nth-style pattern: switch on n first, then coll
+    #Cst: λ&n.
       λ{
-        #Cst: λ&n. λ{
-          0: h
-          _: λ&u_. @omni_get(t)(#Cst{(n - 1)})
-        }(n)
-        // Symbol key - treat as alist lookup
-        #Sym: λ&s. @omni_alist_get(coll)(key)
+        0: λ{
+          #NIL: #Noth{}
+          #CON: λ&h. λ&t. h
+          #Arr: λ&len. λ&data. @omni_get(data)(#Cst{0})
+          _: λ&u_. #Noth{}
+        }(coll)
+        _: λ&u_. λ{
+          #NIL: #Noth{}
+          #CON: λ&h. λ&t. @omni_get(t)(#Cst{(n - 1)})
+          #Arr: λ&len. λ&data. @omni_get(data)(#Cst{n})
+          _: λ&u_. #Noth{}
+        }(coll)
+      }(n)
+    // Symbol key - use alist or dict lookup
+    #Sym: λ&s.
+      λ{
+        #CON: λ&h. λ&t. @omni_alist_get(coll)(#Sym{s})
+        #Dict: λ&entries. @omni_dict_get(entries)(#Sym{s})
         _: λ&u_. #Noth{}
-      }(key)
-
-    #NIL: #Noth{}
-
-    // Dict: lookup by key
-    #Dict: λ&entries.
-      @omni_dict_get(entries)(key)
-
-    // Array: index access
-    #Arr: λ&elems.
-      @omni_get(elems)(key)
-
+      }(coll)
+    // Other key types
     _: λ&u_. #Noth{}
-  }(coll)
+  }(key)
 
 // Get from alist (association list) by key
 @omni_alist_get = λ&alist. λ&key.
