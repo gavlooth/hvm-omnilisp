@@ -13,6 +13,34 @@
 // This enables gradual/flowing laziness through pipelines.
 
 // =============================================================================
+// Sequence Conversion Helpers
+// =============================================================================
+
+// Convert any sequence to list (materializes lazy sequences)
+@to_list = λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. xs
+    #Arr: λ&len. λ&data. data
+    #Iter: λ&state. λ&next_fn. @iter_to_list(xs)
+    #Rang: λ&s. λ&e. λ&st. @iter_to_list(xs)
+  }(xs)
+
+// Materialize iterator to list
+@iter_to_list = λ&iter.
+  (λ&stepped. λ{
+    #Some: λ&v. λ&rest. #CON{v, @iter_to_list(rest)}
+    #None: #NIL
+  }(stepped))(@iter_next(iter))
+
+// List length (O(n) for lists)
+@list_length = λ&xs.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t. (1 + @list_length(t))
+  }(xs)
+
+// =============================================================================
 // Polymorphic Sequence Operations (dispatch on List vs Iterator)
 // =============================================================================
 
@@ -370,17 +398,37 @@
   }(state)
 
 // Get element at index
+// Get nth element (0-indexed)
+// Polymorphic: List (O(n)), Array (O(1)), Iterator (O(n))
 @nth = λ&n. λ&xs.
+  (λ&idx.
+    λ{
+      // Array - O(1) direct access
+      #Arr: λ&len. λ&data.
+        λ{1: #Noth{}; _: @nth_list(idx)(data)}((idx >= len))
+      // List - O(n) traversal
+      #NIL: #Noth{}
+      #CON: λ&h. λ&t. @nth_list(idx)(xs)
+      // Iterator - materialize and access
+      #Iter: λ&state. λ&next_fn. @nth_iter(idx)(xs)
+      #Rang: λ&s. λ&e. λ&st.
+        (λ&val. λ{1: #Noth{}; _: val}((val >= e)))((s + (idx * st)))
+    }(xs)
+  )(λ{#Cst: λ&m. m; _: λ&u_. n}(n))
+
+// Helper: nth for lists
+@nth_list = λ&n. λ&xs.
   λ{
-    0: λ{
-      #NIL: #Noth{}
-      #CON: λ&h. λ&t. h
-    }(xs)
-    _: λ&u_. λ{
-      #NIL: #Noth{}
-      #CON: λ&h. λ&t. @nth((n - 1))(t)
-    }(xs)
-  }(λ{#Cst: λ&m. m}(n))
+    0: λ{#NIL: #Noth{}; #CON: λ&h. λ&t. h}(xs)
+    _: λ{#NIL: #Noth{}; #CON: λ&h. λ&t. @nth_list((n - 1))(t)}(xs)
+  }(n)
+
+// Helper: nth over iterator
+@nth_iter = λ&n. λ&iter.
+  (λ&stepped. λ{
+    #Some: λ&v. λ&rest. λ{0: v; _: @nth_iter((n - 1))(rest)}(n)
+    #None: #Noth{}
+  }(stepped))(@iter_next(iter))
 
 // Head of list
 @head = λ&xs.
@@ -1123,32 +1171,62 @@
 // =============================================================================
 
 // Find first element matching predicate
+// Polymorphic: List, Array, Iterator, Range
 @find = λ&p. λ&xs.
   λ{
     #NIL: #Noth{}
-    #CON: λ&h. λ&t.
-      λ{
-        #True: h
-        _: λ&u_. @find(p)(t)
-      }(p(h))
+    #CON: λ&h. λ&t. λ{#True: h; _: λ&u_. @find(p)(t)}(p(h))
+    #Arr: λ&len. λ&data. @find(p)(data)
+    #Iter: λ&state. λ&next_fn. @find_iter(p)(xs)
+    #Rang: λ&s. λ&e. λ&st. @find_iter(p)(xs)
   }(xs)
+
+// Helper: find over iterator
+@find_iter = λ&p. λ&iter.
+  (λ&stepped. λ{
+    #Some: λ&v. λ&rest. λ{#True: v; _: λ&u_. @find_iter(p)(rest)}(p(v))
+    #None: #Noth{}
+  }(stepped))(@iter_next(iter))
 
 // Find index of first element matching predicate
+// Polymorphic: List, Array, Iterator, Range
 @find_index = λ&p. λ&xs.
-  @find_index_helper(p)(xs)(#Cst{0})
-
-@find_index_helper = λ&p. λ&xs. λ&idx.
   λ{
-    #NIL: #Noth{}
-    #CON: λ&h. λ&t.
-      λ{
-        #True: idx
-        _: λ&u_. @find_index_helper(p)(t)(#Cst{(λ{#Cst: λ&n. n}(idx) + 1)})
-      }(p(h))
+    #Arr: λ&len. λ&data. @find_index_list(p)(data)(0)
+    #Iter: λ&state. λ&next_fn. @find_index_iter(p)(xs)(0)
+    #Rang: λ&s. λ&e. λ&st. @find_index_iter(p)(xs)(0)
+    _: λ&u_. @find_index_list(p)(xs)(0)
   }(xs)
 
-// Partition list by predicate: returns (matching, not-matching)
+@find_index_list = λ&p. λ&xs. λ&idx.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t. λ{#True: #Cst{idx}; _: λ&u_. @find_index_list(p)(t)((idx + 1))}(p(h))
+  }(xs)
+
+// Helper: find_index over iterator
+@find_index_iter = λ&p. λ&iter. λ&idx.
+  (λ&stepped. λ{
+    #Some: λ&v. λ&rest. λ{#True: #Cst{idx}; _: λ&u_. @find_index_iter(p)(rest)((idx + 1))}(p(v))
+    #None: #Noth{}
+  }(stepped))(@iter_next(iter))
+
+// Partition sequence by predicate: returns (matching, not-matching)
+// Polymorphic: List, Array, Iterator, Range
 @partition = λ&p. λ&xs.
+  λ{
+    #Arr: λ&len. λ&data.
+      (λ&result.
+        λ{#CON: λ&yes. λ&rest.
+          λ{#CON: λ&no. λ&u_.
+            #CON{#Arr{@list_length(yes), yes}, #CON{#Arr{@list_length(no), no}, #NIL}}
+          }(rest)
+        }(result)
+      )(@partition_list(p)(data))
+    _: λ&u_. @partition_list(p)(@to_list(xs))
+  }(xs)
+
+@partition_list = λ&p. λ&xs.
   @partition_helper(p)(xs)(#NIL)(#NIL)
 
 @partition_helper = λ&p. λ&xs. λ&yes. λ&no.
@@ -1227,23 +1305,53 @@
       )(@span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(f(x))(key)))(t)))(f(h))
   }(xs)
 
-// Intersperse element between list elements
+// Intersperse element between sequence elements
+// Polymorphic: List, Array, Iterator, Range
 @intersperse = λ&sep. λ&xs.
   λ{
     #NIL: #NIL
-    #CON: λ&h. λ&t.
-      λ{
-        #NIL: #CON{h, #NIL}
-        _: λ&u_. #CON{h, #CON{sep, @intersperse(sep)(t)}}
-      }(t)
+    #CON: λ&h. λ&t. λ{#NIL: #CON{h, #NIL}; _: λ&u_. #CON{h, #CON{sep, @intersperse(sep)(t)}}}(t)
+    #Arr: λ&len. λ&data.
+      (λ&result. #Arr{@list_length(result), result})(@intersperse(sep)(data))
+    #Iter: λ&state. λ&next_fn.
+      #Iter{#CON{xs, #CON{sep, #CON{0, #NIL}}}, @intersperse_iter_next}
+    #Rang: λ&s. λ&e. λ&st.
+      #Iter{#CON{xs, #CON{sep, #CON{0, #NIL}}}, @intersperse_iter_next}
   }(xs)
+
+// Helper: intersperse iterator
+@intersperse_iter_next = λ&state.
+  λ{#CON: λ&iter. λ&rest.
+    λ{#CON: λ&sep. λ&flag_cell.
+      λ{#CON: λ&need_sep. λ&u_.
+        λ{
+          0: (λ&stepped. λ{
+              #Some: λ&v. λ&r. #Some{v, #CON{r, #CON{sep, #CON{1, #NIL}}}}
+              #None: #None{}
+            }(stepped))(@iter_next(iter))
+          _: (λ&stepped. λ{
+              #Some: λ&v. λ&r. #Some{sep, #CON{iter, #CON{sep, #CON{0, #NIL}}}}
+              #None: #None{}
+            }(stepped))(@iter_next(iter))
+        }(need_sep)
+      }(flag_cell)
+    }(rest)
+  }(state)
 
 // Intercalate: intersperse then flatten
 @intercalate = λ&sep. λ&xss.
   @concat(@intersperse(sep)(xss))
 
 // Remove duplicates (keeps first occurrence)
+// Polymorphic: List, Array, Iterator, Range
 @nub = λ&xs.
+  λ{
+    #Arr: λ&len. λ&data.
+      (λ&result. #Arr{@list_length(result), result})(@nub_list(data))
+    _: λ&u_. @nub_list(@to_list(xs))
+  }(xs)
+
+@nub_list = λ&xs.
   @nub_helper(xs)(#NIL)
 
 @nub_helper = λ&xs. λ&seen.
@@ -1257,7 +1365,15 @@
   }(xs)
 
 // Remove duplicates by key function
+// Polymorphic: List, Array, Iterator, Range
 @nub_by = λ&f. λ&xs.
+  λ{
+    #Arr: λ&len. λ&data.
+      (λ&result. #Arr{@list_length(result), result})(@nub_by_list(f)(data))
+    _: λ&u_. @nub_by_list(f)(@to_list(xs))
+  }(xs)
+
+@nub_by_list = λ&f. λ&xs.
   @nub_by_helper(f)(xs)(#NIL)
 
 @nub_by_helper = λ&f. λ&xs. λ&seen.
@@ -1273,15 +1389,24 @@
   }(xs)
 
 // Merge sort (stable sort)
+// Polymorphic: List, Array, Iterator, Range
 @sort = λ&cmp. λ&xs.
+  λ{
+    #Arr: λ&len. λ&data.
+      (λ&sorted. #Arr{len, sorted})(@sort_list(cmp)(data))
+    _: λ&u_. @sort_list(cmp)(@to_list(xs))
+  }(xs)
+
+// Helper: sort for lists
+@sort_list = λ&cmp. λ&xs.
   !!&len = @length(xs);
   λ{
     #Cst: λ&n.
       λ{
         0: xs
         1: xs
-        _: λ&u_. @merge_sorted(cmp)(@sort(cmp)(@take(#Cst{(n / 2)})(xs)))
-                              (@sort(cmp)(@drop(#Cst{(n / 2)})(xs)))
+        _: λ&u_. @merge_sorted(cmp)(@sort_list(cmp)(@take(#Cst{(n / 2)})(xs)))
+                              (@sort_list(cmp)(@drop(#Cst{(n / 2)})(xs)))
       }(n)
   }(len)
 
@@ -1306,6 +1431,7 @@
   }(xs)
 
 // Sort by key function (ascending)
+// Polymorphic: delegates to @sort
 @sort_by = λ&f. λ&xs.
   @sort(λ&a. λ&b. @compare(f(a))(f(b)))(xs)
 

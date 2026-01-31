@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/nick/is_char.c
-        -:    0:Graph:main-cov-main.gcno
-        -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:9
-   463887:    1:fn int nick_is_char(char c) {
-   463887:    2:  return nick_letter_to_b64(c) >= 0;
-        -:    3:}

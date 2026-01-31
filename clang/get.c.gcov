@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/term/sub/get.c
-        -:    0:Graph:main-cov-main.gcno
-        -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:9
-     6138:    1:fn u8 term_sub_get(Term t) {
-     6138:    2:  return (t >> SUB_SHIFT) & SUB_MASK;
-        -:    3:}

@@ -1,7 +1,0 @@
-        -:    0:Source:../hvm4/clang/parse/is_space.c
-        -:    0:Graph:main-cov-main.gcno
-        -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:9
-  1284233:    1:fn int parse_is_space(char c) {
-  1284233:    2:  return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-        -:    3:}
