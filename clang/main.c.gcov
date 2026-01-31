@@ -1,7 +1,7 @@
         -:    0:Source:main.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// OmniLisp Main Entry Point
         -:    2:// Command-line interface for parsing, compiling, and running OmniLisp code
         -:    3:
@@ -100,9 +100,9 @@
     #####:   96:  printf("Built on HVM4 runtime\n");
     #####:   97:}
         -:   98:
-       17:   99:fn OmniOptions parse_options(int argc, char *argv[]) {
-       17:  100:  OmniOptions opts = {0};
-       17:  101:  opts.collapse = 10;
+        9:   99:fn OmniOptions parse_options(int argc, char *argv[]) {
+        9:  100:  OmniOptions opts = {0};
+        9:  101:  opts.collapse = 10;
         -:  102:
         -:  103:  static struct option long_options[] = {
         -:  104:    {"help",        no_argument,       0, 'h'},
@@ -121,31 +121,31 @@
         -:  117:  };
         -:  118:
         -:  119:  int opt;
-       17:  120:  int opt_index = 0;
+        9:  120:  int opt_index = 0;
         -:  121:
-       51:  122:  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:T", long_options, &opt_index)) != -1) {
-       34:  123:    switch (opt) {
+       27:  122:  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:T", long_options, &opt_index)) != -1) {
+       18:  123:    switch (opt) {
     #####:  124:      case 'h': opts.help = 1; break;
     #####:  125:      case 'v': opts.version = 1; break;
     #####:  126:      case 'p': opts.parse_only = 1; break;
     #####:  127:      case 'c': opts.compile_only = 1; break;
-       17:  128:      case 'e': opts.eval_mode = 1; opts.expr = optarg; break;
+        9:  128:      case 'e': opts.eval_mode = 1; opts.expr = optarg; break;
     #####:  129:      case 'i': opts.interactive = 1; break;
     #####:  130:      case 'S': opts.server_port = atoi(optarg); break;
     #####:  131:      case 'o': opts.output = optarg; break;
     #####:  132:      case 'd': opts.debug = 1; break;
     #####:  133:      case 's': opts.stats = 1; break;
     #####:  134:      case 'C': opts.collapse = atoi(optarg); break;
-       17:  135:      case 'T': opts.hvm4_print = 1; break;
+        9:  135:      case 'T': opts.hvm4_print = 1; break;
     #####:  136:      default: opts.help = 1; break;
         -:  137:    }
         -:  138:  }
         -:  139:
-       17:  140:  if (optind < argc) {
+        9:  140:  if (optind < argc) {
     #####:  141:    opts.file = argv[optind];
         -:  142:  }
         -:  143:
-       17:  144:  return opts;
+        9:  144:  return opts;
         -:  145:}
         -:  146:
         -:  147:// =============================================================================
@@ -437,16 +437,16 @@
         -:  433:static int g_runtime_loaded = 0;
         -:  434:
         -:  435:// Helper to find runtime file in multiple locations
-       32:  436:fn char* omni_find_runtime_file(const char *filename) {
+       18:  436:fn char* omni_find_runtime_file(const char *filename) {
         -:  437:  static char path_buf[512];
         -:  438:
         -:  439:  // Try 1: Current directory (lib/filename)
-       32:  440:  snprintf(path_buf, sizeof(path_buf), "lib/%s", filename);
-      32*:  441:  if (access(path_buf, R_OK) == 0) return path_buf;
+       18:  440:  snprintf(path_buf, sizeof(path_buf), "lib/%s", filename);
+      18*:  441:  if (access(path_buf, R_OK) == 0) return path_buf;
         -:  442:
         -:  443:  // Try 2: Parent directory (../lib/filename) - when running from clang/
-       32:  444:  snprintf(path_buf, sizeof(path_buf), "../lib/%s", filename);
-       32:  445:  if (access(path_buf, R_OK) == 0) return path_buf;
+       18:  444:  snprintf(path_buf, sizeof(path_buf), "../lib/%s", filename);
+       18:  445:  if (access(path_buf, R_OK) == 0) return path_buf;
         -:  446:
         -:  447:  // Try 3: Executable directory (for installed builds)
         -:  448:  // Use /proc/self/exe on Linux to get executable path
@@ -468,99 +468,99 @@
         -:  464:
         -:  465:// Load runtime.hvm4 into the HVM4 book
         -:  466:// Loads lib/prelude.hvm4 and lib/runtime.hvm4 definitions
-       16:  467:fn int omni_load_runtime(void) {
-      16*:  468:  if (g_runtime_loaded) return 0;  // Already loaded
+        9:  467:fn int omni_load_runtime(void) {
+       9*:  468:  if (g_runtime_loaded) return 0;  // Already loaded
         -:  469:
         -:  470:  // Find and load prelude.hvm4
-       16:  471:  char *prelude_path = omni_find_runtime_file("prelude.hvm4");
-       16:  472:  if (!prelude_path) {
+        9:  471:  char *prelude_path = omni_find_runtime_file("prelude.hvm4");
+        9:  472:  if (!prelude_path) {
     #####:  473:    fprintf(stderr, "Warning: Could not find lib/prelude.hvm4, using C interpreter\n");
     #####:  474:    return 1;
         -:  475:  }
         -:  476:
-       16:  477:  char *prelude_src = sys_file_read(prelude_path);
-       16:  478:  if (!prelude_src) {
+        9:  477:  char *prelude_src = sys_file_read(prelude_path);
+        9:  478:  if (!prelude_src) {
     #####:  479:    fprintf(stderr, "Warning: Could not read %s, using C interpreter\n", prelude_path);
     #####:  480:    return 1;
         -:  481:  }
         -:  482:
-       16:  483:  PState ps = {
+        9:  483:  PState ps = {
         -:  484:    .file = prelude_path,
         -:  485:    .src  = prelude_src,
         -:  486:    .pos  = 0,
-       16:  487:    .len  = (u32)strlen(prelude_src),
+        9:  487:    .len  = (u32)strlen(prelude_src),
         -:  488:    .line = 1,
         -:  489:    .col  = 1
         -:  490:  };
-       16:  491:  parse_def(&ps);
-       16:  492:  free(prelude_src);
+        9:  491:  parse_def(&ps);
+        9:  492:  free(prelude_src);
         -:  493:
         -:  494:  // Find and load runtime.hvm4
-       16:  495:  char *runtime_path = omni_find_runtime_file("runtime.hvm4");
-       16:  496:  if (!runtime_path) {
+        9:  495:  char *runtime_path = omni_find_runtime_file("runtime.hvm4");
+        9:  496:  if (!runtime_path) {
     #####:  497:    fprintf(stderr, "Warning: Could not find lib/runtime.hvm4, using C interpreter\n");
     #####:  498:    return 1;
         -:  499:  }
         -:  500:
-       16:  501:  char *runtime_src = sys_file_read(runtime_path);
-       16:  502:  if (!runtime_src) {
+        9:  501:  char *runtime_src = sys_file_read(runtime_path);
+        9:  502:  if (!runtime_src) {
     #####:  503:    fprintf(stderr, "Warning: Could not read %s, using C interpreter\n", runtime_path);
     #####:  504:    return 1;
         -:  505:  }
         -:  506:
-       16:  507:  PState rs = {
+        9:  507:  PState rs = {
         -:  508:    .file = runtime_path,
         -:  509:    .src  = runtime_src,
         -:  510:    .pos  = 0,
-       16:  511:    .len  = (u32)strlen(runtime_src),
+        9:  511:    .len  = (u32)strlen(runtime_src),
         -:  512:    .line = 1,
         -:  513:    .col  = 1
         -:  514:  };
-       16:  515:  parse_def(&rs);
-       16:  516:  free(runtime_src);
+        9:  515:  parse_def(&rs);
+        9:  516:  free(runtime_src);
         -:  517:
         -:  518:  // Verify critical functions are loaded
-       16:  519:  u32 eval_id = table_find("omni_eval", 9);
-       16:  520:  u32 menv_id = table_find("omni_menv_empty", 15);
+        9:  519:  u32 eval_id = table_find("omni_eval", 9);
+        9:  520:  u32 menv_id = table_find("omni_menv_empty", 15);
         -:  521:
-       16:  522:  if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
+        9:  522:  if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
     #####:  523:    fprintf(stderr, "Warning: runtime.hvm4 missing required definitions, using C interpreter\n");
     #####:  524:    return 1;
         -:  525:  }
         -:  526:
-       16:  527:  g_runtime_loaded = 1;
-       16:  528:  return 0;
+        9:  527:  g_runtime_loaded = 1;
+        9:  528:  return 0;
         -:  529:}
         -:  530:
-       17:  531:fn void omni_runtime_init(void) {
+        9:  531:fn void omni_runtime_init(void) {
         -:  532:  // Initialize HVM4 runtime
-       17:  533:  thread_set_count(1);
-       17:  534:  wnf_set_tid(0);
+        9:  533:  thread_set_count(1);
+        9:  534:  wnf_set_tid(0);
         -:  535:
         -:  536:  // Allocate global memory
-       17:  537:  BOOK  = calloc(BOOK_CAP, sizeof(u32));
-       17:  538:  HEAP  = calloc(HEAP_CAP, sizeof(Term));
-       17:  539:  TABLE = calloc(BOOK_CAP, sizeof(char*));
+        9:  537:  BOOK  = calloc(BOOK_CAP, sizeof(u32));
+        9:  538:  HEAP  = calloc(HEAP_CAP, sizeof(Term));
+        9:  539:  TABLE = calloc(BOOK_CAP, sizeof(char*));
         -:  540:
-       17:  541:  if (!BOOK || !HEAP || !TABLE) {
+        9:  541:  if (!BOOK || !HEAP || !TABLE) {
     #####:  542:    fprintf(stderr, "Error: Memory allocation failed\n");
     #####:  543:    exit(1);
         -:  544:  }
-       17:  545:  heap_init_slices();
+        9:  545:  heap_init_slices();
         -:  546:
         -:  547:  // Initialize OmniLisp names
-       17:  548:  omni_names_init();
+        9:  548:  omni_names_init();
         -:  549:
         -:  550:  // Initialize FFI
-       17:  551:  omni_ffi_handle_init();
-       17:  552:  omni_ffi_register_stdlib();
-       17:  553:}
+        9:  551:  omni_ffi_handle_init();
+        9:  552:  omni_ffi_register_stdlib();
+        9:  553:}
         -:  554:
-       15:  555:fn void omni_runtime_cleanup(void) {
+        9:  555:fn void omni_runtime_cleanup(void) {
         -:  556:  // Cleanup FFI
-       15:  557:  omni_ffi_pool_shutdown();
-       15:  558:  omni_ffi_handle_cleanup();
-       15:  559:}
+        9:  557:  omni_ffi_pool_shutdown();
+        9:  558:  omni_ffi_handle_cleanup();
+        9:  559:}
         -:  560:
         -:  561:// =============================================================================
         -:  562:// Reduction with FFI Interception
@@ -656,75 +656,75 @@
     #####:  652:  return 0;
         -:  653:}
         -:  654:
-       17:  655:fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug, int hvm4_print) {
+        9:  655:fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug, int hvm4_print) {
         -:  656:  OmniParse parse;
-       17:  657:  omni_parse_init(&parse, source);
+        9:  657:  omni_parse_init(&parse, source);
         -:  658:
-       17:  659:  Term ast = omni_parse(&parse);
+        9:  659:  Term ast = omni_parse(&parse);
         -:  660:
-       16:  661:  if (parse.error) {
+        9:  661:  if (parse.error) {
     #####:  662:    fprintf(stderr, "Parse error at line %u, col %u: %s\n",
         -:  663:            parse.line, parse.col, parse.error);
     #####:  664:    return 1;
         -:  665:  }
         -:  666:
-       16:  667:  if (debug) {
+        9:  667:  if (debug) {
     #####:  668:    printf("AST:\n");
     #####:  669:    print_ast(ast);
     #####:  670:    printf("\nEvaluating...\n\n");
         -:  671:  }
         -:  672:
         -:  673:  // Load runtime.hvm4 if not already loaded
-       16:  674:  int runtime_err = omni_load_runtime();
+        9:  674:  int runtime_err = omni_load_runtime();
         -:  675:
         -:  676:  Term result;
         -:  677:
-       31:  678:  if (runtime_err == 0 && g_runtime_loaded) {
+       18:  678:  if (runtime_err == 0 && g_runtime_loaded) {
         -:  679:    // Use the HVM4-based interpreter from runtime.hvm4
         -:  680:
         -:  681:    // Look up @omni_eval and @omni_menv_empty
-       16:  682:    u32 eval_id = table_find("omni_eval", 9);
-       16:  683:    u32 menv_id = table_find("omni_menv_empty", 15);
+        9:  682:    u32 eval_id = table_find("omni_eval", 9);
+        9:  683:    u32 menv_id = table_find("omni_menv_empty", 15);
         -:  684:
-       16:  685:    if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
+        9:  685:    if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
     #####:  686:      fprintf(stderr, "Error: runtime.hvm4 missing required definitions\n");
     #####:  687:      return 1;
         -:  688:    }
         -:  689:
         -:  690:    // Build: @omni_eval(@omni_menv_empty)(ast)
-       16:  691:    Term eval_ref = term_new_ref(eval_id);
-       16:  692:    Term menv_ref = term_new_ref(menv_id);
+        9:  691:    Term eval_ref = term_new_ref(eval_id);
+        9:  692:    Term menv_ref = term_new_ref(menv_id);
         -:  693:
         -:  694:    // @omni_eval(@omni_menv_empty)
-       16:  695:    Term eval_with_menv = term_new_app(eval_ref, menv_ref);
+        9:  695:    Term eval_with_menv = term_new_app(eval_ref, menv_ref);
         -:  696:
         -:  697:    // @omni_eval(@omni_menv_empty)(ast)
-       16:  698:    Term eval_expr = term_new_app(eval_with_menv, ast);
+        9:  698:    Term eval_expr = term_new_app(eval_with_menv, ast);
         -:  699:
         -:  700:    // Evaluate to normal form
-       16:  701:    result = eval_normalize(eval_expr);
+        9:  701:    result = eval_normalize(eval_expr);
         -:  702:  } else {
         -:  703:    // Runtime is required - no fallback interpreter
     #####:  704:    fprintf(stderr, "Error: runtime.hvm4 failed to load - cannot evaluate\n");
     #####:  705:    return 1;
         -:  706:  }
         -:  707:
-       15:  708:  printf("Result: ");
-       15:  709:  if (hvm4_print) {
+        9:  708:  printf("Result: ");
+        9:  709:  if (hvm4_print) {
         -:  710:    // Use HVM4's print_term for coverage testing
-       15:  711:    print_term(result);
+        9:  711:    print_term(result);
         -:  712:  } else {
     #####:  713:    omni_print_value(result);
         -:  714:  }
-       15:  715:  printf("\n");
+        9:  715:  printf("\n");
         -:  716:
-       15:  717:  if (stats) {
+        9:  717:  if (stats) {
     #####:  718:    printf("\nStatistics:\n");
     #####:  719:    printf("  Handles allocated: %u\n", omni_ffi_handle_count());
     #####:  720:    printf("  Interactions: %llu\n", (unsigned long long)wnf_itrs_total());
         -:  721:  }
         -:  722:
-       15:  723:  return 0;
+        9:  723:  return 0;
         -:  724:}
         -:  725:
         -:  726:// =============================================================================
@@ -988,38 +988,38 @@
         -:  984:// Main
         -:  985:// =============================================================================
         -:  986:
-       17:  987:int main(int argc, char *argv[]) {
-       17:  988:  OmniOptions opts = parse_options(argc, argv);
+        9:  987:int main(int argc, char *argv[]) {
+        9:  988:  OmniOptions opts = parse_options(argc, argv);
         -:  989:
-       17:  990:  if (opts.help) {
+        9:  990:  if (opts.help) {
     #####:  991:    print_usage(argv[0]);
     #####:  992:    return 0;
         -:  993:  }
         -:  994:
-       17:  995:  if (opts.version) {
+        9:  995:  if (opts.version) {
     #####:  996:    print_version();
     #####:  997:    return 0;
         -:  998:  }
         -:  999:
         -: 1000:  // Initialize runtime
-       17: 1001:  omni_runtime_init();
+        9: 1001:  omni_runtime_init();
         -: 1002:
-       17: 1003:  int result = 0;
+        9: 1003:  int result = 0;
         -: 1004:
-       17: 1005:  if (opts.server_port > 0) {
+        9: 1005:  if (opts.server_port > 0) {
         -: 1006:    // Socket server mode
     #####: 1007:    result = run_server(opts.server_port, opts.debug);
-       17: 1008:  } else if (opts.interactive) {
+        9: 1008:  } else if (opts.interactive) {
         -: 1009:    // Interactive REPL mode
     #####: 1010:    result = run_repl(opts.debug);
-       17: 1011:  } else if (opts.eval_mode && opts.expr) {
+        9: 1011:  } else if (opts.eval_mode && opts.expr) {
         -: 1012:    // Evaluate expression
-       17: 1013:    if (opts.parse_only) {
+        9: 1013:    if (opts.parse_only) {
     #####: 1014:      result = run_parse_only(opts.expr, opts.debug);
-       17: 1015:    } else if (opts.compile_only) {
+        9: 1015:    } else if (opts.compile_only) {
     #####: 1016:      result = run_compile_only(opts.expr, opts.output, opts.debug);
         -: 1017:    } else {
-       17: 1018:      result = run_evaluate(opts.expr, opts.collapse, opts.stats, opts.debug, opts.hvm4_print);
+        9: 1018:      result = run_evaluate(opts.expr, opts.collapse, opts.stats, opts.debug, opts.hvm4_print);
         -: 1019:    }
     #####: 1020:  } else if (opts.file) {
         -: 1021:    // Process file
@@ -1042,8 +1042,8 @@
         -: 1038:  }
         -: 1039:
         -: 1040:  // Cleanup
-       15: 1041:  omni_runtime_cleanup();
+        9: 1041:  omni_runtime_cleanup();
         -: 1042:
-       15: 1043:  return result;
+        9: 1043:  return result;
         -: 1044:}
         -: 1045:

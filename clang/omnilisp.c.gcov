@@ -1,7 +1,7 @@
         -:    0:Source:omnilisp/nick/omnilisp.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:#pragma once
         -:    2:
         -:    3:// OmniLisp Nick-encoded names
@@ -15,12 +15,12 @@
         -:   11:// Nick Encoding Utilities
         -:   12:// =============================================================================
         -:   13:
-     7033:   14:fn u32 omni_nick(const char *name) {
-     7033:   15:  u32 k = 0;
-    33761:   16:  for (u32 i = 0; name[i] != '\0' && i < 4; i++) {
-    26728:   17:    k = ((k << 6) + nick_letter_to_b64(name[i])) & EXT_MASK;
+     3717:   14:fn u32 omni_nick(const char *name) {
+     3717:   15:  u32 k = 0;
+    17858:   16:  for (u32 i = 0; name[i] != '\0' && i < 4; i++) {
+    14141:   17:    k = ((k << 6) + nick_letter_to_b64(name[i])) & EXT_MASK;
         -:   18:  }
-     7033:   19:  return k;
+     3717:   19:  return k;
         -:   20:}
         -:   21:
         -:   22:// =============================================================================
@@ -548,504 +548,504 @@
         -:  544:static u32 OMNI_NAM_CYLD;  // Yield marker: #CYld{expr}
         -:  545:static u32 OMNI_NAM_PRES;  // Parse result: #PRes{success, value, pos}
         -:  546:
-       51:  547:fn void omni_names_init(void) {
-       51:  548:  if (OMNI_NAMES_READY) return;
+       27:  547:fn void omni_names_init(void) {
+       27:  548:  if (OMNI_NAMES_READY) return;
         -:  549:
         -:  550:  // Core expressions
-       17:  551:  OMNI_NAM_LIT  = omni_nick("Lit");
-       17:  552:  OMNI_NAM_SYM  = omni_nick("Sym");
-       17:  553:  OMNI_NAM_VAR  = omni_nick("Var");
-       17:  554:  OMNI_NAM_LAM  = omni_nick("Lam");
-       17:  555:  OMNI_NAM_LAMR = omni_nick("LamR");
-       17:  556:  OMNI_NAM_APP  = omni_nick("App");
-       17:  557:  OMNI_NAM_LET  = omni_nick("Let");
-       17:  558:  OMNI_NAM_LETS = omni_nick("LetS");
-       17:  559:  OMNI_NAM_LETP = omni_nick("LetP");
-       17:  560:  OMNI_NAM_IF   = omni_nick("If");
-       17:  561:  OMNI_NAM_DO   = omni_nick("Do");
+        9:  551:  OMNI_NAM_LIT  = omni_nick("Lit");
+        9:  552:  OMNI_NAM_SYM  = omni_nick("Sym");
+        9:  553:  OMNI_NAM_VAR  = omni_nick("Var");
+        9:  554:  OMNI_NAM_LAM  = omni_nick("Lam");
+        9:  555:  OMNI_NAM_LAMR = omni_nick("LamR");
+        9:  556:  OMNI_NAM_APP  = omni_nick("App");
+        9:  557:  OMNI_NAM_LET  = omni_nick("Let");
+        9:  558:  OMNI_NAM_LETS = omni_nick("LetS");
+        9:  559:  OMNI_NAM_LETP = omni_nick("LetP");
+        9:  560:  OMNI_NAM_IF   = omni_nick("If");
+        9:  561:  OMNI_NAM_DO   = omni_nick("Do");
         -:  562:
         -:  563:  // Arithmetic
-       17:  564:  OMNI_NAM_ADD = omni_nick("Add");
-       17:  565:  OMNI_NAM_SUB = omni_nick("Sub");
-       17:  566:  OMNI_NAM_MUL = omni_nick("Mul");
-       17:  567:  OMNI_NAM_DIV = omni_nick("Div");
-       17:  568:  OMNI_NAM_MOD = omni_nick("Mod");
-       17:  569:  OMNI_NAM_EQL = omni_nick("Eql");
-       17:  570:  OMNI_NAM_NEQ = omni_nick("Neq");
-       17:  571:  OMNI_NAM_LT  = omni_nick("Lt");
-       17:  572:  OMNI_NAM_GT  = omni_nick("Gt");
-       17:  573:  OMNI_NAM_LE  = omni_nick("Le");
-       17:  574:  OMNI_NAM_GE  = omni_nick("Ge");
-       17:  575:  OMNI_NAM_AND = omni_nick("And");
-       17:  576:  OMNI_NAM_OR  = omni_nick("Or");
-       17:  577:  OMNI_NAM_NOT = omni_nick("Not");
+        9:  564:  OMNI_NAM_ADD = omni_nick("Add");
+        9:  565:  OMNI_NAM_SUB = omni_nick("Sub");
+        9:  566:  OMNI_NAM_MUL = omni_nick("Mul");
+        9:  567:  OMNI_NAM_DIV = omni_nick("Div");
+        9:  568:  OMNI_NAM_MOD = omni_nick("Mod");
+        9:  569:  OMNI_NAM_EQL = omni_nick("Eql");
+        9:  570:  OMNI_NAM_NEQ = omni_nick("Neq");
+        9:  571:  OMNI_NAM_LT  = omni_nick("Lt");
+        9:  572:  OMNI_NAM_GT  = omni_nick("Gt");
+        9:  573:  OMNI_NAM_LE  = omni_nick("Le");
+        9:  574:  OMNI_NAM_GE  = omni_nick("Ge");
+        9:  575:  OMNI_NAM_AND = omni_nick("And");
+        9:  576:  OMNI_NAM_OR  = omni_nick("Or");
+        9:  577:  OMNI_NAM_NOT = omni_nick("Not");
         -:  578:
         -:  579:  // Type predicates
-       17:  580:  OMNI_NAM_INTP = omni_nick("IntP");
-       17:  581:  OMNI_NAM_LSTP = omni_nick("LstP");
-       17:  582:  OMNI_NAM_NILP = omni_nick("NilP");
-       17:  583:  OMNI_NAM_NUMP = omni_nick("NumP");
+        9:  580:  OMNI_NAM_INTP = omni_nick("IntP");
+        9:  581:  OMNI_NAM_LSTP = omni_nick("LstP");
+        9:  582:  OMNI_NAM_NILP = omni_nick("NilP");
+        9:  583:  OMNI_NAM_NUMP = omni_nick("NumP");
         -:  584:
         -:  585:  // Data structures
-       17:  586:  OMNI_NAM_CON  = NAM_CON;  // Use HVM4's CON
-       17:  587:  OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
-       17:  588:  OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
-       17:  589:  OMNI_NAM_ARR  = omni_nick("Arr");
-       17:  590:  OMNI_NAM_AGE  = omni_nick("AGe");
-       17:  591:  OMNI_NAM_ASE  = omni_nick("ASe");
-       17:  592:  OMNI_NAM_ALE  = omni_nick("ALe");
-       17:  593:  OMNI_NAM_DICT = omni_nick("Dict");
-       17:  594:  OMNI_NAM_DGE  = omni_nick("DGe");
-       17:  595:  OMNI_NAM_DSE  = omni_nick("DSe");
-       17:  596:  OMNI_NAM_FST  = omni_nick("Fst");
-       17:  597:  OMNI_NAM_SND  = omni_nick("Snd");
+        9:  586:  OMNI_NAM_CON  = NAM_CON;  // Use HVM4's CON
+        9:  587:  OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
+        9:  588:  OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
+        9:  589:  OMNI_NAM_ARR  = omni_nick("Arr");
+        9:  590:  OMNI_NAM_AGE  = omni_nick("AGe");
+        9:  591:  OMNI_NAM_ASE  = omni_nick("ASe");
+        9:  592:  OMNI_NAM_ALE  = omni_nick("ALe");
+        9:  593:  OMNI_NAM_DICT = omni_nick("Dict");
+        9:  594:  OMNI_NAM_DGE  = omni_nick("DGe");
+        9:  595:  OMNI_NAM_DSE  = omni_nick("DSe");
+        9:  596:  OMNI_NAM_FST  = omni_nick("Fst");
+        9:  597:  OMNI_NAM_SND  = omni_nick("Snd");
         -:  598:
         -:  599:  // Numeric
-       17:  600:  OMNI_NAM_CST = omni_nick("Cst");
-       17:  601:  OMNI_NAM_FIX = omni_nick("Fix");
+        9:  600:  OMNI_NAM_CST = omni_nick("Cst");
+        9:  601:  OMNI_NAM_FIX = omni_nick("Fix");
         -:  602:
         -:  603:  // Pattern matching
-       17:  604:  OMNI_NAM_MAT  = omni_nick("Mat");
-       17:  605:  OMNI_NAM_MATS = omni_nick("MatS");  // Speculative match (^:speculate)
-       17:  606:  OMNI_NAM_NMAT = omni_nick("NMat");
-       17:  607:  OMNI_NAM_CASE = omni_nick("Case");
-       17:  608:  OMNI_NAM_PCTR = omni_nick("PCtr");
-       17:  609:  OMNI_NAM_PLIT = omni_nick("PLit");
-       17:  610:  OMNI_NAM_PWLD = omni_nick("PWld");
-       17:  611:  OMNI_NAM_PVAR = omni_nick("PVar");
-       17:  612:  OMNI_NAM_PAS  = omni_nick("PAs");
-       17:  613:  OMNI_NAM_PRST = omni_nick("PRst");
-       17:  614:  OMNI_NAM_PGRD = omni_nick("PGrd");
-       17:  615:  OMNI_NAM_GUAR = omni_nick("Guar");
-       17:  616:  OMNI_NAM_SPRD = omni_nick("Sprd");
-       17:  617:  OMNI_NAM_DLET = omni_nick("DLet");
-       17:  618:  OMNI_NAM_PARR = omni_nick("PArr");
-       17:  619:  OMNI_NAM_DLAM = omni_nick("DLam");
-       17:  620:  OMNI_NAM_POR  = omni_nick("POr");
-       17:  621:  OMNI_NAM_PLST = omni_nick("PLst");
+        9:  604:  OMNI_NAM_MAT  = omni_nick("Mat");
+        9:  605:  OMNI_NAM_MATS = omni_nick("MatS");  // Speculative match (^:speculate)
+        9:  606:  OMNI_NAM_NMAT = omni_nick("NMat");
+        9:  607:  OMNI_NAM_CASE = omni_nick("Case");
+        9:  608:  OMNI_NAM_PCTR = omni_nick("PCtr");
+        9:  609:  OMNI_NAM_PLIT = omni_nick("PLit");
+        9:  610:  OMNI_NAM_PWLD = omni_nick("PWld");
+        9:  611:  OMNI_NAM_PVAR = omni_nick("PVar");
+        9:  612:  OMNI_NAM_PAS  = omni_nick("PAs");
+        9:  613:  OMNI_NAM_PRST = omni_nick("PRst");
+        9:  614:  OMNI_NAM_PGRD = omni_nick("PGrd");
+        9:  615:  OMNI_NAM_GUAR = omni_nick("Guar");
+        9:  616:  OMNI_NAM_SPRD = omni_nick("Sprd");
+        9:  617:  OMNI_NAM_DLET = omni_nick("DLet");
+        9:  618:  OMNI_NAM_PARR = omni_nick("PArr");
+        9:  619:  OMNI_NAM_DLAM = omni_nick("DLam");
+        9:  620:  OMNI_NAM_POR  = omni_nick("POr");
+        9:  621:  OMNI_NAM_PLST = omni_nick("PLst");
         -:  622:
         -:  623:  // Named let (Scheme-style loop)
-       17:  624:  OMNI_NAM_NLET = omni_nick("NLet");   // Parallel (default)
-       17:  625:  OMNI_NAM_NLETS = omni_nick("NLeS");  // Sequential (^:seq)
+        9:  624:  OMNI_NAM_NLET = omni_nick("NLet");   // Parallel (default)
+        9:  625:  OMNI_NAM_NLETS = omni_nick("NLeS");  // Sequential (^:seq)
         -:  626:
         -:  627:  // Pipe and function utilities
-       17:  628:  OMNI_NAM_PIPE = omni_nick("Pipe");
-       17:  629:  OMNI_NAM_CURY = omni_nick("Cury");
-       17:  630:  OMNI_NAM_FLIP = omni_nick("Flip");
-       17:  631:  OMNI_NAM_ROTR = omni_nick("Rotr");
-       17:  632:  OMNI_NAM_COMP = omni_nick("Comp");
-       17:  633:  OMNI_NAM_APPL = omni_nick("Appl");
+        9:  628:  OMNI_NAM_PIPE = omni_nick("Pipe");
+        9:  629:  OMNI_NAM_CURY = omni_nick("Cury");
+        9:  630:  OMNI_NAM_FLIP = omni_nick("Flip");
+        9:  631:  OMNI_NAM_ROTR = omni_nick("Rotr");
+        9:  632:  OMNI_NAM_COMP = omni_nick("Comp");
+        9:  633:  OMNI_NAM_APPL = omni_nick("Appl");
         -:  634:
         -:  635:  // Conditional forms
-       17:  636:  OMNI_NAM_WHEN = omni_nick("When");
-       17:  637:  OMNI_NAM_UNLS = omni_nick("Unls");
-       17:  638:  OMNI_NAM_COND = omni_nick("Cond");
-       17:  639:  OMNI_NAM_CCLS = omni_nick("CCls");
+        9:  636:  OMNI_NAM_WHEN = omni_nick("When");
+        9:  637:  OMNI_NAM_UNLS = omni_nick("Unls");
+        9:  638:  OMNI_NAM_COND = omni_nick("Cond");
+        9:  639:  OMNI_NAM_CCLS = omni_nick("CCls");
         -:  640:
         -:  641:  // Path access (functional)
-       17:  642:  OMNI_NAM_GET  = omni_nick("Get");
-       17:  643:  OMNI_NAM_PUT  = omni_nick("Put");
-       17:  644:  OMNI_NAM_UPDT = omni_nick("Updt");
-       17:  645:  OMNI_NAM_GTIN = omni_nick("GtIn");
-       17:  646:  OMNI_NAM_ASIN = omni_nick("AsIn");
-       17:  647:  OMNI_NAM_UPIN = omni_nick("UpIn");
+        9:  642:  OMNI_NAM_GET  = omni_nick("Get");
+        9:  643:  OMNI_NAM_PUT  = omni_nick("Put");
+        9:  644:  OMNI_NAM_UPDT = omni_nick("Updt");
+        9:  645:  OMNI_NAM_GTIN = omni_nick("GtIn");
+        9:  646:  OMNI_NAM_ASIN = omni_nick("AsIn");
+        9:  647:  OMNI_NAM_UPIN = omni_nick("UpIn");
         -:  648:
         -:  649:  // Mutation primitives
-       17:  650:  OMNI_NAM_SETB  = omni_nick("SetB");
-       17:  651:  OMNI_NAM_PUTB  = omni_nick("PutB");
-       17:  652:  OMNI_NAM_UPDTB = omni_nick("UpdB");
+        9:  650:  OMNI_NAM_SETB  = omni_nick("SetB");
+        9:  651:  OMNI_NAM_PUTB  = omni_nick("PutB");
+        9:  652:  OMNI_NAM_UPDTB = omni_nick("UpdB");
         -:  653:
         -:  654:  // Iterators
-       17:  655:  OMNI_NAM_ITER = omni_nick("Iter");
-       17:  656:  OMNI_NAM_RANG = omni_nick("Rang");
-       17:  657:  OMNI_NAM_IMAP = omni_nick("IMap");
-       17:  658:  OMNI_NAM_IFLT = omni_nick("IFlt");
-       17:  659:  OMNI_NAM_ITKN = omni_nick("ITkn");
-       17:  660:  OMNI_NAM_IDRP = omni_nick("IDrp");
-       17:  661:  OMNI_NAM_DONE = omni_nick("Done");
-       17:  662:  OMNI_NAM_IZIP = omni_nick("IZip");
-       17:  663:  OMNI_NAM_ICHN = omni_nick("IChn");
-       17:  664:  OMNI_NAM_IENM = omni_nick("IEnm");
-       17:  665:  OMNI_NAM_ITKW = omni_nick("ITkW");
-       17:  666:  OMNI_NAM_IDRW = omni_nick("IDrW");
-       17:  667:  OMNI_NAM_IFLD = omni_nick("IFld");
-       17:  668:  OMNI_NAM_IFND = omni_nick("IFnd");
-       17:  669:  OMNI_NAM_IANY = omni_nick("IAny");
-       17:  670:  OMNI_NAM_IALL = omni_nick("IAll");
-       17:  671:  OMNI_NAM_INTH = omni_nick("INth");
-       17:  672:  OMNI_NAM_IFMP = omni_nick("IFMp");
-       17:  673:  OMNI_NAM_ISTP = omni_nick("IStp");
-       17:  674:  OMNI_NAM_ICHK = omni_nick("IChk");
-       17:  675:  OMNI_NAM_IWIN = omni_nick("IWin");
+        9:  655:  OMNI_NAM_ITER = omni_nick("Iter");
+        9:  656:  OMNI_NAM_RANG = omni_nick("Rang");
+        9:  657:  OMNI_NAM_IMAP = omni_nick("IMap");
+        9:  658:  OMNI_NAM_IFLT = omni_nick("IFlt");
+        9:  659:  OMNI_NAM_ITKN = omni_nick("ITkn");
+        9:  660:  OMNI_NAM_IDRP = omni_nick("IDrp");
+        9:  661:  OMNI_NAM_DONE = omni_nick("Done");
+        9:  662:  OMNI_NAM_IZIP = omni_nick("IZip");
+        9:  663:  OMNI_NAM_ICHN = omni_nick("IChn");
+        9:  664:  OMNI_NAM_IENM = omni_nick("IEnm");
+        9:  665:  OMNI_NAM_ITKW = omni_nick("ITkW");
+        9:  666:  OMNI_NAM_IDRW = omni_nick("IDrW");
+        9:  667:  OMNI_NAM_IFLD = omni_nick("IFld");
+        9:  668:  OMNI_NAM_IFND = omni_nick("IFnd");
+        9:  669:  OMNI_NAM_IANY = omni_nick("IAny");
+        9:  670:  OMNI_NAM_IALL = omni_nick("IAll");
+        9:  671:  OMNI_NAM_INTH = omni_nick("INth");
+        9:  672:  OMNI_NAM_IFMP = omni_nick("IFMp");
+        9:  673:  OMNI_NAM_ISTP = omni_nick("IStp");
+        9:  674:  OMNI_NAM_ICHK = omni_nick("IChk");
+        9:  675:  OMNI_NAM_IWIN = omni_nick("IWin");
         -:  676:
         -:  677:  // Math functions
-       17:  678:  OMNI_NAM_SQRT = omni_nick("Sqrt");
-       17:  679:  OMNI_NAM_POW  = omni_nick("Pow");
-       17:  680:  OMNI_NAM_MEXP = omni_nick("MExp");
-       17:  681:  OMNI_NAM_MLOG = omni_nick("MLog");
-       17:  682:  OMNI_NAM_MSIN = omni_nick("MSin");
-       17:  683:  OMNI_NAM_MCOS = omni_nick("MCos");
-       17:  684:  OMNI_NAM_MTAN = omni_nick("MTan");
-       17:  685:  OMNI_NAM_MASN = omni_nick("MAsn");
-       17:  686:  OMNI_NAM_MACS = omni_nick("MAcs");
-       17:  687:  OMNI_NAM_MATN = omni_nick("MAtn");
-       17:  688:  OMNI_NAM_MABS = omni_nick("MAbs");
-       17:  689:  OMNI_NAM_FLOR = omni_nick("Flor");
-       17:  690:  OMNI_NAM_MCEI = omni_nick("MCei");
-       17:  691:  OMNI_NAM_ROND = omni_nick("Rond");
-       17:  692:  OMNI_NAM_RAND = omni_nick("Rand");
+        9:  678:  OMNI_NAM_SQRT = omni_nick("Sqrt");
+        9:  679:  OMNI_NAM_POW  = omni_nick("Pow");
+        9:  680:  OMNI_NAM_MEXP = omni_nick("MExp");
+        9:  681:  OMNI_NAM_MLOG = omni_nick("MLog");
+        9:  682:  OMNI_NAM_MSIN = omni_nick("MSin");
+        9:  683:  OMNI_NAM_MCOS = omni_nick("MCos");
+        9:  684:  OMNI_NAM_MTAN = omni_nick("MTan");
+        9:  685:  OMNI_NAM_MASN = omni_nick("MAsn");
+        9:  686:  OMNI_NAM_MACS = omni_nick("MAcs");
+        9:  687:  OMNI_NAM_MATN = omni_nick("MAtn");
+        9:  688:  OMNI_NAM_MABS = omni_nick("MAbs");
+        9:  689:  OMNI_NAM_FLOR = omni_nick("Flor");
+        9:  690:  OMNI_NAM_MCEI = omni_nick("MCei");
+        9:  691:  OMNI_NAM_ROND = omni_nick("Rond");
+        9:  692:  OMNI_NAM_RAND = omni_nick("Rand");
         -:  693:
         -:  694:  // I/O operations
-       17:  695:  OMNI_NAM_RDFL = omni_nick("RdFl");
-       17:  696:  OMNI_NAM_WRFL = omni_nick("WrFl");
-       17:  697:  OMNI_NAM_APFL = omni_nick("ApFl");
-       17:  698:  OMNI_NAM_RDLN = omni_nick("RdLn");
-       17:  699:  OMNI_NAM_PRNT = omni_nick("Prnt");
-       17:  700:  OMNI_NAM_PRNL = omni_nick("PrnL");
-       17:  701:  OMNI_NAM_RDLN2 = omni_nick("RdL2");
-       17:  702:  OMNI_NAM_GTEV = omni_nick("GtEv");
-       17:  703:  OMNI_NAM_STEV = omni_nick("StEv");
-       17:  704:  OMNI_NAM_EXST = omni_nick("Exst");
-       17:  705:  OMNI_NAM_ISDR = omni_nick("IsDr");
-       17:  706:  OMNI_NAM_MKDR = omni_nick("MkDr");
-       17:  707:  OMNI_NAM_LSDR = omni_nick("LsDr");
-       17:  708:  OMNI_NAM_DLFL = omni_nick("DlFl");
-       17:  709:  OMNI_NAM_RNFL = omni_nick("RnFl");
-       17:  710:  OMNI_NAM_CPFL = omni_nick("CpFl");
+        9:  695:  OMNI_NAM_RDFL = omni_nick("RdFl");
+        9:  696:  OMNI_NAM_WRFL = omni_nick("WrFl");
+        9:  697:  OMNI_NAM_APFL = omni_nick("ApFl");
+        9:  698:  OMNI_NAM_RDLN = omni_nick("RdLn");
+        9:  699:  OMNI_NAM_PRNT = omni_nick("Prnt");
+        9:  700:  OMNI_NAM_PRNL = omni_nick("PrnL");
+        9:  701:  OMNI_NAM_RDLN2 = omni_nick("RdL2");
+        9:  702:  OMNI_NAM_GTEV = omni_nick("GtEv");
+        9:  703:  OMNI_NAM_STEV = omni_nick("StEv");
+        9:  704:  OMNI_NAM_EXST = omni_nick("Exst");
+        9:  705:  OMNI_NAM_ISDR = omni_nick("IsDr");
+        9:  706:  OMNI_NAM_MKDR = omni_nick("MkDr");
+        9:  707:  OMNI_NAM_LSDR = omni_nick("LsDr");
+        9:  708:  OMNI_NAM_DLFL = omni_nick("DlFl");
+        9:  709:  OMNI_NAM_RNFL = omni_nick("RnFl");
+        9:  710:  OMNI_NAM_CPFL = omni_nick("CpFl");
         -:  711:
         -:  712:  // JSON operations
-       17:  713:  OMNI_NAM_JPRS = omni_nick("JPrs");
-       17:  714:  OMNI_NAM_JSTR = omni_nick("JStr");
-       17:  715:  OMNI_NAM_JARR = omni_nick("JArr");
-       17:  716:  OMNI_NAM_JOBJ = omni_nick("JObj");
-       17:  717:  OMNI_NAM_JNUL = omni_nick("JNul");
+        9:  713:  OMNI_NAM_JPRS = omni_nick("JPrs");
+        9:  714:  OMNI_NAM_JSTR = omni_nick("JStr");
+        9:  715:  OMNI_NAM_JARR = omni_nick("JArr");
+        9:  716:  OMNI_NAM_JOBJ = omni_nick("JObj");
+        9:  717:  OMNI_NAM_JNUL = omni_nick("JNul");
         -:  718:
         -:  719:  // DateTime operations
-       17:  720:  OMNI_NAM_DTNW = omni_nick("DtNw");
-       17:  721:  OMNI_NAM_DTPR = omni_nick("DtPr");
-       17:  722:  OMNI_NAM_DTFM = omni_nick("DtFm");
-       17:  723:  OMNI_NAM_DTAD = omni_nick("DtAd");
-       17:  724:  OMNI_NAM_DTSB = omni_nick("DtSb");
-       17:  725:  OMNI_NAM_DTDF = omni_nick("DtDf");
-       17:  726:  OMNI_NAM_DT   = omni_nick("Dt");
-       17:  727:  OMNI_NAM_DUR  = omni_nick("Dur");
-       17:  728:  OMNI_NAM_DTYR = omni_nick("DtYr");
-       17:  729:  OMNI_NAM_DTMO = omni_nick("DtMo");
-       17:  730:  OMNI_NAM_DTDY = omni_nick("DtDy");
-       17:  731:  OMNI_NAM_DTHR = omni_nick("DtHr");
-       17:  732:  OMNI_NAM_DTMI = omni_nick("DtMi");
-       17:  733:  OMNI_NAM_DTSC = omni_nick("DtSc");
-       17:  734:  OMNI_NAM_DTTS = omni_nick("DtTs");
-       17:  735:  OMNI_NAM_DTFT = omni_nick("DtFt");
+        9:  720:  OMNI_NAM_DTNW = omni_nick("DtNw");
+        9:  721:  OMNI_NAM_DTPR = omni_nick("DtPr");
+        9:  722:  OMNI_NAM_DTFM = omni_nick("DtFm");
+        9:  723:  OMNI_NAM_DTAD = omni_nick("DtAd");
+        9:  724:  OMNI_NAM_DTSB = omni_nick("DtSb");
+        9:  725:  OMNI_NAM_DTDF = omni_nick("DtDf");
+        9:  726:  OMNI_NAM_DT   = omni_nick("Dt");
+        9:  727:  OMNI_NAM_DUR  = omni_nick("Dur");
+        9:  728:  OMNI_NAM_DTYR = omni_nick("DtYr");
+        9:  729:  OMNI_NAM_DTMO = omni_nick("DtMo");
+        9:  730:  OMNI_NAM_DTDY = omni_nick("DtDy");
+        9:  731:  OMNI_NAM_DTHR = omni_nick("DtHr");
+        9:  732:  OMNI_NAM_DTMI = omni_nick("DtMi");
+        9:  733:  OMNI_NAM_DTSC = omni_nick("DtSc");
+        9:  734:  OMNI_NAM_DTTS = omni_nick("DtTs");
+        9:  735:  OMNI_NAM_DTFT = omni_nick("DtFt");
         -:  736:
         -:  737:  // Tower/Meta-programming
-       17:  738:  OMNI_NAM_LIFT = omni_nick("Lift");
-       17:  739:  OMNI_NAM_RUN  = omni_nick("Run");
-       17:  740:  OMNI_NAM_EM   = omni_nick("EM");
-       17:  741:  OMNI_NAM_CLAM = omni_nick("CLam");
-       17:  742:  OMNI_NAM_STAG = omni_nick("Stag");
-       17:  743:  OMNI_NAM_SPLI = omni_nick("Spli");
-       17:  744:  OMNI_NAM_REFL = omni_nick("Refl");
-       17:  745:  OMNI_NAM_REIF = omni_nick("Reif");
-       17:  746:  OMNI_NAM_MLVL = omni_nick("MLvl");
-       17:  747:  OMNI_NAM_LPAR = omni_nick("LPar");
+        9:  738:  OMNI_NAM_LIFT = omni_nick("Lift");
+        9:  739:  OMNI_NAM_RUN  = omni_nick("Run");
+        9:  740:  OMNI_NAM_EM   = omni_nick("EM");
+        9:  741:  OMNI_NAM_CLAM = omni_nick("CLam");
+        9:  742:  OMNI_NAM_STAG = omni_nick("Stag");
+        9:  743:  OMNI_NAM_SPLI = omni_nick("Spli");
+        9:  744:  OMNI_NAM_REFL = omni_nick("Refl");
+        9:  745:  OMNI_NAM_REIF = omni_nick("Reif");
+        9:  746:  OMNI_NAM_MLVL = omni_nick("MLvl");
+        9:  747:  OMNI_NAM_LPAR = omni_nick("LPar");
         -:  748:
         -:  749:  // Networking (FFI-backed)
-       17:  750:  OMNI_NAM_SOCK = omni_nick("Sock");
-       17:  751:  OMNI_NAM_TCPC = omni_nick("TcpC");
-       17:  752:  OMNI_NAM_TCPL = omni_nick("TcpL");
-       17:  753:  OMNI_NAM_TCPA = omni_nick("TcpA");
-       17:  754:  OMNI_NAM_TCPS = omni_nick("TcpS");
-       17:  755:  OMNI_NAM_TCPR = omni_nick("TcpR");
-       17:  756:  OMNI_NAM_UDPC = omni_nick("UdpC");
-       17:  757:  OMNI_NAM_UDPB = omni_nick("UdpB");
-       17:  758:  OMNI_NAM_UDPS = omni_nick("UdpS");
-       17:  759:  OMNI_NAM_UDPR = omni_nick("UdpR");
-       17:  760:  OMNI_NAM_SCLS = omni_nick("SCls");
-       17:  761:  OMNI_NAM_HTTP = omni_nick("Http");
-       17:  762:  OMNI_NAM_HGET = omni_nick("HGet");
-       17:  763:  OMNI_NAM_HPOS = omni_nick("HPos");
-       17:  764:  OMNI_NAM_HRES = omni_nick("HRes");
+        9:  750:  OMNI_NAM_SOCK = omni_nick("Sock");
+        9:  751:  OMNI_NAM_TCPC = omni_nick("TcpC");
+        9:  752:  OMNI_NAM_TCPL = omni_nick("TcpL");
+        9:  753:  OMNI_NAM_TCPA = omni_nick("TcpA");
+        9:  754:  OMNI_NAM_TCPS = omni_nick("TcpS");
+        9:  755:  OMNI_NAM_TCPR = omni_nick("TcpR");
+        9:  756:  OMNI_NAM_UDPC = omni_nick("UdpC");
+        9:  757:  OMNI_NAM_UDPB = omni_nick("UdpB");
+        9:  758:  OMNI_NAM_UDPS = omni_nick("UdpS");
+        9:  759:  OMNI_NAM_UDPR = omni_nick("UdpR");
+        9:  760:  OMNI_NAM_SCLS = omni_nick("SCls");
+        9:  761:  OMNI_NAM_HTTP = omni_nick("Http");
+        9:  762:  OMNI_NAM_HGET = omni_nick("HGet");
+        9:  763:  OMNI_NAM_HPOS = omni_nick("HPos");
+        9:  764:  OMNI_NAM_HRES = omni_nick("HRes");
         -:  765:
         -:  766:  // Developer Tools
-       17:  767:  OMNI_NAM_INSP = omni_nick("Insp");
-       17:  768:  OMNI_NAM_TYOF = omni_nick("TyOf");
-       17:  769:  OMNI_NAM_DOC  = omni_nick("Doc");
-       17:  770:  OMNI_NAM_TRCE = omni_nick("Trce");
-       17:  771:  OMNI_NAM_TIME = omni_nick("Time");
-       17:  772:  OMNI_NAM_EXPD = omni_nick("Expd");
-       17:  773:  OMNI_NAM_DBUG = omni_nick("Dbug");
-       17:  774:  OMNI_NAM_PRTY = omni_nick("Prty");
-       17:  775:  OMNI_NAM_SRCE = omni_nick("Srce");
-       17:  776:  OMNI_NAM_PROF = omni_nick("Prof");
+        9:  767:  OMNI_NAM_INSP = omni_nick("Insp");
+        9:  768:  OMNI_NAM_TYOF = omni_nick("TyOf");
+        9:  769:  OMNI_NAM_DOC  = omni_nick("Doc");
+        9:  770:  OMNI_NAM_TRCE = omni_nick("Trce");
+        9:  771:  OMNI_NAM_TIME = omni_nick("Time");
+        9:  772:  OMNI_NAM_EXPD = omni_nick("Expd");
+        9:  773:  OMNI_NAM_DBUG = omni_nick("Dbug");
+        9:  774:  OMNI_NAM_PRTY = omni_nick("Prty");
+        9:  775:  OMNI_NAM_SRCE = omni_nick("Srce");
+        9:  776:  OMNI_NAM_PROF = omni_nick("Prof");
         -:  777:
         -:  778:  // Type annotations
-       17:  779:  OMNI_NAM_TANN = omni_nick("TAnn");
-       17:  780:  OMNI_NAM_TDSC = omni_nick("TDsc");
-       17:  781:  OMNI_NAM_TVAR = omni_nick("TVar");
-       17:  782:  OMNI_NAM_TFUN = omni_nick("TFun");
-       17:  783:  OMNI_NAM_TFUNE = omni_nick("TFunE");
-       17:  784:  OMNI_NAM_TSUP = omni_nick("TSup");
-       17:  785:  OMNI_NAM_TWSUP = omni_nick("TWSup");
-       17:  786:  OMNI_NAM_TAPP = omni_nick("TApp");
-       17:  787:  OMNI_NAM_VTYP = omni_nick("VTyp");
+        9:  779:  OMNI_NAM_TANN = omni_nick("TAnn");
+        9:  780:  OMNI_NAM_TDSC = omni_nick("TDsc");
+        9:  781:  OMNI_NAM_TVAR = omni_nick("TVar");
+        9:  782:  OMNI_NAM_TFUN = omni_nick("TFun");
+        9:  783:  OMNI_NAM_TFUNE = omni_nick("TFunE");
+        9:  784:  OMNI_NAM_TSUP = omni_nick("TSup");
+        9:  785:  OMNI_NAM_TWSUP = omni_nick("TWSup");
+        9:  786:  OMNI_NAM_TAPP = omni_nick("TApp");
+        9:  787:  OMNI_NAM_VTYP = omni_nick("VTyp");
         -:  788:
         -:  789:  // Type definitions
-       17:  790:  OMNI_NAM_TABS = omni_nick("TAbs");
-       17:  791:  OMNI_NAM_TSTR = omni_nick("TStr");
-       17:  792:  OMNI_NAM_TENM = omni_nick("TEnm");
-       17:  793:  OMNI_NAM_TUNI = omni_nick("TUni");
-       17:  794:  OMNI_NAM_TFLD = omni_nick("TFld");
-       17:  795:  OMNI_NAM_TVRN = omni_nick("TVrn");
-       17:  796:  OMNI_NAM_TEFF = omni_nick("TEff");  // Effect type definition
-       17:  797:  OMNI_NAM_TEOP = omni_nick("TEOp");  // Effect operation
+        9:  790:  OMNI_NAM_TABS = omni_nick("TAbs");
+        9:  791:  OMNI_NAM_TSTR = omni_nick("TStr");
+        9:  792:  OMNI_NAM_TENM = omni_nick("TEnm");
+        9:  793:  OMNI_NAM_TUNI = omni_nick("TUni");
+        9:  794:  OMNI_NAM_TFLD = omni_nick("TFld");
+        9:  795:  OMNI_NAM_TVRN = omni_nick("TVrn");
+        9:  796:  OMNI_NAM_TEFF = omni_nick("TEff");  // Effect type definition
+        9:  797:  OMNI_NAM_TEOP = omni_nick("TEOp");  // Effect operation
         -:  798:
         -:  799:  // Metadata
-       17:  800:  OMNI_NAM_META = omni_nick("Meta");
-       17:  801:  OMNI_NAM_PURE = omni_nick("Pure");  // Purity marker
-       17:  802:  OMNI_NAM_ASSC = omni_nick("Assc");  // Associative marker
-       17:  803:  OMNI_NAM_COVR = omni_nick("Covr");  // Covariance marker
-       17:  804:  OMNI_NAM_CNVR = omni_nick("Cnvr");  // Contravariance marker
+        9:  800:  OMNI_NAM_META = omni_nick("Meta");
+        9:  801:  OMNI_NAM_PURE = omni_nick("Pure");  // Purity marker
+        9:  802:  OMNI_NAM_ASSC = omni_nick("Assc");  // Associative marker
+        9:  803:  OMNI_NAM_COVR = omni_nick("Covr");  // Covariance marker
+        9:  804:  OMNI_NAM_CNVR = omni_nick("Cnvr");  // Contravariance marker
         -:  805:
         -:  806:  // FFI
-       17:  807:  OMNI_NAM_FFI  = omni_nick("FFI");
-       17:  808:  OMNI_NAM_HNDL = omni_nick("Hndl");
-       17:  809:  OMNI_NAM_PTR  = omni_nick("Ptr");
-       17:  810:  OMNI_NAM_PEND = omni_nick("Pend");
+        9:  807:  OMNI_NAM_FFI  = omni_nick("FFI");
+        9:  808:  OMNI_NAM_HNDL = omni_nick("Hndl");
+        9:  809:  OMNI_NAM_PTR  = omni_nick("Ptr");
+        9:  810:  OMNI_NAM_PEND = omni_nick("Pend");
         -:  811:
         -:  812:  // Effects
-       17:  813:  OMNI_NAM_PERF = omni_nick("Perf");
-       17:  814:  OMNI_NAM_HDLE = omni_nick("Hdle");
-       17:  815:  OMNI_NAM_HDLR = omni_nick("Hdlr");
-       17:  816:  OMNI_NAM_HDEF = omni_nick("HDef");
-       17:  817:  OMNI_NAM_EFF  = omni_nick("Eff");
-       17:  818:  OMNI_NAM_ERWS = omni_nick("ERws");  // Effect row signature
-       17:  819:  OMNI_NAM_EFFR = omni_nick("Effr");  // Effect-free check
-       17:  820:  OMNI_NAM_STPR = omni_nick("StPr");  // Staged-pure check
-       17:  821:  OMNI_NAM_MPCH = omni_nick("MpCh");  // Map-chunks
-       17:  822:  OMNI_NAM_CPMF = omni_nick("CpMf");  // Compile-parallel-map factory
+        9:  813:  OMNI_NAM_PERF = omni_nick("Perf");
+        9:  814:  OMNI_NAM_HDLE = omni_nick("Hdle");
+        9:  815:  OMNI_NAM_HDLR = omni_nick("Hdlr");
+        9:  816:  OMNI_NAM_HDEF = omni_nick("HDef");
+        9:  817:  OMNI_NAM_EFF  = omni_nick("Eff");
+        9:  818:  OMNI_NAM_ERWS = omni_nick("ERws");  // Effect row signature
+        9:  819:  OMNI_NAM_EFFR = omni_nick("Effr");  // Effect-free check
+        9:  820:  OMNI_NAM_STPR = omni_nick("StPr");  // Staged-pure check
+        9:  821:  OMNI_NAM_MPCH = omni_nick("MpCh");  // Map-chunks
+        9:  822:  OMNI_NAM_CPMF = omni_nick("CpMf");  // Compile-parallel-map factory
         -:  823:
         -:  824:  // Proof-as-Effect system
-       17:  825:  OMNI_NAM_REQR = omni_nick("Reqr");  // Require (precondition)
-       17:  826:  OMNI_NAM_ENSR = omni_nick("Ensr");  // Ensure (postcondition)
-       17:  827:  OMNI_NAM_PROV = omni_nick("Prov");  // Prove (request proof)
+        9:  825:  OMNI_NAM_REQR = omni_nick("Reqr");  // Require (precondition)
+        9:  826:  OMNI_NAM_ENSR = omni_nick("Ensr");  // Ensure (postcondition)
+        9:  827:  OMNI_NAM_PROV = omni_nick("Prov");  // Prove (request proof)
         -:  828:
         -:  829:  // Proof terms
-       17:  830:  OMNI_NAM_PRRF = omni_nick("PrRf");  // Reflexivity
-       17:  831:  OMNI_NAM_PRSM = omni_nick("PrSm");  // Symmetry
-       17:  832:  OMNI_NAM_PRTR = omni_nick("PrTr");  // Transitivity
-       17:  833:  OMNI_NAM_PRCG = omni_nick("PrCg");  // Congruence
-       17:  834:  OMNI_NAM_PRJL = omni_nick("PrJl");  // J eliminator
-       17:  835:  OMNI_NAM_PRQD = omni_nick("PrQd");  // QED marker
-       17:  836:  OMNI_NAM_PRBY = omni_nick("PrBy");  // Proof by tactic
-       17:  837:  OMNI_NAM_PRSK = omni_nick("PrSk");  // Proof sketch (hole)
+        9:  830:  OMNI_NAM_PRRF = omni_nick("PrRf");  // Reflexivity
+        9:  831:  OMNI_NAM_PRSM = omni_nick("PrSm");  // Symmetry
+        9:  832:  OMNI_NAM_PRTR = omni_nick("PrTr");  // Transitivity
+        9:  833:  OMNI_NAM_PRCG = omni_nick("PrCg");  // Congruence
+        9:  834:  OMNI_NAM_PRJL = omni_nick("PrJl");  // J eliminator
+        9:  835:  OMNI_NAM_PRQD = omni_nick("PrQd");  // QED marker
+        9:  836:  OMNI_NAM_PRBY = omni_nick("PrBy");  // Proof by tactic
+        9:  837:  OMNI_NAM_PRSK = omni_nick("PrSk");  // Proof sketch (hole)
         -:  838:
         -:  839:  // Proof search
-       17:  840:  OMNI_NAM_PRSP = omni_nick("PrSp");  // Superposition (parallel)
-       17:  841:  OMNI_NAM_PRFL = omni_nick("PrFl");  // Failure
-       17:  842:  OMNI_NAM_PRSC = omni_nick("PrSc");  // Success
+        9:  840:  OMNI_NAM_PRSP = omni_nick("PrSp");  // Superposition (parallel)
+        9:  841:  OMNI_NAM_PRFL = omni_nick("PrFl");  // Failure
+        9:  842:  OMNI_NAM_PRSC = omni_nick("PrSc");  // Success
         -:  843:
         -:  844:  // Concurrency
-       17:  845:  OMNI_NAM_FIBR = omni_nick("Fibr");
-       17:  846:  OMNI_NAM_FORK = omni_nick("Fork");
-       17:  847:  OMNI_NAM_AMB  = omni_nick("Amb");
-       17:  848:  OMNI_NAM_CHOI = omni_nick("Choi");  // Choice (nested superposition)
-       17:  849:  OMNI_NAM_REQT = omni_nick("Reqt");  // Require test (exploration)
-       17:  850:  OMNI_NAM_EXFR = omni_nick("ExFr");  // Explore-first
-       17:  851:  OMNI_NAM_EXAL = omni_nick("ExAl");  // Explore-all
-       17:  852:  OMNI_NAM_EXRG = omni_nick("ExRg");  // Explore-range
+        9:  845:  OMNI_NAM_FIBR = omni_nick("Fibr");
+        9:  846:  OMNI_NAM_FORK = omni_nick("Fork");
+        9:  847:  OMNI_NAM_AMB  = omni_nick("Amb");
+        9:  848:  OMNI_NAM_CHOI = omni_nick("Choi");  // Choice (nested superposition)
+        9:  849:  OMNI_NAM_REQT = omni_nick("Reqt");  // Require test (exploration)
+        9:  850:  OMNI_NAM_EXFR = omni_nick("ExFr");  // Explore-first
+        9:  851:  OMNI_NAM_EXAL = omni_nick("ExAl");  // Explore-all
+        9:  852:  OMNI_NAM_EXRG = omni_nick("ExRg");  // Explore-range
         -:  853:
         -:  854:  // Speculative Transactions (A3)
-       17:  855:  OMNI_NAM_ROLL = omni_nick("Roll");  // Rollback
-       17:  856:  OMNI_NAM_COMT = omni_nick("Comt");  // Commit
-       17:  857:  OMNI_NAM_SPTX = omni_nick("SpTx");  // Speculative transaction
-       17:  858:  OMNI_NAM_WROL = omni_nick("WRol");  // With-rollback
+        9:  855:  OMNI_NAM_ROLL = omni_nick("Roll");  // Rollback
+        9:  856:  OMNI_NAM_COMT = omni_nick("Comt");  // Commit
+        9:  857:  OMNI_NAM_SPTX = omni_nick("SpTx");  // Speculative transaction
+        9:  858:  OMNI_NAM_WROL = omni_nick("WRol");  // With-rollback
         -:  859:
         -:  860:  // Ambient Parallelism (A5)
-       17:  861:  OMNI_NAM_PCTX = omni_nick("PCtx");  // Parallel context
-       17:  862:  OMNI_NAM_FJOI = omni_nick("FJoi");  // Fork-join
-       17:  863:  OMNI_NAM_WPAR = omni_nick("WPar");  // With-parallelism
+        9:  861:  OMNI_NAM_PCTX = omni_nick("PCtx");  // Parallel context
+        9:  862:  OMNI_NAM_FJOI = omni_nick("FJoi");  // Fork-join
+        9:  863:  OMNI_NAM_WPAR = omni_nick("WPar");  // With-parallelism
         -:  864:
         -:  865:  // Probabilistic Effects (A7)
-       17:  866:  OMNI_NAM_BERN = omni_nick("Bern");  // Bernoulli distribution
-       17:  867:  OMNI_NAM_CATG = omni_nick("Catg");  // Categorical distribution
-       17:  868:  OMNI_NAM_UNIF = omni_nick("Unif");  // Uniform distribution
-       17:  869:  OMNI_NAM_BETA = omni_nick("Beta");  // Beta distribution
-       17:  870:  OMNI_NAM_SMPL = omni_nick("Smpl");  // Sample
-       17:  871:  OMNI_NAM_OBSV = omni_nick("Obsv");  // Observe
-       17:  872:  OMNI_NAM_FCTR = omni_nick("Fctr");  // Factor
-       17:  873:  OMNI_NAM_FLIP = omni_nick("Flip");  // Flip (weighted coin)
-       17:  874:  OMNI_NAM_ENMR = omni_nick("EnmI");  // Enumerate-infer
-       17:  875:  OMNI_NAM_IMPS = omni_nick("ImpS");  // Importance-sample
-       17:  876:  OMNI_NAM_WGTS = omni_nick("WgtS");  // Weighted superposition
-       17:  877:  OMNI_NAM_DMIX = omni_nick("DMix");  // Mixture distribution
-       17:  878:  OMNI_NAM_DPRD = omni_nick("DPrd");  // Product distribution
-       17:  879:  OMNI_NAM_DMAP = omni_nick("DMap");  // Mapped distribution
+        9:  866:  OMNI_NAM_BERN = omni_nick("Bern");  // Bernoulli distribution
+        9:  867:  OMNI_NAM_CATG = omni_nick("Catg");  // Categorical distribution
+        9:  868:  OMNI_NAM_UNIF = omni_nick("Unif");  // Uniform distribution
+        9:  869:  OMNI_NAM_BETA = omni_nick("Beta");  // Beta distribution
+        9:  870:  OMNI_NAM_SMPL = omni_nick("Smpl");  // Sample
+        9:  871:  OMNI_NAM_OBSV = omni_nick("Obsv");  // Observe
+        9:  872:  OMNI_NAM_FCTR = omni_nick("Fctr");  // Factor
+        9:  873:  OMNI_NAM_FLIP = omni_nick("Flip");  // Flip (weighted coin)
+        9:  874:  OMNI_NAM_ENMR = omni_nick("EnmI");  // Enumerate-infer
+        9:  875:  OMNI_NAM_IMPS = omni_nick("ImpS");  // Importance-sample
+        9:  876:  OMNI_NAM_WGTS = omni_nick("WgtS");  // Weighted superposition
+        9:  877:  OMNI_NAM_DMIX = omni_nick("DMix");  // Mixture distribution
+        9:  878:  OMNI_NAM_DPRD = omni_nick("DPrd");  // Product distribution
+        9:  879:  OMNI_NAM_DMAP = omni_nick("DMap");  // Mapped distribution
         -:  880:
         -:  881:  // Definitions
-       17:  882:  OMNI_NAM_DEF  = omni_nick("Def");
-       17:  883:  OMNI_NAM_SLOT = omni_nick("Slot");
+        9:  882:  OMNI_NAM_DEF  = omni_nick("Def");
+        9:  883:  OMNI_NAM_SLOT = omni_nick("Slot");
         -:  884:
         -:  885:  // Multiple dispatch
-       17:  886:  OMNI_NAM_METH = omni_nick("Meth");
-       17:  887:  OMNI_NAM_GFUN = omni_nick("GFun");
-       17:  888:  OMNI_NAM_GPRT = omni_nick("GPrt");  // Generic partial application
-       17:  889:  OMNI_NAM_DISP = omni_nick("Disp");
-       17:  890:  OMNI_NAM_SIG  = omni_nick("Sig");
-       17:  891:  OMNI_NAM_TWHR = omni_nick("TWhr");  // Type where constraint
-       17:  892:  OMNI_NAM_TYCK = omni_nick("Tyck");  // Type check
+        9:  886:  OMNI_NAM_METH = omni_nick("Meth");
+        9:  887:  OMNI_NAM_GFUN = omni_nick("GFun");
+        9:  888:  OMNI_NAM_GPRT = omni_nick("GPrt");  // Generic partial application
+        9:  889:  OMNI_NAM_DISP = omni_nick("Disp");
+        9:  890:  OMNI_NAM_SIG  = omni_nick("Sig");
+        9:  891:  OMNI_NAM_TWHR = omni_nick("TWhr");  // Type where constraint
+        9:  892:  OMNI_NAM_TYCK = omni_nick("Tyck");  // Type check
         -:  893:
         -:  894:  // Macro system
-       17:  895:  OMNI_NAM_MSYN = omni_nick("MSyn");
-       17:  896:  OMNI_NAM_MPAT = omni_nick("MPat");
-       17:  897:  OMNI_NAM_MVAR = omni_nick("MVar");
-       17:  898:  OMNI_NAM_MRST = omni_nick("MRst");
-       17:  899:  OMNI_NAM_MLIT = omni_nick("MLit");
-       17:  900:  OMNI_NAM_MEXP = omni_nick("MExp");
+        9:  895:  OMNI_NAM_MSYN = omni_nick("MSyn");
+        9:  896:  OMNI_NAM_MPAT = omni_nick("MPat");
+        9:  897:  OMNI_NAM_MVAR = omni_nick("MVar");
+        9:  898:  OMNI_NAM_MRST = omni_nick("MRst");
+        9:  899:  OMNI_NAM_MLIT = omni_nick("MLit");
+        9:  900:  OMNI_NAM_MEXP = omni_nick("MExp");
         -:  901:
         -:  902:  // Module system
-       17:  903:  OMNI_NAM_MODL = omni_nick("Modl");
-       17:  904:  OMNI_NAM_IMPT = omni_nick("Impt");
-       17:  905:  OMNI_NAM_EXPT = omni_nick("Expt");
-       17:  906:  OMNI_NAM_QUAL = omni_nick("Qual");
-       17:  907:  OMNI_NAM_MODA = omni_nick("ModA");
+        9:  903:  OMNI_NAM_MODL = omni_nick("Modl");
+        9:  904:  OMNI_NAM_IMPT = omni_nick("Impt");
+        9:  905:  OMNI_NAM_EXPT = omni_nick("Expt");
+        9:  906:  OMNI_NAM_QUAL = omni_nick("Qual");
+        9:  907:  OMNI_NAM_MODA = omni_nick("ModA");
         -:  908:
         -:  909:  // Code/quasiquote
-       17:  910:  OMNI_NAM_COD  = omni_nick("Cod");
-       17:  911:  OMNI_NAM_QUOT = omni_nick("quot");
-       17:  912:  OMNI_NAM_QQ   = omni_nick("QQ");
-       17:  913:  OMNI_NAM_UQ  = omni_nick("UQ");
-       17:  914:  OMNI_NAM_UQS = omni_nick("UQS");
+        9:  910:  OMNI_NAM_COD  = omni_nick("Cod");
+        9:  911:  OMNI_NAM_QUOT = omni_nick("quot");
+        9:  912:  OMNI_NAM_QQ   = omni_nick("QQ");
+        9:  913:  OMNI_NAM_UQ  = omni_nick("UQ");
+        9:  914:  OMNI_NAM_UQS = omni_nick("UQS");
         -:  915:
         -:  916:  // Runtime
-       17:  917:  OMNI_NAM_MENV = omni_nick("MEnv");
-       17:  918:  OMNI_NAM_CLO  = omni_nick("Clo");
-       17:  919:  OMNI_NAM_CLOR = omni_nick("CloR");
-       17:  920:  OMNI_NAM_ERR  = omni_nick("Err");
-       17:  921:  OMNI_NAM_NOTH = omni_nick("Noth");
+        9:  917:  OMNI_NAM_MENV = omni_nick("MEnv");
+        9:  918:  OMNI_NAM_CLO  = omni_nick("Clo");
+        9:  919:  OMNI_NAM_CLOR = omni_nick("CloR");
+        9:  920:  OMNI_NAM_ERR  = omni_nick("Err");
+        9:  921:  OMNI_NAM_NOTH = omni_nick("Noth");
         -:  922:
         -:  923:  // Delimited continuations
-       17:  924:  OMNI_NAM_PRMT = omni_nick("Prmt");
-       17:  925:  OMNI_NAM_CTRL = omni_nick("Ctrl");
-       17:  926:  OMNI_NAM_CLOC = omni_nick("CloC");
-       17:  927:  OMNI_NAM_CLOK = omni_nick("CloK");
-       17:  928:  OMNI_NAM_KONT = omni_nick("Kont");
+        9:  924:  OMNI_NAM_PRMT = omni_nick("Prmt");
+        9:  925:  OMNI_NAM_CTRL = omni_nick("Ctrl");
+        9:  926:  OMNI_NAM_CLOC = omni_nick("CloC");
+        9:  927:  OMNI_NAM_CLOK = omni_nick("CloK");
+        9:  928:  OMNI_NAM_KONT = omni_nick("Kont");
         -:  929:
         -:  930:  // Fiber support
-       17:  931:  OMNI_NAM_FYLD = omni_nick("FYld");
-       17:  932:  OMNI_NAM_FTHK = omni_nick("FThk");
-       17:  933:  OMNI_NAM_FBRR = omni_nick("FbrR");
-       17:  934:  OMNI_NAM_FBRS = omni_nick("FbrS");
-       17:  935:  OMNI_NAM_FBRD = omni_nick("FbrD");
-       17:  936:  OMNI_NAM_YLD  = omni_nick("Yld");
+        9:  931:  OMNI_NAM_FYLD = omni_nick("FYld");
+        9:  932:  OMNI_NAM_FTHK = omni_nick("FThk");
+        9:  933:  OMNI_NAM_FBRR = omni_nick("FbrR");
+        9:  934:  OMNI_NAM_FBRS = omni_nick("FbrS");
+        9:  935:  OMNI_NAM_FBRD = omni_nick("FbrD");
+        9:  936:  OMNI_NAM_YLD  = omni_nick("Yld");
         -:  937:
         -:  938:  // Fiber operations (exposed to user)
-       17:  939:  OMNI_NAM_FSPN = omni_nick("FSpn");
-       17:  940:  OMNI_NAM_FRSM = omni_nick("FRsm");
-       17:  941:  OMNI_NAM_FDNP = omni_nick("FDn?");
-       17:  942:  OMNI_NAM_FRST = omni_nick("FRst");
-       17:  943:  OMNI_NAM_FMBX = omni_nick("FMbx");
+        9:  939:  OMNI_NAM_FSPN = omni_nick("FSpn");
+        9:  940:  OMNI_NAM_FRSM = omni_nick("FRsm");
+        9:  941:  OMNI_NAM_FDNP = omni_nick("FDn?");
+        9:  942:  OMNI_NAM_FRST = omni_nick("FRst");
+        9:  943:  OMNI_NAM_FMBX = omni_nick("FMbx");
         -:  944:
         -:  945:  // Booleans
-       17:  946:  OMNI_NAM_TRUE = omni_nick("True");
-       17:  947:  OMNI_NAM_FALS = omni_nick("Fals");
+        9:  946:  OMNI_NAM_TRUE = omni_nick("True");
+        9:  947:  OMNI_NAM_FALS = omni_nick("Fals");
         -:  948:
         -:  949:  // Collection operations
-       17:  950:  OMNI_NAM_SET  = omni_nick("Set");
-       17:  951:  OMNI_NAM_SORT = omni_nick("Sort");
-       17:  952:  OMNI_NAM_GRPB = omni_nick("GrpB");
-       17:  953:  OMNI_NAM_ZIP  = omni_nick("Zip");
-       17:  954:  OMNI_NAM_FLAT = omni_nick("Flat");
-       17:  955:  OMNI_NAM_CONC = omni_nick("Conc");
-       17:  956:  OMNI_NAM_MAP  = omni_nick("Map");
-       17:  957:  OMNI_NAM_FILT = omni_nick("Filt");
-       17:  958:  OMNI_NAM_FOLD = omni_nick("Fold");
-       17:  959:  OMNI_NAM_FLDR = omni_nick("FldR");
-       17:  960:  OMNI_NAM_TAKE = omni_nick("Take");
-       17:  961:  OMNI_NAM_DROP = omni_nick("Drop");
-       17:  962:  OMNI_NAM_REV  = omni_nick("Rev");
-       17:  963:  OMNI_NAM_FIND = omni_nick("Find");
-       17:  964:  OMNI_NAM_ANY  = omni_nick("Any");
-       17:  965:  OMNI_NAM_ALL  = omni_nick("All");
-       17:  966:  OMNI_NAM_CONJ = omni_nick("Conj");
-       17:  967:  OMNI_NAM_REMV = omni_nick("Remv");
-       17:  968:  OMNI_NAM_INTR = omni_nick("Intr");
-       17:  969:  OMNI_NAM_UNIN = omni_nick("Unin");
-       17:  970:  OMNI_NAM_DIFF = omni_nick("Diff");
-       17:  971:  OMNI_NAM_KEYS = omni_nick("Keys");
-       17:  972:  OMNI_NAM_VALS = omni_nick("Vals");
-       17:  973:  OMNI_NAM_ENTS = omni_nick("Ents");
-       17:  974:  OMNI_NAM_MERG = omni_nick("Merg");
-       17:  975:  OMNI_NAM_ASOC = omni_nick("Asoc");
-       17:  976:  OMNI_NAM_DISS = omni_nick("Diss");
-       17:  977:  OMNI_NAM_GET  = omni_nick("Get");
-       17:  978:  OMNI_NAM_LEN  = omni_nick("Len");
-       17:  979:  OMNI_NAM_EMPT = omni_nick("Empt");
-       17:  980:  OMNI_NAM_CONT = omni_nick("Cont");
-       17:  981:  OMNI_NAM_INDX = omni_nick("Indx");
-       17:  982:  OMNI_NAM_NTH  = omni_nick("Nth");
-       17:  983:  OMNI_NAM_SLCE = omni_nick("Slce");
-       17:  984:  OMNI_NAM_FRNG = omni_nick("FRng");
+        9:  950:  OMNI_NAM_SET  = omni_nick("Set");
+        9:  951:  OMNI_NAM_SORT = omni_nick("Sort");
+        9:  952:  OMNI_NAM_GRPB = omni_nick("GrpB");
+        9:  953:  OMNI_NAM_ZIP  = omni_nick("Zip");
+        9:  954:  OMNI_NAM_FLAT = omni_nick("Flat");
+        9:  955:  OMNI_NAM_CONC = omni_nick("Conc");
+        9:  956:  OMNI_NAM_MAP  = omni_nick("Map");
+        9:  957:  OMNI_NAM_FILT = omni_nick("Filt");
+        9:  958:  OMNI_NAM_FOLD = omni_nick("Fold");
+        9:  959:  OMNI_NAM_FLDR = omni_nick("FldR");
+        9:  960:  OMNI_NAM_TAKE = omni_nick("Take");
+        9:  961:  OMNI_NAM_DROP = omni_nick("Drop");
+        9:  962:  OMNI_NAM_REV  = omni_nick("Rev");
+        9:  963:  OMNI_NAM_FIND = omni_nick("Find");
+        9:  964:  OMNI_NAM_ANY  = omni_nick("Any");
+        9:  965:  OMNI_NAM_ALL  = omni_nick("All");
+        9:  966:  OMNI_NAM_CONJ = omni_nick("Conj");
+        9:  967:  OMNI_NAM_REMV = omni_nick("Remv");
+        9:  968:  OMNI_NAM_INTR = omni_nick("Intr");
+        9:  969:  OMNI_NAM_UNIN = omni_nick("Unin");
+        9:  970:  OMNI_NAM_DIFF = omni_nick("Diff");
+        9:  971:  OMNI_NAM_KEYS = omni_nick("Keys");
+        9:  972:  OMNI_NAM_VALS = omni_nick("Vals");
+        9:  973:  OMNI_NAM_ENTS = omni_nick("Ents");
+        9:  974:  OMNI_NAM_MERG = omni_nick("Merg");
+        9:  975:  OMNI_NAM_ASOC = omni_nick("Asoc");
+        9:  976:  OMNI_NAM_DISS = omni_nick("Diss");
+        9:  977:  OMNI_NAM_GET  = omni_nick("Get");
+        9:  978:  OMNI_NAM_LEN  = omni_nick("Len");
+        9:  979:  OMNI_NAM_EMPT = omni_nick("Empt");
+        9:  980:  OMNI_NAM_CONT = omni_nick("Cont");
+        9:  981:  OMNI_NAM_INDX = omni_nick("Indx");
+        9:  982:  OMNI_NAM_NTH  = omni_nick("Nth");
+        9:  983:  OMNI_NAM_SLCE = omni_nick("Slce");
+        9:  984:  OMNI_NAM_FRNG = omni_nick("FRng");
         -:  985:
         -:  986:  // String operations
-       17:  987:  OMNI_NAM_STR  = omni_nick("Str");
-       17:  988:  OMNI_NAM_SUPR = omni_nick("SUpR");
-       17:  989:  OMNI_NAM_SLWR = omni_nick("SLwR");
-       17:  990:  OMNI_NAM_STRM = omni_nick("STrm");
-       17:  991:  OMNI_NAM_SSPL = omni_nick("SSpl");
-       17:  992:  OMNI_NAM_SJOI = omni_nick("SJoi");
-       17:  993:  OMNI_NAM_SRPL = omni_nick("SRpl");
-       17:  994:  OMNI_NAM_SSUB = omni_nick("SSub");
-       17:  995:  OMNI_NAM_SIND = omni_nick("SInd");
-       17:  996:  OMNI_NAM_SSTA = omni_nick("SSta");
-       17:  997:  OMNI_NAM_SEND = omni_nick("SEnd");
-       17:  998:  OMNI_NAM_SCNT = omni_nick("SCnt");
-       17:  999:  OMNI_NAM_SREV = omni_nick("SRev");
-       17: 1000:  OMNI_NAM_SPAD = omni_nick("SPad");
-       17: 1001:  OMNI_NAM_SCAP = omni_nick("SCap");
-       17: 1002:  OMNI_NAM_SCHC = omni_nick("SChc");
-       17: 1003:  OMNI_NAM_SLEN = omni_nick("SLen");
-       17: 1004:  OMNI_NAM_SEMP = omni_nick("SEmp");
-       17: 1005:  OMNI_NAM_SCMP = omni_nick("SCmp");
-       17: 1006:  OMNI_NAM_SREP = omni_nick("SRep");
-       17: 1007:  OMNI_NAM_FMTS = omni_nick("Fmts");
-       17: 1008:  OMNI_NAM_FLIT = omni_nick("Flit");
-       17: 1009:  OMNI_NAM_FEXP = omni_nick("Fexp");
+        9:  987:  OMNI_NAM_STR  = omni_nick("Str");
+        9:  988:  OMNI_NAM_SUPR = omni_nick("SUpR");
+        9:  989:  OMNI_NAM_SLWR = omni_nick("SLwR");
+        9:  990:  OMNI_NAM_STRM = omni_nick("STrm");
+        9:  991:  OMNI_NAM_SSPL = omni_nick("SSpl");
+        9:  992:  OMNI_NAM_SJOI = omni_nick("SJoi");
+        9:  993:  OMNI_NAM_SRPL = omni_nick("SRpl");
+        9:  994:  OMNI_NAM_SSUB = omni_nick("SSub");
+        9:  995:  OMNI_NAM_SIND = omni_nick("SInd");
+        9:  996:  OMNI_NAM_SSTA = omni_nick("SSta");
+        9:  997:  OMNI_NAM_SEND = omni_nick("SEnd");
+        9:  998:  OMNI_NAM_SCNT = omni_nick("SCnt");
+        9:  999:  OMNI_NAM_SREV = omni_nick("SRev");
+        9: 1000:  OMNI_NAM_SPAD = omni_nick("SPad");
+        9: 1001:  OMNI_NAM_SCAP = omni_nick("SCap");
+        9: 1002:  OMNI_NAM_SCHC = omni_nick("SChc");
+        9: 1003:  OMNI_NAM_SLEN = omni_nick("SLen");
+        9: 1004:  OMNI_NAM_SEMP = omni_nick("SEmp");
+        9: 1005:  OMNI_NAM_SCMP = omni_nick("SCmp");
+        9: 1006:  OMNI_NAM_SREP = omni_nick("SRep");
+        9: 1007:  OMNI_NAM_FMTS = omni_nick("Fmts");
+        9: 1008:  OMNI_NAM_FLIT = omni_nick("Flit");
+        9: 1009:  OMNI_NAM_FEXP = omni_nick("Fexp");
         -: 1010:
         -: 1011:  // Regex operations
-       17: 1012:  OMNI_NAM_REGX = omni_nick("Regx");
-       17: 1013:  OMNI_NAM_RMAT = omni_nick("RMat");
-       17: 1014:  OMNI_NAM_RFND = omni_nick("RFnd");
-       17: 1015:  OMNI_NAM_RFNA = omni_nick("RFnA");
-       17: 1016:  OMNI_NAM_RRPL = omni_nick("RRpl");
-       17: 1017:  OMNI_NAM_RSPL = omni_nick("RSpl");
-       17: 1018:  OMNI_NAM_RGRP = omni_nick("RGrp");
-       17: 1019:  OMNI_NAM_RMRS = omni_nick("RMRs");
+        9: 1012:  OMNI_NAM_REGX = omni_nick("Regx");
+        9: 1013:  OMNI_NAM_RMAT = omni_nick("RMat");
+        9: 1014:  OMNI_NAM_RFND = omni_nick("RFnd");
+        9: 1015:  OMNI_NAM_RFNA = omni_nick("RFnA");
+        9: 1016:  OMNI_NAM_RRPL = omni_nick("RRpl");
+        9: 1017:  OMNI_NAM_RSPL = omni_nick("RSpl");
+        9: 1018:  OMNI_NAM_RGRP = omni_nick("RGrp");
+        9: 1019:  OMNI_NAM_RMRS = omni_nick("RMRs");
         -: 1020:
         -: 1021:  // Grammar DSL
-       17: 1022:  OMNI_NAM_GRAM = omni_nick("Gram");
-       17: 1023:  OMNI_NAM_RULE = omni_nick("Rule");
-       17: 1024:  OMNI_NAM_GSEQ = omni_nick("GSeq");
-       17: 1025:  OMNI_NAM_GALT = omni_nick("GAlt");
-       17: 1026:  OMNI_NAM_GSTR = omni_nick("GStr");
-       17: 1027:  OMNI_NAM_GCHR = omni_nick("GChr");
-       17: 1028:  OMNI_NAM_GREF = omni_nick("GRef");
-       17: 1029:  OMNI_NAM_GOPT = omni_nick("GOpt");
-       17: 1030:  OMNI_NAM_GSTA = omni_nick("GSta");
-       17: 1031:  OMNI_NAM_GPLS = omni_nick("GPls");
-       17: 1032:  OMNI_NAM_GNOT = omni_nick("GNot");
-       17: 1033:  OMNI_NAM_GAND = omni_nick("GAnd");
-       17: 1034:  OMNI_NAM_GCAP = omni_nick("GCap");
-       17: 1035:  OMNI_NAM_GACT = omni_nick("GAct");
-       17: 1036:  OMNI_NAM_GANY = omni_nick("GAny");
-       17: 1037:  OMNI_NAM_PRSR = omni_nick("Prsr");
-       17: 1038:  OMNI_NAM_PRES = omni_nick("PRes");
+        9: 1022:  OMNI_NAM_GRAM = omni_nick("Gram");
+        9: 1023:  OMNI_NAM_RULE = omni_nick("Rule");
+        9: 1024:  OMNI_NAM_GSEQ = omni_nick("GSeq");
+        9: 1025:  OMNI_NAM_GALT = omni_nick("GAlt");
+        9: 1026:  OMNI_NAM_GSTR = omni_nick("GStr");
+        9: 1027:  OMNI_NAM_GCHR = omni_nick("GChr");
+        9: 1028:  OMNI_NAM_GREF = omni_nick("GRef");
+        9: 1029:  OMNI_NAM_GOPT = omni_nick("GOpt");
+        9: 1030:  OMNI_NAM_GSTA = omni_nick("GSta");
+        9: 1031:  OMNI_NAM_GPLS = omni_nick("GPls");
+        9: 1032:  OMNI_NAM_GNOT = omni_nick("GNot");
+        9: 1033:  OMNI_NAM_GAND = omni_nick("GAnd");
+        9: 1034:  OMNI_NAM_GCAP = omni_nick("GCap");
+        9: 1035:  OMNI_NAM_GACT = omni_nick("GAct");
+        9: 1036:  OMNI_NAM_GANY = omni_nick("GAny");
+        9: 1037:  OMNI_NAM_PRSR = omni_nick("Prsr");
+        9: 1038:  OMNI_NAM_PRES = omni_nick("PRes");
         -: 1039:
         -: 1040:  // List comprehensions
-       17: 1041:  OMNI_NAM_CMPR = omni_nick("Cmpr");
-       17: 1042:  OMNI_NAM_CFOR = omni_nick("CFor");
-       17: 1043:  OMNI_NAM_CWHN = omni_nick("CWhn");
-       17: 1044:  OMNI_NAM_CYLD = omni_nick("CYld");
+        9: 1041:  OMNI_NAM_CMPR = omni_nick("Cmpr");
+        9: 1042:  OMNI_NAM_CFOR = omni_nick("CFor");
+        9: 1043:  OMNI_NAM_CWHN = omni_nick("CWhn");
+        9: 1044:  OMNI_NAM_CYLD = omni_nick("CYld");
         -: 1045:
-       17: 1046:  OMNI_NAMES_READY = 1;
+        9: 1046:  OMNI_NAMES_READY = 1;
         -: 1047:}

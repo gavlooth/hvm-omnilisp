@@ -1,16 +1,16 @@
         -:    0:Source:../hvm4/clang/wnf/alo_nod.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// @{s} T{a,b,...}
         -:    2:// ---------------- ALO-NOD
         -:    3:// T{@{s}a, @{s}b, ...}
-     1806:    4:fn Term wnf_alo_nod(u32 ls_loc, u32 len, u32 loc, u8 tag, u32 ext, u32 ari) {
+      865:    4:fn Term wnf_alo_nod(u32 ls_loc, u32 len, u32 loc, u8 tag, u32 ext, u32 ari) {
         -:    5:  Term args[16];
-     5342:    6:  for (u32 i = 0; i < ari; i++) {
-     3536:    7:    u64 alo_loc = heap_alloc(1);
-     3536:    8:    heap_set(alo_loc, ((u64)ls_loc << 32) | (loc + i));
-     3536:    9:    args[i] = term_new(0, ALO, len, alo_loc);
+     2560:    6:  for (u32 i = 0; i < ari; i++) {
+     1695:    7:    u64 alo_loc = heap_alloc(1);
+     1695:    8:    heap_set(alo_loc, ((u64)ls_loc << 32) | (loc + i));
+     1695:    9:    args[i] = term_new(0, ALO, len, alo_loc);
         -:   10:  }
-     1806:   11:  return term_new_(tag, ext, ari, args);
+      865:   11:  return term_new_(tag, ext, ari, args);
         -:   12:}

@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/nick/b64_to_letter.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
     #####:    1:fn char nick_b64_to_letter(int b64) {
     #####:    2:  if (b64 == 0) {
     #####:    3:    return '_';

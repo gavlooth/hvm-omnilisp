@@ -1,33 +1,33 @@
         -:    0:Source:../hvm4/clang/heap/init_slices.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
-       17:    1:fn void heap_init_slices(void) {
-       17:    2:  u32 threads = thread_get_count();
-       17:    3:  if (threads == 0) {
+        -:    0:Runs:9
+        9:    1:fn void heap_init_slices(void) {
+        9:    2:  u32 threads = thread_get_count();
+        9:    3:  if (threads == 0) {
     #####:    4:    threads = 1;
         -:    5:  }
-       17:    6:  if (threads > MAX_THREADS) {
+        9:    6:  if (threads > MAX_THREADS) {
     #####:    7:    threads = MAX_THREADS;
         -:    8:  }
         -:    9:
-       17:   10:  u64 words = HEAP_CAP;
-       17:   11:  u64 bank_sz = words / threads;
-       17:   12:  u64 at = 0;
+        9:   10:  u64 words = HEAP_CAP;
+        9:   11:  u64 bank_sz = words / threads;
+        9:   12:  u64 at = 0;
         -:   13:
-       34:   14:  for (u32 t = 0; t < threads; t++) {
-       17:   15:    u64 start = at;
-      17*:   16:    u64 end = (t == threads - 1) ? words : (at + bank_sz);
-       17:   17:    if (t == 0 && start == 0) {
-       17:   18:      start = 1;
+       18:   14:  for (u32 t = 0; t < threads; t++) {
+        9:   15:    u64 start = at;
+       9*:   16:    u64 end = (t == threads - 1) ? words : (at + bank_sz);
+        9:   17:    if (t == 0 && start == 0) {
+        9:   18:      start = 1;
         -:   19:    }
-       17:   20:    HEAP_NEXT_AT(t) = start;
-       17:   21:    HEAP_END_AT(t) = end;
-       17:   22:    at += bank_sz;
+        9:   20:    HEAP_NEXT_AT(t) = start;
+        9:   21:    HEAP_END_AT(t) = end;
+        9:   22:    at += bank_sz;
         -:   23:  }
         -:   24:
-     1088:   25:  for (u32 t = threads; t < MAX_THREADS; t++) {
-     1071:   26:    HEAP_NEXT_AT(t) = 0;
-     1071:   27:    HEAP_END_AT(t) = 0;
+      576:   25:  for (u32 t = threads; t < MAX_THREADS; t++) {
+      567:   26:    HEAP_NEXT_AT(t) = 0;
+      567:   27:    HEAP_END_AT(t) = 0;
         -:   28:  }
-       17:   29:}
+        9:   29:}

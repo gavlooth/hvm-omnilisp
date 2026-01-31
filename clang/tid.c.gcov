@@ -1,16 +1,16 @@
         -:    0:Source:../hvm4/clang/wnf/tid.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:static _Thread_local u32 WNF_TID = 0;
         -:    2:
-   207217:    3:fn u32 wnf_tid(void) {
-   207217:    4:  return WNF_TID;
+   112528:    3:fn u32 wnf_tid(void) {
+   112528:    4:  return WNF_TID;
         -:    5:}
         -:    6:
-       49:    7:fn void wnf_set_tid(u32 tid) {
-       49:    8:  WNF_TID = tid;
-       49:    9:  WNF_BANK = &WNF_BANKS[tid];
-       49:   10:  WNF_ITRS_PTR = &WNF_ITRS_BANKS[tid].itrs;
-       49:   11:  *WNF_ITRS_PTR = 0;
-       49:   12:}
+       27:    7:fn void wnf_set_tid(u32 tid) {
+       27:    8:  WNF_TID = tid;
+       27:    9:  WNF_BANK = &WNF_BANKS[tid];
+       27:   10:  WNF_ITRS_PTR = &WNF_ITRS_BANKS[tid].itrs;
+       27:   11:  *WNF_ITRS_PTR = 0;
+       27:   12:}

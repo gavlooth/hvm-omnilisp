@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/term/val.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
-  1652677:    1:fn u32 term_val(Term t) {
-  1652677:    2:  return (t >> VAL_SHIFT) & VAL_MASK;
+        -:    0:Runs:9
+   957323:    1:fn u32 term_val(Term t) {
+   957323:    2:  return (t >> VAL_SHIFT) & VAL_MASK;
         -:    3:}

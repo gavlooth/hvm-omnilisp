@@ -14,10 +14,12 @@ COV_CFLAGS = -g -O0 --coverage -fprofile-arcs -ftest-coverage -Wno-unused-parame
 TARGET = main
 COV_TARGET = main-cov
 DEBUG_TARGET = main-debug
+HVM4_COV_TARGET = hvm4-cov
 
 MAIN = main.c
+HVM4_MAIN = ../hvm4/clang/main.c
 
-.PHONY: all clean debug test coverage cov-report
+.PHONY: all clean debug test coverage cov-report hvm4-coverage
 
 all: $(TARGET)
 
@@ -30,8 +32,12 @@ debug: $(MAIN)
 coverage: $(MAIN)
 	$(COV_CC) $(COV_CFLAGS) -o $(COV_TARGET) $< $(LDFLAGS)
 
+# Build HVM4 binary with coverage (for term.c coverage testing)
+hvm4-coverage: $(HVM4_MAIN)
+	$(COV_CC) $(COV_CFLAGS) -o $(HVM4_COV_TARGET) $< $(LDFLAGS)
+
 # Run tests with coverage and generate report
-cov-report: coverage
+cov-report: coverage hvm4-coverage
 	@rm -f *.gcda
 	@echo "Running test suite with coverage..."
 	@./test/run_cov_tests.sh ./$(COV_TARGET) || true
@@ -45,7 +51,7 @@ cov-report: coverage
 	@echo "Coverage report generated in coverage-report/"
 
 clean:
-	rm -f $(TARGET) $(DEBUG_TARGET) $(COV_TARGET) *.profraw *.profdata *.gcda *.gcno
+	rm -f $(TARGET) $(DEBUG_TARGET) $(COV_TARGET) $(HVM4_COV_TARGET) *.profraw *.profdata *.gcda *.gcno *.gcov
 	rm -rf coverage-report
 
 # Run tests

@@ -1,19 +1,19 @@
         -:    0:Source:../hvm4/clang/wnf/alo_var.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// @{s} n
         -:    2:// ------ ALO-VAR
         -:    3:// s[n] or n when substitution missing (n is a de Bruijn level)
-      377:    4:fn Term wnf_alo_var(u32 ls, u32 len, u32 lvl, u8 tag) {
-      377:    5:  if (lvl == 0 || lvl > len) {
+      104:    4:fn Term wnf_alo_var(u32 ls, u32 len, u32 lvl, u8 tag) {
+      104:    5:  if (lvl == 0 || lvl > len) {
     #####:    6:    return term_new(0, tag, 0, lvl);
         -:    7:  }
-      377:    8:  u32 idx = len - lvl;
-      377:    9:  u32 it  = ls;
-      666:   10:  for (u32 i = 0; i < idx && it != 0; i++) {
-      289:   11:    it = (u32)(heap_read(it) & 0xFFFFFFFF);
+      104:    8:  u32 idx = len - lvl;
+      104:    9:  u32 it  = ls;
+      189:   10:  for (u32 i = 0; i < idx && it != 0; i++) {
+       85:   11:    it = (u32)(heap_read(it) & 0xFFFFFFFF);
         -:   12:  }
-     377*:   13:  u32 bind = (it != 0) ? (u32)(heap_read(it) >> 32) : 0;
-     377*:   14:  return bind ? term_new_var(bind) : term_new(0, tag, 0, lvl);
+     104*:   13:  u32 bind = (it != 0) ? (u32)(heap_read(it) >> 32) : 0;
+     104*:   14:  return bind ? term_new_var(bind) : term_new(0, tag, 0, lvl);
         -:   15:}

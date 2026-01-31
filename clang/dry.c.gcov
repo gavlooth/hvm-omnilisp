@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/term/new/dry.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
     #####:    1:fn Term term_new_dry_at(u32 loc, Term fun, Term arg) {
     #####:    2:  return term_new_at(loc, DRY, 0, 2, (Term[]){fun, arg});
         -:    3:}

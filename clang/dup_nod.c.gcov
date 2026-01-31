@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/wnf/dup_nod.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// ! X &L = T{a,b,...}
         -:    2:// ------------------- DUP-NOD
         -:    3:// ! A &L = a
@@ -9,27 +9,27 @@
         -:    5:// ...
         -:    6:// X₀ ← T{A₀,B₀,...}
         -:    7:// X₁ ← T{A₁,B₁,...}
-    14544:    8:fn Term wnf_dup_nod(u32 lab, u32 loc, u8 side, Term term) {
-    14544:    9:  ITRS++;
-    14544:   10:  u32 ari = term_arity(term);
-    14544:   11:  if (ari == 0) {
-     6432:   12:    heap_subst_var(loc, term);
-     6432:   13:    return term;
+     5965:    8:fn Term wnf_dup_nod(u32 lab, u32 loc, u8 side, Term term) {
+     5965:    9:  ITRS++;
+     5965:   10:  u32 ari = term_arity(term);
+     5965:   11:  if (ari == 0) {
+     2974:   12:    heap_subst_var(loc, term);
+     2974:   13:    return term;
         -:   14:  }
-     8112:   15:  u32  t_loc = term_val(term);
-     8112:   16:  u32  t_ext = term_ext(term);
-     8112:   17:  u8   t_tag = term_tag(term);
-     8112:   18:  u64  block = heap_alloc(3 * (u64)ari);
-     8112:   19:  u32  vals  = (u32)block;
-     8112:   20:  u32  r0_loc = vals + ari;
-     8112:   21:  u32  r1_loc = r0_loc + ari;
-    36187:   22:  for (u32 i = 0; i < ari; i++) {
-    28075:   23:    heap_write(vals + i, heap_read(t_loc + i));
-    28075:   24:    Copy A = term_clone_at(vals + i, lab);
-    28075:   25:    heap_write(r0_loc + i, A.k0);
-    28075:   26:    heap_write(r1_loc + i, A.k1);
+     2991:   15:  u32  t_loc = term_val(term);
+     2991:   16:  u32  t_ext = term_ext(term);
+     2991:   17:  u8   t_tag = term_tag(term);
+     2991:   18:  u64  block = heap_alloc(3 * (u64)ari);
+     2991:   19:  u32  vals  = (u32)block;
+     2991:   20:  u32  r0_loc = vals + ari;
+     2991:   21:  u32  r1_loc = r0_loc + ari;
+    14592:   22:  for (u32 i = 0; i < ari; i++) {
+    11601:   23:    heap_write(vals + i, heap_read(t_loc + i));
+    11601:   24:    Copy A = term_clone_at(vals + i, lab);
+    11601:   25:    heap_write(r0_loc + i, A.k0);
+    11601:   26:    heap_write(r1_loc + i, A.k1);
         -:   27:  }
-     8112:   28:  Term r0 = term_new(0, t_tag, t_ext, r0_loc);
-     8112:   29:  Term r1 = term_new(0, t_tag, t_ext, r1_loc);
-     8112:   30:  return heap_subst_cop(side, loc, r0, r1);
+     2991:   28:  Term r0 = term_new(0, t_tag, t_ext, r0_loc);
+     2991:   29:  Term r1 = term_new(0, t_tag, t_ext, r1_loc);
+     2991:   30:  return heap_subst_cop(side, loc, r0, r1);
         -:   31:}

@@ -1,7 +1,7 @@
         -:    0:Source:omnilisp/ffi/thread_pool.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// OmniLisp FFI Thread Pool
         -:    2:// Worker threads for async FFI execution
         -:    3:// Based on Purple's threading design
@@ -291,8 +291,8 @@
         -:  287:// Pool Shutdown
         -:  288:// =============================================================================
         -:  289:
-       15:  290:fn void omni_ffi_pool_shutdown(void) {
-       15:  291:  if (!OMNI_FFI_POOL_READY) return;
+        9:  290:fn void omni_ffi_pool_shutdown(void) {
+        9:  291:  if (!OMNI_FFI_POOL_READY) return;
         -:  292:
         -:  293:  // Signal shutdown
     #####:  294:  pthread_mutex_lock(&OMNI_FFI_POOL.queue.mutex);
@@ -420,21 +420,21 @@
         -:  416:static u32 OMNI_FFI_TABLE_COUNT = 0;
         -:  417:
         -:  418:// Register an FFI function
-      187:  419:fn void omni_ffi_register(
+       99:  419:fn void omni_ffi_register(
         -:  420:  const char *name,
         -:  421:  void *fn_ptr,
         -:  422:  OmniFFICallType call_type,
         -:  423:  OmniOwnership result_ownership,
         -:  424:  u32 result_type_id
         -:  425:) {
-     187*:  426:  if (OMNI_FFI_TABLE_COUNT >= OMNI_FFI_TABLE_SIZE) return;
+      99*:  426:  if (OMNI_FFI_TABLE_COUNT >= OMNI_FFI_TABLE_SIZE) return;
         -:  427:
-      187:  428:  OmniFFIEntry *e = &OMNI_FFI_TABLE[OMNI_FFI_TABLE_COUNT++];
-      187:  429:  e->name_nick = omni_nick(name);
-      187:  430:  e->fn_ptr = fn_ptr;
-      187:  431:  e->call_type = call_type;
-      187:  432:  e->result_ownership = result_ownership;
-      187:  433:  e->result_type_id = result_type_id;
+       99:  428:  OmniFFIEntry *e = &OMNI_FFI_TABLE[OMNI_FFI_TABLE_COUNT++];
+       99:  429:  e->name_nick = omni_nick(name);
+       99:  430:  e->fn_ptr = fn_ptr;
+       99:  431:  e->call_type = call_type;
+       99:  432:  e->result_ownership = result_ownership;
+       99:  433:  e->result_type_id = result_type_id;
         -:  434:}
         -:  435:
         -:  436:// Lookup FFI function by nick
@@ -512,22 +512,22 @@
         -:  508:// Standard Library FFI Registration
         -:  509:// =============================================================================
         -:  510:
-       17:  511:fn void omni_ffi_register_stdlib(void) {
+        9:  511:fn void omni_ffi_register_stdlib(void) {
         -:  512:  // Memory
-       17:  513:  omni_ffi_register("mloc", (void*)malloc, OMNI_FFI_PTR_INT, OMNI_OWNED, 0);
-       17:  514:  omni_ffi_register("free", (void*)free, OMNI_FFI_VOID_PTR, OMNI_BORROWED, 0);
-       17:  515:  omni_ffi_register("rloc", (void*)realloc, OMNI_FFI_PTR_PTR_INT, OMNI_OWNED, 0);
-       17:  516:  omni_ffi_register("cloc", (void*)calloc, OMNI_FFI_VARIADIC, OMNI_OWNED, 0);
+        9:  513:  omni_ffi_register("mloc", (void*)malloc, OMNI_FFI_PTR_INT, OMNI_OWNED, 0);
+        9:  514:  omni_ffi_register("free", (void*)free, OMNI_FFI_VOID_PTR, OMNI_BORROWED, 0);
+        9:  515:  omni_ffi_register("rloc", (void*)realloc, OMNI_FFI_PTR_PTR_INT, OMNI_OWNED, 0);
+        9:  516:  omni_ffi_register("cloc", (void*)calloc, OMNI_FFI_VARIADIC, OMNI_OWNED, 0);
         -:  517:
         -:  518:  // I/O
-       17:  519:  omni_ffi_register("puts", (void*)puts, OMNI_FFI_INT_PTR, OMNI_BORROWED, 0);
-       17:  520:  omni_ffi_register("putc", (void*)putchar, OMNI_FFI_INT_INT, OMNI_BORROWED, 0);
-       17:  521:  omni_ffi_register("getc", (void*)getchar, OMNI_FFI_INT_VOID, OMNI_BORROWED, 0);
+        9:  519:  omni_ffi_register("puts", (void*)puts, OMNI_FFI_INT_PTR, OMNI_BORROWED, 0);
+        9:  520:  omni_ffi_register("putc", (void*)putchar, OMNI_FFI_INT_INT, OMNI_BORROWED, 0);
+        9:  521:  omni_ffi_register("getc", (void*)getchar, OMNI_FFI_INT_VOID, OMNI_BORROWED, 0);
         -:  522:
         -:  523:  // File I/O
-       17:  524:  omni_ffi_register("fopn", (void*)fopen, OMNI_FFI_PTR_PTR_PTR, OMNI_OWNED, 0);
-       17:  525:  omni_ffi_register("fcls", (void*)fclose, OMNI_FFI_INT_PTR, OMNI_BORROWED, 0);
-       17:  526:  omni_ffi_register("frd", (void*)fread, OMNI_FFI_VARIADIC, OMNI_BORROWED, 0);
-       17:  527:  omni_ffi_register("fwrt", (void*)fwrite, OMNI_FFI_VARIADIC, OMNI_BORROWED, 0);
-       17:  528:}
+        9:  524:  omni_ffi_register("fopn", (void*)fopen, OMNI_FFI_PTR_PTR_PTR, OMNI_OWNED, 0);
+        9:  525:  omni_ffi_register("fcls", (void*)fclose, OMNI_FFI_INT_PTR, OMNI_BORROWED, 0);
+        9:  526:  omni_ffi_register("frd", (void*)fread, OMNI_FFI_VARIADIC, OMNI_BORROWED, 0);
+        9:  527:  omni_ffi_register("fwrt", (void*)fwrite, OMNI_FFI_VARIADIC, OMNI_BORROWED, 0);
+        9:  528:}
         -:  529:

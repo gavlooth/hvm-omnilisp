@@ -1,19 +1,19 @@
         -:    0:Source:../hvm4/clang/wnf/app_lam.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// (λx.f a)
         -:    2:// -------- APP-LAM
         -:    3:// x ← a
         -:    4:// f
-      657:    5:fn Term wnf_app_lam(Term lam, Term arg) {
-      657:    6:  ITRS++;
-      657:    7:  u32  loc     = term_val(lam);
-      657:    8:  u32  lam_ext = term_ext(lam);
-      657:    9:  Term body    = heap_read(loc);
-      657:   10:  if (lam_ext & LAM_ERA_MASK) {
-      195:   11:    return body;
+      204:    5:fn Term wnf_app_lam(Term lam, Term arg) {
+      204:    6:  ITRS++;
+      204:    7:  u32  loc     = term_val(lam);
+      204:    8:  u32  lam_ext = term_ext(lam);
+      204:    9:  Term body    = heap_read(loc);
+      204:   10:  if (lam_ext & LAM_ERA_MASK) {
+       78:   11:    return body;
         -:   12:  }
-      462:   13:  heap_subst_var(loc, arg);
-      462:   14:  return body;
+      126:   13:  heap_subst_var(loc, arg);
+      126:   14:  return body;
         -:   15:}

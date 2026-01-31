@@ -1,11 +1,11 @@
         -:    0:Source:../hvm4/clang/term/new/dup.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
-     6939:    1:fn Term term_new_dup_at(u32 loc, u32 lab, Term val, Term bod) {
-     6939:    2:  return term_new_at(loc, DUP, lab, 2, (Term[]){val, bod});
+        -:    0:Runs:9
+     3096:    1:fn Term term_new_dup_at(u32 loc, u32 lab, Term val, Term bod) {
+     3096:    2:  return term_new_at(loc, DUP, lab, 2, (Term[]){val, bod});
         -:    3:}
         -:    4:
-     6939:    5:fn Term term_new_dup(u32 lab, Term val, Term bod) {
-     6939:    6:  return term_new_dup_at(heap_alloc(2), lab, val, bod);
+     3096:    5:fn Term term_new_dup(u32 lab, Term val, Term bod) {
+     3096:    6:  return term_new_dup_at(heap_alloc(2), lab, val, bod);
         -:    7:}

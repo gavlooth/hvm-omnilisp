@@ -1,7 +1,7 @@
         -:    0:Source:omnilisp/ffi/handle.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// OmniLisp Handle Table
         -:    2:// Safe handle-based memory management for FFI pointers
         -:    3:// Uses generation counters for ABA protection
@@ -54,25 +54,25 @@
         -:   50:// Handle Table Initialization
         -:   51:// =============================================================================
         -:   52:
-       17:   53:fn void omni_ffi_handle_init(void) {
-      17*:   54:  if (OMNI_HANDLES_READY) return;
+        9:   53:fn void omni_ffi_handle_init(void) {
+       9*:   54:  if (OMNI_HANDLES_READY) return;
         -:   55:
-       17:   56:  OMNI_HANDLES.capacity = OMNI_HANDLE_INITIAL_CAP;
-       17:   57:  OMNI_HANDLES.slots = (OmniHandleSlot*)calloc(
+        9:   56:  OMNI_HANDLES.capacity = OMNI_HANDLE_INITIAL_CAP;
+        9:   57:  OMNI_HANDLES.slots = (OmniHandleSlot*)calloc(
         -:   58:    OMNI_HANDLE_INITIAL_CAP, sizeof(OmniHandleSlot)
         -:   59:  );
         -:   60:
         -:   61:  // Build initial free list
-    17408:   62:  for (u32 i = 0; i < OMNI_HANDLE_INITIAL_CAP - 1; i++) {
-    17391:   63:    OMNI_HANDLES.slots[i].next_free = i + 1;
-    17391:   64:    OMNI_HANDLES.slots[i].generation = 0;
-    17391:   65:    OMNI_HANDLES.slots[i].pointer = NULL;
+     9216:   62:  for (u32 i = 0; i < OMNI_HANDLE_INITIAL_CAP - 1; i++) {
+     9207:   63:    OMNI_HANDLES.slots[i].next_free = i + 1;
+     9207:   64:    OMNI_HANDLES.slots[i].generation = 0;
+     9207:   65:    OMNI_HANDLES.slots[i].pointer = NULL;
         -:   66:  }
-       17:   67:  OMNI_HANDLES.slots[OMNI_HANDLE_INITIAL_CAP - 1].next_free = UINT32_MAX;
-       17:   68:  OMNI_HANDLES.free_head = 0;
-       17:   69:  OMNI_HANDLES.count = 0;
+        9:   67:  OMNI_HANDLES.slots[OMNI_HANDLE_INITIAL_CAP - 1].next_free = UINT32_MAX;
+        9:   68:  OMNI_HANDLES.free_head = 0;
+        9:   69:  OMNI_HANDLES.count = 0;
         -:   70:
-       17:   71:  OMNI_HANDLES_READY = 1;
+        9:   71:  OMNI_HANDLES_READY = 1;
         -:   72:}
         -:   73:
         -:   74:// =============================================================================
@@ -289,24 +289,24 @@
         -:  285:// Handle Table Cleanup
         -:  286:// =============================================================================
         -:  287:
-       15:  288:fn void omni_ffi_handle_cleanup(void) {
-      15*:  289:  if (!OMNI_HANDLES_READY) return;
+        9:  288:fn void omni_ffi_handle_cleanup(void) {
+       9*:  289:  if (!OMNI_HANDLES_READY) return;
         -:  290:
         -:  291:  // Free all owned pointers
-    15375:  292:  for (u32 i = 0; i < OMNI_HANDLES.capacity; i++) {
-    15360:  293:    OmniHandleSlot *slot = &OMNI_HANDLES.slots[i];
-   15360*:  294:    if (slot->pointer && slot->ownership == OMNI_OWNED) {
+     9225:  292:  for (u32 i = 0; i < OMNI_HANDLES.capacity; i++) {
+     9216:  293:    OmniHandleSlot *slot = &OMNI_HANDLES.slots[i];
+    9216*:  294:    if (slot->pointer && slot->ownership == OMNI_OWNED) {
     #####:  295:      free(slot->pointer);
     #####:  296:      slot->pointer = NULL;
         -:  297:    }
         -:  298:  }
         -:  299:
-       15:  300:  free(OMNI_HANDLES.slots);
-       15:  301:  OMNI_HANDLES.slots = NULL;
-       15:  302:  OMNI_HANDLES.capacity = 0;
-       15:  303:  OMNI_HANDLES.free_head = UINT32_MAX;
-       15:  304:  OMNI_HANDLES.count = 0;
-       15:  305:  OMNI_HANDLES_READY = 0;
+        9:  300:  free(OMNI_HANDLES.slots);
+        9:  301:  OMNI_HANDLES.slots = NULL;
+        9:  302:  OMNI_HANDLES.capacity = 0;
+        9:  303:  OMNI_HANDLES.free_head = UINT32_MAX;
+        9:  304:  OMNI_HANDLES.count = 0;
+        9:  305:  OMNI_HANDLES_READY = 0;
         -:  306:}
         -:  307:
         -:  308:// =============================================================================

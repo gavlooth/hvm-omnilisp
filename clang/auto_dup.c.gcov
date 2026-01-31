@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/parse/auto_dup.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:// Auto-dup: rewrites a cloned binder with N uses into N-1 nested DUP nodes.
         -:    2:// Example: [x,x,x] becomes !d0&=x; !d1&=d0₁; [d0₀,d1₀,d1₁]
         -:    3://
@@ -25,114 +25,114 @@
         -:   21:
         -:   22:fn u32 auto_dup_count_go(u64 loc, u32 lvl, u8 tgt, u32 ext);
         -:   23:
-  1063440:   24:fn u32 auto_dup_count_term(Term t, u32 lvl, u8 tgt, u32 ext) {
-  1063440:   25:  u8  tg = term_tag(t);
-  1063440:   26:  u32 vl = term_val(t);
+   623304:   24:fn u32 auto_dup_count_term(Term t, u32 lvl, u8 tgt, u32 ext) {
+   623304:   25:  u8  tg = term_tag(t);
+   623304:   26:  u32 vl = term_val(t);
         -:   27:
- 1063440*:   28:  if (tg == tgt && vl == lvl && (tgt == BJV || term_ext(t) == ext)) {
-    50512:   29:    return 1;
+  623304*:   28:  if (tg == tgt && vl == lvl && (tgt == BJV || term_ext(t) == ext)) {
+    29619:   29:    return 1;
         -:   30:  }
         -:   31:
-  1012928:   32:  u32 ari = term_arity(t);
-  1012928:   33:  if (ari == 0) {
-   426144:   34:    return 0;
+   593685:   32:  u32 ari = term_arity(t);
+   593685:   33:  if (ari == 0) {
+   249714:   34:    return 0;
         -:   35:  }
         -:   36:
-   586784:   37:  u32 sum = 0;
-  1608272:   38:  for (u32 i = 0; i < ari; i++) {
-  1021488:   39:    sum += auto_dup_count_go(vl + i, lvl, tgt, ext);
+   343971:   37:  u32 sum = 0;
+   942804:   38:  for (u32 i = 0; i < ari; i++) {
+   598833:   39:    sum += auto_dup_count_go(vl + i, lvl, tgt, ext);
         -:   40:  }
-   586784:   41:  return sum;
+   343971:   41:  return sum;
         -:   42:}
         -:   43:
-  1021488:   44:fn u32 auto_dup_count_go(u64 loc, u32 lvl, u8 tgt, u32 ext) {
-  1021488:   45:  return auto_dup_count_term(HEAP[loc], lvl, tgt, ext);
+   598833:   44:fn u32 auto_dup_count_go(u64 loc, u32 lvl, u8 tgt, u32 ext) {
+   598833:   45:  return auto_dup_count_term(HEAP[loc], lvl, tgt, ext);
         -:   46:}
         -:   47:
-   497536:   48:fn void auto_dup_go(u64 loc, u32 lvl, u32 base, u32 *use, u32 n, u32 lab, u8 tgt, u32 ext) {
-   497536:   49:  Term t = HEAP[loc];
-   497536:   50:  u8  tg = term_tag(t);
-   497536:   51:  u32 vl = term_val(t);
+   293814:   48:fn void auto_dup_go(u64 loc, u32 lvl, u32 base, u32 *use, u32 n, u32 lab, u8 tgt, u32 ext) {
+   293814:   49:  Term t = HEAP[loc];
+   293814:   50:  u8  tg = term_tag(t);
+   293814:   51:  u32 vl = term_val(t);
         -:   52:
         -:   53:  // Replace target ref with BJ0/BJ1 chain
-  497536*:   54:  if (tg == tgt && vl == lvl && (tgt == BJV || term_ext(t) == ext)) {
-    27344:   55:    u32 i = (*use)++;
-    27344:   56:    if (i < n) {
-    19312:   57:      HEAP[loc] = term_new(0, BJ0, lab + i, base + 1 + i);
+  293814*:   54:  if (tg == tgt && vl == lvl && (tgt == BJV || term_ext(t) == ext)) {
+    16182:   55:    u32 i = (*use)++;
+    16182:   56:    if (i < n) {
+    11520:   57:      HEAP[loc] = term_new(0, BJ0, lab + i, base + 1 + i);
         -:   58:    } else {
-     8032:   59:      HEAP[loc] = term_new(0, BJ1, lab + n - 1, base + n);
+     4662:   59:      HEAP[loc] = term_new(0, BJ1, lab + n - 1, base + n);
         -:   60:    }
-    27344:   61:    return;
+    16182:   61:    return;
         -:   62:  }
         -:   63:
         -:   64:  // Shift outer refs
-   470192:   65:  if ((tg == BJV || tg == BJ0 || tg == BJ1 || tg == BJM) && vl > base) {
-   101728:   66:    HEAP[loc] = term_new(0, tg, term_ext(t), vl + n);
-   101728:   67:    return;
+   277632:   65:  if ((tg == BJV || tg == BJ0 || tg == BJ1 || tg == BJM) && vl > base) {
+    59796:   66:    HEAP[loc] = term_new(0, tg, term_ext(t), vl + n);
+    59796:   67:    return;
         -:   68:  }
         -:   69:
         -:   70:  // Recurse into children
-   368464:   71:  switch (tg) {
-    73552:   72:    case LAM: {
-    73552:   73:      auto_dup_go(vl, lvl, base, use, n, lab, tgt, ext);
-    73552:   74:      return;
+   217836:   71:  switch (tg) {
+    43398:   72:    case LAM: {
+    43398:   73:      auto_dup_go(vl, lvl, base, use, n, lab, tgt, ext);
+    43398:   74:      return;
         -:   75:    }
-    23984:   76:    case DUP: {
-    23984:   77:      auto_dup_go(vl + 0, lvl, base, use, n, lab, tgt, ext);
-    23984:   78:      auto_dup_go(vl + 1, lvl, base, use, n, lab, tgt, ext);
-    23984:   79:      return;
+    14130:   76:    case DUP: {
+    14130:   77:      auto_dup_go(vl + 0, lvl, base, use, n, lab, tgt, ext);
+    14130:   78:      auto_dup_go(vl + 1, lvl, base, use, n, lab, tgt, ext);
+    14130:   79:      return;
         -:   80:    }
-   270928:   81:    default: {
-   270928:   82:      u32 ari = term_arity(t);
-   634512:   83:      for (u32 i = 0; i < ari; i++) {
-   363584:   84:        auto_dup_go(vl + i, lvl, base, use, n, lab, tgt, ext);
+   160308:   81:    default: {
+   160308:   82:      u32 ari = term_arity(t);
+   375273:   83:      for (u32 i = 0; i < ari; i++) {
+   214965:   84:        auto_dup_go(vl + i, lvl, base, use, n, lab, tgt, ext);
         -:   85:      }
         -:   86:    }
         -:   87:  }
         -:   88:}
         -:   89:
-    41952:   90:fn Term parse_auto_dup(Term body, u32 lvl, u32 base, u8 tgt, u32 ext) {
-    41952:   91:  u32 uses = auto_dup_count_term(body, lvl, tgt, ext);
-    41952:   92:  if (uses <= 1) {
-    33920:   93:    return body;
+    24471:   90:fn Term parse_auto_dup(Term body, u32 lvl, u32 base, u8 tgt, u32 ext) {
+    24471:   91:  u32 uses = auto_dup_count_term(body, lvl, tgt, ext);
+    24471:   92:  if (uses <= 1) {
+    19809:   93:    return body;
         -:   94:  }
         -:   95:
-     8032:   96:  u32 n   = uses - 1;
-     8032:   97:  u32 lab = PARSE_FRESH_LAB;
-     8032:   98:  PARSE_FRESH_LAB += n;
+     4662:   96:  u32 n   = uses - 1;
+     4662:   97:  u32 lab = PARSE_FRESH_LAB;
+     4662:   98:  PARSE_FRESH_LAB += n;
         -:   99:
         -:  100:  // Walk body's children
-     8032:  101:  u8  tg  = term_tag(body);
-     8032:  102:  u32 vl  = term_val(body);
-     8032:  103:  u32 use = 0;
+     4662:  101:  u8  tg  = term_tag(body);
+     4662:  102:  u32 vl  = term_val(body);
+     4662:  103:  u32 use = 0;
         -:  104:
-     8032:  105:  switch (tg) {
-     3632:  106:    case LAM: {
-     3632:  107:      auto_dup_go(vl, lvl, base, &use, n, lab, tgt, ext);
-     3632:  108:      break;
+     4662:  105:  switch (tg) {
+     2133:  106:    case LAM: {
+     2133:  107:      auto_dup_go(vl, lvl, base, &use, n, lab, tgt, ext);
+     2133:  108:      break;
         -:  109:    }
     #####:  110:    case DUP: {
     #####:  111:      auto_dup_go(vl + 0, lvl, base, &use, n, lab, tgt, ext);
     #####:  112:      auto_dup_go(vl + 1, lvl, base, &use, n, lab, tgt, ext);
     #####:  113:      break;
         -:  114:    }
-     4400:  115:    default: {
-     4400:  116:      u32 ari = term_arity(body);
-    13200:  117:      for (u32 i = 0; i < ari; i++) {
-     8800:  118:        auto_dup_go(vl + i, lvl, base, &use, n, lab, tgt, ext);
+     2529:  115:    default: {
+     2529:  116:      u32 ari = term_arity(body);
+     7587:  117:      for (u32 i = 0; i < ari; i++) {
+     5058:  118:        auto_dup_go(vl + i, lvl, base, &use, n, lab, tgt, ext);
         -:  119:      }
         -:  120:    }
         -:  121:  }
         -:  122:
         -:  123:  // Build dup chain: !d0&=x; !d1&=d0₁; ... body
-     8032:  124:  Term result = body;
-    27344:  125:  for (int i = n - 1; i >= 0; i--) {
-    19312:  126:    Term v   = (i == 0) ? term_new(0, tgt, ext, lvl) : term_new(0, BJ1, lab + i - 1, base + i);
-    19312:  127:    u64  loc = heap_alloc(2);
-    19312:  128:    HEAP[loc + 0] = v;
-    19312:  129:    HEAP[loc + 1] = result;
-    19312:  130:    result = term_new(0, DUP, lab + i, loc);
+     4662:  124:  Term result = body;
+    16182:  125:  for (int i = n - 1; i >= 0; i--) {
+    11520:  126:    Term v   = (i == 0) ? term_new(0, tgt, ext, lvl) : term_new(0, BJ1, lab + i - 1, base + i);
+    11520:  127:    u64  loc = heap_alloc(2);
+    11520:  128:    HEAP[loc + 0] = v;
+    11520:  129:    HEAP[loc + 1] = result;
+    11520:  130:    result = term_new(0, DUP, lab + i, loc);
         -:  131:  }
         -:  132:
-     8032:  133:  return result;
+     4662:  133:  return result;
         -:  134:}

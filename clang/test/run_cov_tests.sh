@@ -147,7 +147,7 @@ echo -e "Results: ${GREEN}$PASSED passed${NC}, ${RED}$FAILED failed${NC}, Total:
 # Exercise HVM4's print_term function for term.c coverage
 # ==============================================================================
 echo ""
-echo "Running HVM4 print_term coverage tests..."
+echo "Running OmniLisp print_term coverage tests..."
 
 # Test expressions that exercise different term types and print_term code paths
 PRINT_EXPRS=(
@@ -173,6 +173,65 @@ for expr in "${PRINT_EXPRS[@]}"; do
     "$OMNILISP" -T -e "$expr" > /dev/null 2>&1
 done
 
-echo "  print_term coverage exercises complete"
+echo "  OmniLisp print_term coverage exercises complete"
+
+# ==============================================================================
+# HVM4 native tests for raw term printing coverage
+# Run HVM4 tests that exercise LAM, APP, SUP, DUP, MOV, MAT term types
+# ==============================================================================
+echo ""
+echo "Running HVM4 native tests for term.c coverage..."
+
+HVM4_COV="${SCRIPT_DIR}/../hvm4-cov"
+HVM4_TEST_DIR="${SCRIPT_DIR}/../../hvm4/test"
+
+if [[ -x "$HVM4_COV" && -d "$HVM4_TEST_DIR" ]]; then
+    # Run a selection of HVM4 tests that exercise different term types
+    HVM4_TESTS=(
+        # Autodup tests (DUP terms)
+        "autodup_1.hvm4"
+        "autodup_2.hvm4"
+        "autodup_3.hvm4"
+        "autodup_dup_dyn.hvm4"
+        "autodup_dup_static.hvm4"
+        "autodup_mat_lam.hvm4"
+        "autodup_nested_lam.hvm4"
+        "autodup_sup_mix.hvm4"
+        # DUP terms
+        "dup_affine_valid.hvm4"
+        "dup_affine_bare.hvm4"
+        "dup_fresh.hvm4"
+        # Lambda tests (LAM/APP terms)
+        "lambda_eval.hvm4"
+        "lam_dup_auto.hvm4"
+        "lam_dup_dyn.hvm4"
+        "lam_dup_static.hvm4"
+        "lam_dup_sup.hvm4"
+        # Match tests (MAT/SWI terms)
+        "match_0.hvm4"
+        "match_1.hvm4"
+        "match_2.hvm4"
+        "match_3.hvm4"
+        # Collapse tests (SUP terms)
+        "collapse_0.hvm4"
+        "collapse_1.hvm4"
+        "collapse_2.hvm4"
+        # Church numeral tests
+        "c2_not_t.hvm4"
+        "cadd_c1_c1_not.hvm4"
+        "cadd_c2_c2.hvm4"
+        # Unscoped/other
+        "unscoped.hvm4"
+    )
+
+    for test in "${HVM4_TESTS[@]}"; do
+        if [[ -f "$HVM4_TEST_DIR/$test" ]]; then
+            "$HVM4_COV" "$HVM4_TEST_DIR/$test" -s > /dev/null 2>&1
+        fi
+    done
+    echo "  HVM4 native tests complete"
+else
+    echo "  Skipping HVM4 tests (hvm4-cov not found or test dir missing)"
+fi
 
 exit 0

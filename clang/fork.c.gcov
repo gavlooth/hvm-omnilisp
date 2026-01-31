@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/parse/term/fork.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:fn Term parse_term(PState *s, u32 depth);
         -:    2:
         -:    3:// Fork: &Lλx,y,z{A;B} or &(L)λx,y,z{A;B}

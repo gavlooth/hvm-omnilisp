@@ -1,7 +1,7 @@
         -:    0:Source:../hvm4/clang/parse/term/str.c
         -:    0:Graph:main-cov-main.gcno
         -:    0:Data:main-cov-main.gcda
-        -:    0:Runs:17
+        -:    0:Runs:9
         -:    1:fn Term parse_term(PState *s, u32 depth);
         -:    2:
     #####:    3:fn Term parse_term_str(PState *s, u32 depth) {
