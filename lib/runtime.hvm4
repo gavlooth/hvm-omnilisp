@@ -304,6 +304,16 @@
     #Dict: λ&entries.
       #Dict{@omni_eval_dict_entries(menv)(entries)}
 
+    // Dict put: #Put{dict, key, value} -> new dict with key=value added
+    #Put: λ&dict. λ&key. λ&val.
+      (λ&d. (λ&k. (λ&v.
+        @omni_dict_put(d)(k)(v)
+      )(@omni_eval(menv)(val)))(@omni_eval(menv)(key)))(@omni_eval(menv)(dict))
+
+    // Debug expression: #Dbug{expr, msg} -> evaluate expr, return result
+    #Dbug: λ&expr. λ&msg.
+      @omni_eval(menv)(expr)
+
     // ==========================================================================
     // Collection Operations (dispatch to prelude functions)
     // ==========================================================================
@@ -891,6 +901,7 @@
   }(xs)
 
 // Evaluate dict entries (list of (key value) pairs)
+// Handles both #CON{key, value} and #CON{key, #CON{value, #NIL}} formats
 @omni_eval_dict_entries = λ&menv. λ&entries.
   λ{
     #NIL: #NIL
@@ -898,10 +909,14 @@
       λ{
         #CON: λ&key. λ&val_rest.
           λ{
+            // If val_rest is #CON{val, #NIL}, extract val
             #CON: λ&val. λ&ux.
               #CON{#CON{@omni_eval(menv)(key), #CON{@omni_eval(menv)(val), #NIL}},
                    @omni_eval_dict_entries(menv)(rest)}
-            _: λ&u_. @omni_eval_dict_entries(menv)(rest)
+            // Otherwise val_rest IS the value itself
+            _: λ&u_.
+              #CON{#CON{@omni_eval(menv)(key), #CON{@omni_eval(menv)(val_rest), #NIL}},
+                   @omni_eval_dict_entries(menv)(rest)}
           }(val_rest)
         _: λ&u_. @omni_eval_dict_entries(menv)(rest)
       }(pair)
@@ -2625,6 +2640,51 @@
         _: λ&u_. @omni_dict_get(rest)(key)
       }(pair)
   }(entries)
+
+// Put into dict - returns new dict with key=value
+// If key exists, updates; otherwise prepends
+@omni_dict_put = λ&dict. λ&key. λ&value.
+  λ{
+    #Dict: λ&entries.
+      #Dict{#CON{#CON{key, #CON{value, #NIL}}, @omni_dict_remove_key(entries)(key)}}
+    _: λ&u_.
+      // For list/array, treat as array-set
+      λ{
+        #CON: λ&h. λ&t. @omni_list_set(dict)(key)(value)
+        #Arr: λ&len. λ&data. #Arr{len, @omni_list_set(data)(key)(value)}
+        _: λ&u_. #Err{#sym_cannot_put}
+      }(dict)
+  }(dict)
+
+// Remove key from dict entries
+@omni_dict_remove_key = λ&entries. λ&key.
+  λ{
+    #NIL: #NIL
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&k. λ&v_rest.
+          λ{
+            1: @omni_dict_remove_key(rest)(key)  // skip this entry
+            _: λ&u_. #CON{pair, @omni_dict_remove_key(rest)(key)}
+          }(@omni_values_equal(k)(key))
+        _: λ&u_. #CON{pair, @omni_dict_remove_key(rest)(key)}
+      }(pair)
+  }(entries)
+
+// Set element at index in list
+@omni_list_set = λ&list. λ&idx. λ&val.
+  λ{
+    #Cst: λ&i.
+      λ{
+        #NIL: #NIL
+        #CON: λ&h. λ&t.
+          λ{
+            0: #CON{val, t}
+            _: λ&u_. #CON{h, @omni_list_set(t)(#Cst{(i - 1)})(val)}
+          }(i)
+      }(list)
+    _: λ&u_. list
+  }(idx)
 
 // Get nested value by path
 @omni_get_in = λ&coll. λ&path.
