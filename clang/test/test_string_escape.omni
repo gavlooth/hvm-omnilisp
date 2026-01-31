@@ -1,0 +1,55 @@
+;; test_string_escape.omni - Tests for string escape sequences
+
+;; OmniLisp strings support various escape sequences
+
+;; TEST: newline escape
+;; EXPECT: "hello\nworld"
+"hello\nworld"
+
+;; TEST: tab escape
+;; EXPECT: "col1\tcol2"
+"col1\tcol2"
+
+;; TEST: carriage return escape
+;; EXPECT: "line\rreturn"
+"line\rreturn"
+
+;; TEST: escaped double quote
+;; EXPECT: "say \"hello\""
+"say \"hello\""
+
+;; TEST: escaped backslash
+;; EXPECT: "path\\to\\file"
+"path\\to\\file"
+
+;; TEST: hex escape sequence
+;; EXPECT: "A"
+"\x41"
+
+;; TEST: multiple escapes
+;; EXPECT: "line1\nline2\nline3"
+"line1\nline2\nline3"
+
+;; TEST: mixed content with escapes
+;; EXPECT: "Name:\tAlice\nAge:\t30"
+"Name:\tAlice\nAge:\t30"
+
+;; TEST: empty string
+;; EXPECT: ""
+""
+
+;; TEST: string with only escapes
+;; EXPECT: "\n\t\n"
+"\n\t\n"
+
+;; TEST: unicode via hex (capital omega)
+;; EXPECT: "\xCE\xA9"
+"\xCE\xA9"
+
+;; TEST: string length with escapes
+;; Each escape sequence is ONE character
+;; EXPECT: 5
+(str-length "a\nb\nc")
+
+;; EXPECT: true
+(= (str-length "\n") 1)

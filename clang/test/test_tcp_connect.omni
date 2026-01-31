@@ -1,0 +1,58 @@
+;; test_tcp_connect.lisp - Tests for TCP connections
+
+;; TCP connect creates socket
+;; TEST: tcp-connect returns socket
+;; EXPECT: true
+(with-mock-network
+  (socket? (tcp-connect "localhost" 8080)))
+
+;; TEST: tcp-connect with timeout
+;; EXPECT: true
+(with-mock-network
+  (socket? (tcp-connect "localhost" 8080 :timeout 5000)))
+
+;; TEST: tcp-connect fail
+;; EXPECT: "connection refused"
+(with-mock-network :refuse
+  (handle
+    (tcp-connect "localhost" 9999)
+    (ConnectionRefused [msg resume] msg)))
+
+;; TCP listen creates server socket
+;; TEST: tcp-listen returns server
+;; EXPECT: true
+(with-mock-network
+  (server-socket? (tcp-listen 8080)))
+
+;; TEST: tcp-listen with backlog
+;; EXPECT: true
+(with-mock-network
+  (server-socket? (tcp-listen 8080 :backlog 10)))
+
+;; Accept connection
+;; TEST: tcp-accept returns client socket
+;; EXPECT: true
+(with-mock-network :with-client
+  (let [server (tcp-listen 8080)]
+    (socket? (tcp-accept server))))
+
+;; Socket info
+;; TEST: socket remote address
+;; EXPECT: "127.0.0.1"
+(with-mock-network :with-client
+  (let [sock (tcp-connect "127.0.0.1" 8080)]
+    (socket-remote-address sock)))
+
+;; TEST: socket remote port
+;; EXPECT: 8080
+(with-mock-network :with-client
+  (let [sock (tcp-connect "127.0.0.1" 8080)]
+    (socket-remote-port sock)))
+
+;; Close socket
+;; TEST: socket-close
+;; EXPECT: true
+(with-mock-network
+  (let [sock (tcp-connect "localhost" 8080)]
+    (socket-close sock)
+    (socket-closed? sock)))

@@ -1,0 +1,49 @@
+;; test_if.lisp - Tests for if conditional
+
+;; Basic if-then-else
+;; TEST: if true returns then-branch
+;; EXPECT: 1
+(if true 1 0)
+
+;; TEST: if false returns else-branch
+;; EXPECT: 0
+(if false 1 0)
+
+;; If with expressions
+;; TEST: if with comparison
+;; EXPECT: "positive"
+(if (> 5 0) "positive" "non-positive")
+
+;; TEST: if with equality
+;; EXPECT: "equal"
+(if (= 3 3) "equal" "not-equal")
+
+;; Nested if
+;; TEST: nested if for sign
+(define sign [x]
+  (if (> x 0)
+    1
+    (if (< x 0)
+      -1
+      0)))
+
+;; EXPECT: 1
+(sign 42)
+
+;; EXPECT: -1
+(sign -5)
+
+;; EXPECT: 0
+(sign 0)
+
+;; If in function body
+(define abs [x]
+  (if (< x 0) (- 0 x) x))
+
+;; TEST: absolute value of negative
+;; EXPECT: 5
+(abs -5)
+
+;; TEST: absolute value of positive
+;; EXPECT: 7
+(abs 7)

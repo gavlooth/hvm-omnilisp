@@ -1,0 +1,35 @@
+;; test_rotate.omni - Tests for rotate function combinator
+
+;; rotate cycles args left (first to end)
+;; ((rotate f) a b c) = (f b c a)
+
+;; TEST: rotate with 3-arg function
+(define foo [a] [b] [c] (list a b c))
+
+;; EXPECT: (2 3 1)
+((rotate foo) 1 2 3)
+
+;; TEST: rotate subtraction
+;; ((rotate sub3) a b c) = (sub3 b c a) = (- b (- c a))
+(define sub3 [x] [y] [z] (- x (- y z)))
+
+;; EXPECT: 2
+((rotate sub3) 3 5 2)
+
+;; TEST: rotate for conditional operation
+(define if-then-else [cond] [then-val] [else-val]
+  (if cond then-val else-val))
+
+;; ((rotate if-then-else) then else cond) = (if-then-else cond then else)
+;; EXPECT: 10
+((rotate if-then-else) 10 20 true)
+
+;; TEST: rotate puts last arg first
+(define make-pair [first] [second] [tag]
+  (list tag first second))
+
+;; EXPECT: (3 1 2)
+((rotate make-pair) 1 2 3)
+
+;; EXPECT: (b c a)
+((rotate list) 'a 'b 'c)

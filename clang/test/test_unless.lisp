@@ -1,9 +1,0 @@
-;; test_unless.lisp - Tests for unless conditional
-
-;; TEST: unless false returns body
-;; EXPECT: 42
-(unless false 42)
-
-;; TEST: unless true returns nothing
-;; EXPECT: #Noth{}
-(unless true 42)

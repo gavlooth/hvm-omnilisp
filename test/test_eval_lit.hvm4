@@ -1,0 +1,4 @@
+// Test evaluating a literal
+#include "../lib/runtime.hvm4"
+
+@main = @omni_eval(@omni_menv_empty)(#Lit{42})

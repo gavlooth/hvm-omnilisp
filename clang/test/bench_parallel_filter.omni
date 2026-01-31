@@ -1,0 +1,24 @@
+;; bench_parallel_filter.lisp - Benchmark for filter operations
+;; Run with: ./main -s bench_parallel_filter.lisp
+
+;; Filter operation
+(define filter [pred] [lst]
+  (match lst
+    ()       nil
+    (h .. t) (if (pred h)
+               (cons h (filter pred t))
+               (filter pred t))))
+
+;; Length for verification
+(define len [lst]
+  (match lst
+    ()       0
+    (_ .. t) (+ 1 (len t))))
+
+(define even? [x] (= (% x 2) 0))
+
+;; Benchmark: filter evens
+(define result (len (filter even? '(1 2 3 4 5))))
+
+;; EXPECT-FINAL: 2
+result

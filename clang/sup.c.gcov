@@ -1,0 +1,11 @@
+        -:    0:Source:../hvm4/clang/term/new/sup.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+    69673:    1:fn Term term_new_sup_at(u32 loc, u32 lab, Term tm0, Term tm1) {
+    69673:    2:  return term_new_at(loc, SUP, lab, 2, (Term[]){tm0, tm1});
+        -:    3:}
+        -:    4:
+    37531:    5:fn Term term_new_sup(u32 lab, Term tm0, Term tm1) {
+    37531:    6:  return term_new_sup_at(heap_alloc(2), lab, tm0, tm1);
+        -:    7:}

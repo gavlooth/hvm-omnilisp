@@ -1,0 +1,19 @@
+        -:    0:Source:../hvm4/clang/wnf/uns.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// ! ${f, v}; t
+        -:    2:// ------------- WNF UNS
+        -:    3:// t(λy.λ$x.y, $x)
+    #####:    4:fn Term wnf_uns(Term uns) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  uns_loc = term_val(uns);
+    #####:    7:  Term bod     = heap_read(uns_loc + 0);
+    #####:    8:  u64  loc     = heap_alloc(2);
+    #####:    9:  Term x_var   = term_new_var(loc + 0);
+    #####:   10:  Term y_var   = term_new_var(loc + 1);
+    #####:   11:  Term x_lam   = term_new_lam_at(loc + 0, y_var);
+    #####:   12:  Term y_lam   = term_new_lam_at(loc + 1, x_lam);
+    #####:   13:  return term_new_app(term_new_app(bod, y_lam), x_var);
+        -:   14:}
+        -:   15:

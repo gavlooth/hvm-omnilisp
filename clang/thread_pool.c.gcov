@@ -1,0 +1,533 @@
+        -:    0:Source:omnilisp/ffi/thread_pool.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// OmniLisp FFI Thread Pool
+        -:    2:// Worker threads for async FFI execution
+        -:    3:// Based on Purple's threading design
+        -:    4:
+        -:    5:#include <pthread.h>
+        -:    6:#include <stdatomic.h>
+        -:    7:
+        -:    8:// =============================================================================
+        -:    9:// Configuration
+        -:   10:// =============================================================================
+        -:   11:
+        -:   12:#define OMNI_FFI_NUM_WORKERS  4
+        -:   13:#define OMNI_FFI_QUEUE_SIZE   256
+        -:   14:
+        -:   15:// =============================================================================
+        -:   16:// FFI Call Types
+        -:   17:// =============================================================================
+        -:   18:
+        -:   19:typedef enum {
+        -:   20:  OMNI_FFI_VOID_VOID = 0,      // void fn(void)
+        -:   21:  OMNI_FFI_INT_VOID,           // int fn(void)
+        -:   22:  OMNI_FFI_PTR_VOID,           // void* fn(void)
+        -:   23:  OMNI_FFI_VOID_INT,           // void fn(int)
+        -:   24:  OMNI_FFI_INT_INT,            // int fn(int)
+        -:   25:  OMNI_FFI_PTR_INT,            // void* fn(int)
+        -:   26:  OMNI_FFI_VOID_PTR,           // void fn(void*)
+        -:   27:  OMNI_FFI_INT_PTR,            // int fn(void*)
+        -:   28:  OMNI_FFI_PTR_PTR,            // void* fn(void*)
+        -:   29:  OMNI_FFI_INT_PTR_INT,        // int fn(void*, int)
+        -:   30:  OMNI_FFI_PTR_PTR_INT,        // void* fn(void*, int)
+        -:   31:  OMNI_FFI_INT_PTR_PTR,        // int fn(void*, void*)
+        -:   32:  OMNI_FFI_PTR_PTR_PTR,        // void* fn(void*, void*)
+        -:   33:  OMNI_FFI_VARIADIC,           // General case (slow path)
+        -:   34:} OmniFFICallType;
+        -:   35:
+        -:   36:// =============================================================================
+        -:   37:// FFI Future (Result Container)
+        -:   38:// =============================================================================
+        -:   39:
+        -:   40:typedef struct {
+        -:   41:  atomic_int ready;            // 0 = pending, 1 = done
+        -:   42:  Term result;                 // Result value
+        -:   43:  void *fn_ptr;                // Function pointer
+        -:   44:  OmniFFICallType call_type;   // Call signature
+        -:   45:  intptr_t args[8];            // Up to 8 arguments
+        -:   46:  u32 arg_count;               // Number of arguments
+        -:   47:  u32 result_ownership;        // Ownership of result handle
+        -:   48:  u32 result_type_id;          // Type ID for result handle
+        -:   49:} OmniFFIFuture;
+        -:   50:
+        -:   51:// =============================================================================
+        -:   52:// Task Queue
+        -:   53:// =============================================================================
+        -:   54:
+        -:   55:typedef struct {
+        -:   56:  OmniFFIFuture *tasks[OMNI_FFI_QUEUE_SIZE];
+        -:   57:  u32 head;
+        -:   58:  u32 tail;
+        -:   59:  u32 count;
+        -:   60:  pthread_mutex_t mutex;
+        -:   61:  pthread_cond_t not_empty;
+        -:   62:  pthread_cond_t not_full;
+        -:   63:  int shutdown;
+        -:   64:} OmniFFIQueue;
+        -:   65:
+        -:   66:// =============================================================================
+        -:   67:// Thread Pool
+        -:   68:// =============================================================================
+        -:   69:
+        -:   70:typedef struct {
+        -:   71:  pthread_t workers[OMNI_FFI_NUM_WORKERS];
+        -:   72:  OmniFFIQueue queue;
+        -:   73:  int started;
+        -:   74:} OmniFFIPool;
+        -:   75:
+        -:   76:// Global pool
+        -:   77:static OmniFFIPool OMNI_FFI_POOL = {0};
+        -:   78:static int OMNI_FFI_POOL_READY = 0;
+        -:   79:
+        -:   80:// =============================================================================
+        -:   81:// Queue Operations
+        -:   82:// =============================================================================
+        -:   83:
+        -:   84:fn void omni_ffi_queue_init(OmniFFIQueue *q) {
+        -:   85:  q->head = 0;
+        -:   86:  q->tail = 0;
+        -:   87:  q->count = 0;
+        -:   88:  q->shutdown = 0;
+        -:   89:  pthread_mutex_init(&q->mutex, NULL);
+        -:   90:  pthread_cond_init(&q->not_empty, NULL);
+        -:   91:  pthread_cond_init(&q->not_full, NULL);
+        -:   92:}
+        -:   93:
+    #####:   94:fn void omni_ffi_queue_destroy(OmniFFIQueue *q) {
+    #####:   95:  pthread_mutex_destroy(&q->mutex);
+    #####:   96:  pthread_cond_destroy(&q->not_empty);
+    #####:   97:  pthread_cond_destroy(&q->not_full);
+    #####:   98:}
+        -:   99:
+        -:  100:fn int omni_ffi_queue_push(OmniFFIQueue *q, OmniFFIFuture *task) {
+        -:  101:  pthread_mutex_lock(&q->mutex);
+        -:  102:
+        -:  103:  while (q->count >= OMNI_FFI_QUEUE_SIZE && !q->shutdown) {
+        -:  104:    pthread_cond_wait(&q->not_full, &q->mutex);
+        -:  105:  }
+        -:  106:
+        -:  107:  if (q->shutdown) {
+        -:  108:    pthread_mutex_unlock(&q->mutex);
+        -:  109:    return 0;
+        -:  110:  }
+        -:  111:
+        -:  112:  q->tasks[q->tail] = task;
+        -:  113:  q->tail = (q->tail + 1) % OMNI_FFI_QUEUE_SIZE;
+        -:  114:  q->count++;
+        -:  115:
+        -:  116:  pthread_cond_signal(&q->not_empty);
+        -:  117:  pthread_mutex_unlock(&q->mutex);
+        -:  118:  return 1;
+        -:  119:}
+        -:  120:
+        -:  121:fn OmniFFIFuture* omni_ffi_queue_pop(OmniFFIQueue *q) {
+        -:  122:  pthread_mutex_lock(&q->mutex);
+        -:  123:
+        -:  124:  while (q->count == 0 && !q->shutdown) {
+        -:  125:    pthread_cond_wait(&q->not_empty, &q->mutex);
+        -:  126:  }
+        -:  127:
+        -:  128:  if (q->shutdown && q->count == 0) {
+        -:  129:    pthread_mutex_unlock(&q->mutex);
+        -:  130:    return NULL;
+        -:  131:  }
+        -:  132:
+        -:  133:  OmniFFIFuture *task = q->tasks[q->head];
+        -:  134:  q->head = (q->head + 1) % OMNI_FFI_QUEUE_SIZE;
+        -:  135:  q->count--;
+        -:  136:
+        -:  137:  pthread_cond_signal(&q->not_full);
+        -:  138:  pthread_mutex_unlock(&q->mutex);
+        -:  139:  return task;
+        -:  140:}
+        -:  141:
+        -:  142:// =============================================================================
+        -:  143:// FFI Call Execution
+        -:  144:// =============================================================================
+        -:  145:
+        -:  146:fn void omni_ffi_execute_call(OmniFFIFuture *f) {
+        -:  147:  intptr_t result = 0;
+        -:  148:
+        -:  149:  switch (f->call_type) {
+        -:  150:    case OMNI_FFI_VOID_VOID: {
+        -:  151:      typedef void (*Fn)(void);
+        -:  152:      ((Fn)f->fn_ptr)();
+        -:  153:      break;
+        -:  154:    }
+        -:  155:    case OMNI_FFI_INT_VOID: {
+        -:  156:      typedef int (*Fn)(void);
+        -:  157:      result = ((Fn)f->fn_ptr)();
+        -:  158:      break;
+        -:  159:    }
+        -:  160:    case OMNI_FFI_PTR_VOID: {
+        -:  161:      typedef void* (*Fn)(void);
+        -:  162:      result = (intptr_t)((Fn)f->fn_ptr)();
+        -:  163:      break;
+        -:  164:    }
+        -:  165:    case OMNI_FFI_VOID_INT: {
+        -:  166:      typedef void (*Fn)(int);
+        -:  167:      ((Fn)f->fn_ptr)((int)f->args[0]);
+        -:  168:      break;
+        -:  169:    }
+        -:  170:    case OMNI_FFI_INT_INT: {
+        -:  171:      typedef int (*Fn)(int);
+        -:  172:      result = ((Fn)f->fn_ptr)((int)f->args[0]);
+        -:  173:      break;
+        -:  174:    }
+        -:  175:    case OMNI_FFI_PTR_INT: {
+        -:  176:      typedef void* (*Fn)(int);
+        -:  177:      result = (intptr_t)((Fn)f->fn_ptr)((int)f->args[0]);
+        -:  178:      break;
+        -:  179:    }
+        -:  180:    case OMNI_FFI_VOID_PTR: {
+        -:  181:      typedef void (*Fn)(void*);
+        -:  182:      ((Fn)f->fn_ptr)((void*)f->args[0]);
+        -:  183:      break;
+        -:  184:    }
+        -:  185:    case OMNI_FFI_INT_PTR: {
+        -:  186:      typedef int (*Fn)(void*);
+        -:  187:      result = ((Fn)f->fn_ptr)((void*)f->args[0]);
+        -:  188:      break;
+        -:  189:    }
+        -:  190:    case OMNI_FFI_PTR_PTR: {
+        -:  191:      typedef void* (*Fn)(void*);
+        -:  192:      result = (intptr_t)((Fn)f->fn_ptr)((void*)f->args[0]);
+        -:  193:      break;
+        -:  194:    }
+        -:  195:    case OMNI_FFI_INT_PTR_INT: {
+        -:  196:      typedef int (*Fn)(void*, int);
+        -:  197:      result = ((Fn)f->fn_ptr)((void*)f->args[0], (int)f->args[1]);
+        -:  198:      break;
+        -:  199:    }
+        -:  200:    case OMNI_FFI_PTR_PTR_INT: {
+        -:  201:      typedef void* (*Fn)(void*, int);
+        -:  202:      result = (intptr_t)((Fn)f->fn_ptr)((void*)f->args[0], (int)f->args[1]);
+        -:  203:      break;
+        -:  204:    }
+        -:  205:    case OMNI_FFI_INT_PTR_PTR: {
+        -:  206:      typedef int (*Fn)(void*, void*);
+        -:  207:      result = ((Fn)f->fn_ptr)((void*)f->args[0], (void*)f->args[1]);
+        -:  208:      break;
+        -:  209:    }
+        -:  210:    case OMNI_FFI_PTR_PTR_PTR: {
+        -:  211:      typedef void* (*Fn)(void*, void*);
+        -:  212:      result = (intptr_t)((Fn)f->fn_ptr)((void*)f->args[0], (void*)f->args[1]);
+        -:  213:      break;
+        -:  214:    }
+        -:  215:    case OMNI_FFI_VARIADIC: {
+        -:  216:      // General slow path - use libffi or manual dispatch
+        -:  217:      // For now, just handle common cases
+        -:  218:      break;
+        -:  219:    }
+        -:  220:  }
+        -:  221:
+        -:  222:  // Store result
+        -:  223:  if (f->call_type == OMNI_FFI_VOID_VOID ||
+        -:  224:      f->call_type == OMNI_FFI_VOID_INT ||
+        -:  225:      f->call_type == OMNI_FFI_VOID_PTR) {
+        -:  226:    // Void return - use Nothing
+        -:  227:    f->result = term_new_ctr(OMNI_NAM_NOTH, 0, NULL);
+        -:  228:  } else if (f->call_type == OMNI_FFI_PTR_VOID ||
+        -:  229:             f->call_type == OMNI_FFI_PTR_INT ||
+        -:  230:             f->call_type == OMNI_FFI_PTR_PTR ||
+        -:  231:             f->call_type == OMNI_FFI_PTR_PTR_INT ||
+        -:  232:             f->call_type == OMNI_FFI_PTR_PTR_PTR) {
+        -:  233:    // Pointer return - wrap in handle
+        -:  234:    if (result == 0) {
+        -:  235:      f->result = term_new_ctr(OMNI_NAM_NOTH, 0, NULL);
+        -:  236:    } else {
+        -:  237:      f->result = omni_ffi_handle_alloc(
+        -:  238:        (void*)result,
+        -:  239:        (OmniOwnership)f->result_ownership,
+        -:  240:        f->result_type_id
+        -:  241:      );
+        -:  242:    }
+        -:  243:  } else {
+        -:  244:    // Integer return - wrap as Cst (NUM)
+        -:  245:    f->result = term_new_num((u32)result);
+        -:  246:  }
+        -:  247:
+        -:  248:  // Mark as ready (release fence)
+        -:  249:  atomic_store_explicit(&f->ready, 1, memory_order_release);
+        -:  250:}
+        -:  251:
+        -:  252:// =============================================================================
+        -:  253:// Worker Thread
+        -:  254:// =============================================================================
+        -:  255:
+        -:  256:fn void* omni_ffi_worker(void *arg) {
+        -:  257:  (void)arg;
+        -:  258:
+        -:  259:  while (1) {
+        -:  260:    OmniFFIFuture *task = omni_ffi_queue_pop(&OMNI_FFI_POOL.queue);
+        -:  261:    if (!task) break;  // Shutdown
+        -:  262:
+        -:  263:    omni_ffi_execute_call(task);
+        -:  264:  }
+        -:  265:
+        -:  266:  return NULL;
+        -:  267:}
+        -:  268:
+        -:  269:// =============================================================================
+        -:  270:// Pool Initialization
+        -:  271:// =============================================================================
+        -:  272:
+        -:  273:fn void omni_ffi_pool_init(void) {
+        -:  274:  if (OMNI_FFI_POOL_READY) return;
+        -:  275:
+        -:  276:  omni_ffi_queue_init(&OMNI_FFI_POOL.queue);
+        -:  277:
+        -:  278:  for (int i = 0; i < OMNI_FFI_NUM_WORKERS; i++) {
+        -:  279:    pthread_create(&OMNI_FFI_POOL.workers[i], NULL, omni_ffi_worker, NULL);
+        -:  280:  }
+        -:  281:
+        -:  282:  OMNI_FFI_POOL.started = 1;
+        -:  283:  OMNI_FFI_POOL_READY = 1;
+        -:  284:}
+        -:  285:
+        -:  286:// =============================================================================
+        -:  287:// Pool Shutdown
+        -:  288:// =============================================================================
+        -:  289:
+      200:  290:fn void omni_ffi_pool_shutdown(void) {
+      200:  291:  if (!OMNI_FFI_POOL_READY) return;
+        -:  292:
+        -:  293:  // Signal shutdown
+    #####:  294:  pthread_mutex_lock(&OMNI_FFI_POOL.queue.mutex);
+    #####:  295:  OMNI_FFI_POOL.queue.shutdown = 1;
+    #####:  296:  pthread_cond_broadcast(&OMNI_FFI_POOL.queue.not_empty);
+    #####:  297:  pthread_mutex_unlock(&OMNI_FFI_POOL.queue.mutex);
+        -:  298:
+        -:  299:  // Wait for workers
+    #####:  300:  for (int i = 0; i < OMNI_FFI_NUM_WORKERS; i++) {
+    #####:  301:    pthread_join(OMNI_FFI_POOL.workers[i], NULL);
+        -:  302:  }
+        -:  303:
+    #####:  304:  omni_ffi_queue_destroy(&OMNI_FFI_POOL.queue);
+    #####:  305:  OMNI_FFI_POOL_READY = 0;
+        -:  306:}
+        -:  307:
+        -:  308:// =============================================================================
+        -:  309:// Async FFI Dispatch
+        -:  310:// =============================================================================
+        -:  311:
+        -:  312:// Submit an FFI call and return a pending future
+        -:  313:fn Term omni_ffi_call_async(
+        -:  314:  void *fn_ptr,
+        -:  315:  OmniFFICallType call_type,
+        -:  316:  intptr_t *args,
+        -:  317:  u32 arg_count,
+        -:  318:  OmniOwnership result_ownership,
+        -:  319:  u32 result_type_id
+        -:  320:) {
+        -:  321:  if (!OMNI_FFI_POOL_READY) omni_ffi_pool_init();
+        -:  322:
+        -:  323:  OmniFFIFuture *f = (OmniFFIFuture*)calloc(1, sizeof(OmniFFIFuture));
+        -:  324:  f->fn_ptr = fn_ptr;
+        -:  325:  f->call_type = call_type;
+        -:  326:  f->arg_count = arg_count;
+        -:  327:  for (u32 i = 0; i < arg_count && i < 8; i++) {
+        -:  328:    f->args[i] = args[i];
+        -:  329:  }
+        -:  330:  f->result_ownership = result_ownership;
+        -:  331:  f->result_type_id = result_type_id;
+        -:  332:  atomic_store(&f->ready, 0);
+        -:  333:
+        -:  334:  // Submit to queue
+        -:  335:  omni_ffi_queue_push(&OMNI_FFI_POOL.queue, f);
+        -:  336:
+        -:  337:  // Return #Pend{future_ptr}
+        -:  338:  return omni_ffi_ptr_wrap((void*)f);
+        -:  339:}
+        -:  340:
+        -:  341:// =============================================================================
+        -:  342:// Sync FFI Call (blocking)
+        -:  343:// =============================================================================
+        -:  344:
+        -:  345:fn Term omni_ffi_call_sync(
+        -:  346:  void *fn_ptr,
+        -:  347:  OmniFFICallType call_type,
+        -:  348:  intptr_t *args,
+        -:  349:  u32 arg_count,
+        -:  350:  OmniOwnership result_ownership,
+        -:  351:  u32 result_type_id
+        -:  352:) {
+        -:  353:  OmniFFIFuture f = {0};
+        -:  354:  f.fn_ptr = fn_ptr;
+        -:  355:  f.call_type = call_type;
+        -:  356:  f.arg_count = arg_count;
+        -:  357:  for (u32 i = 0; i < arg_count && i < 8; i++) {
+        -:  358:    f.args[i] = args[i];
+        -:  359:  }
+        -:  360:  f.result_ownership = result_ownership;
+        -:  361:  f.result_type_id = result_type_id;
+        -:  362:
+        -:  363:  omni_ffi_execute_call(&f);
+        -:  364:  return f.result;
+        -:  365:}
+        -:  366:
+        -:  367:// =============================================================================
+        -:  368:// Await Future
+        -:  369:// =============================================================================
+        -:  370:
+        -:  371:fn Term omni_ffi_await(Term pending) {
+        -:  372:  // #Ptr{hi, lo} is C02 (2 args)
+        -:  373:  if (term_tag(pending) != C02) return pending;
+        -:  374:  if (term_ext(pending) != OMNI_NAM_PEND &&
+        -:  375:      term_ext(pending) != OMNI_NAM_PTR) return pending;
+        -:  376:
+        -:  377:  OmniFFIFuture *f = (OmniFFIFuture*)omni_ffi_ptr_unwrap(pending);
+        -:  378:  if (!f) return term_new_ctr(OMNI_NAM_ERR, 0, NULL);
+        -:  379:
+        -:  380:  // Spin wait with backoff
+        -:  381:  u32 spins = 0;
+        -:  382:  while (!atomic_load_explicit(&f->ready, memory_order_acquire)) {
+        -:  383:    if (spins < 1000) {
+        -:  384:      spins++;
+        -:  385:      // Busy spin
+        -:  386:    } else if (spins < 10000) {
+        -:  387:      spins++;
+        -:  388:      sched_yield();
+        -:  389:    } else {
+        -:  390:      // Sleep a bit
+        -:  391:      struct timespec ts = {0, 100000};  // 100us
+        -:  392:      nanosleep(&ts, NULL);
+        -:  393:    }
+        -:  394:  }
+        -:  395:
+        -:  396:  Term result = f->result;
+        -:  397:  free(f);
+        -:  398:  return result;
+        -:  399:}
+        -:  400:
+        -:  401:// =============================================================================
+        -:  402:// FFI Function Table
+        -:  403:// =============================================================================
+        -:  404:
+        -:  405:#define OMNI_FFI_TABLE_SIZE 256
+        -:  406:
+        -:  407:typedef struct {
+        -:  408:  u32 name_nick;               // Nick-encoded function name
+        -:  409:  void *fn_ptr;                // Function pointer
+        -:  410:  OmniFFICallType call_type;   // Signature type
+        -:  411:  OmniOwnership result_ownership;
+        -:  412:  u32 result_type_id;
+        -:  413:} OmniFFIEntry;
+        -:  414:
+        -:  415:static OmniFFIEntry OMNI_FFI_TABLE[OMNI_FFI_TABLE_SIZE];
+        -:  416:static u32 OMNI_FFI_TABLE_COUNT = 0;
+        -:  417:
+        -:  418:// Register an FFI function
+     4587:  419:fn void omni_ffi_register(
+        -:  420:  const char *name,
+        -:  421:  void *fn_ptr,
+        -:  422:  OmniFFICallType call_type,
+        -:  423:  OmniOwnership result_ownership,
+        -:  424:  u32 result_type_id
+        -:  425:) {
+    4587*:  426:  if (OMNI_FFI_TABLE_COUNT >= OMNI_FFI_TABLE_SIZE) return;
+        -:  427:
+     4587:  428:  OmniFFIEntry *e = &OMNI_FFI_TABLE[OMNI_FFI_TABLE_COUNT++];
+     4587:  429:  e->name_nick = omni_nick(name);
+     4587:  430:  e->fn_ptr = fn_ptr;
+     4587:  431:  e->call_type = call_type;
+     4587:  432:  e->result_ownership = result_ownership;
+     4587:  433:  e->result_type_id = result_type_id;
+        -:  434:}
+        -:  435:
+        -:  436:// Lookup FFI function by nick
+        -:  437:fn OmniFFIEntry* omni_ffi_lookup(u32 name_nick) {
+        -:  438:  for (u32 i = 0; i < OMNI_FFI_TABLE_COUNT; i++) {
+        -:  439:    if (OMNI_FFI_TABLE[i].name_nick == name_nick) {
+        -:  440:      return &OMNI_FFI_TABLE[i];
+        -:  441:    }
+        -:  442:  }
+        -:  443:  return NULL;
+        -:  444:}
+        -:  445:
+        -:  446:// =============================================================================
+        -:  447:// FFI Dispatch (called during reduction)
+        -:  448:// =============================================================================
+        -:  449:
+        -:  450:// Dispatch #FFI{name, args} node
+        -:  451:fn Term omni_ffi_dispatch(Term ffi_node) {
+        -:  452:  // #FFI{name, args} is C02 (2 args)
+        -:  453:  if (term_tag(ffi_node) != C02) return ffi_node;
+        -:  454:  if (term_ext(ffi_node) != OMNI_NAM_FFI) return ffi_node;
+        -:  455:
+        -:  456:  u32 loc = term_val(ffi_node);
+        -:  457:  u32 name_nick = term_val(HEAP[loc]);
+        -:  458:  Term args_list = HEAP[loc + 1];
+        -:  459:
+        -:  460:  OmniFFIEntry *entry = omni_ffi_lookup(name_nick);
+        -:  461:  if (!entry) {
+        -:  462:    return term_new_ctr(OMNI_NAM_ERR, 0, NULL);
+        -:  463:  }
+        -:  464:
+        -:  465:  // Extract arguments from cons list
+        -:  466:  intptr_t args[8] = {0};
+        -:  467:  u32 arg_count = 0;
+        -:  468:  Term cur = args_list;
+        -:  469:
+        -:  470:  // #CON{h, t} is C02 (2 args)
+        -:  471:  while (term_tag(cur) == C02 && term_ext(cur) == NAM_CON && arg_count < 8) {
+        -:  472:    u32 aloc = term_val(cur);
+        -:  473:    Term head = HEAP[aloc];
+        -:  474:    cur = HEAP[aloc + 1];
+        -:  475:
+        -:  476:    // Convert Term to intptr_t
+        -:  477:    if (term_tag(head) == C01) {
+        -:  478:      // 1-arg constructors: #Cst{n}, #Hndl{packed}
+        -:  479:      if (term_ext(head) == OMNI_NAM_CST) {
+        -:  480:        args[arg_count++] = (intptr_t)term_val(HEAP[term_val(head)]);
+        -:  481:      } else if (term_ext(head) == OMNI_NAM_HNDL) {
+        -:  482:        void *ptr = omni_ffi_handle_borrow(head);
+        -:  483:        args[arg_count++] = (intptr_t)ptr;
+        -:  484:      }
+        -:  485:    } else if (term_tag(head) == C02) {
+        -:  486:      // 2-arg constructors: #Ptr{hi, lo}
+        -:  487:      if (term_ext(head) == OMNI_NAM_PTR) {
+        -:  488:        void *ptr = omni_ffi_ptr_unwrap(head);
+        -:  489:        args[arg_count++] = (intptr_t)ptr;
+        -:  490:      }
+        -:  491:    } else if (term_tag(head) == NUM) {
+        -:  492:      args[arg_count++] = (intptr_t)term_val(head);
+        -:  493:    }
+        -:  494:  }
+        -:  495:
+        -:  496:  // Execute synchronously (async could be selected based on metadata)
+        -:  497:  return omni_ffi_call_sync(
+        -:  498:    entry->fn_ptr,
+        -:  499:    entry->call_type,
+        -:  500:    args,
+        -:  501:    arg_count,
+        -:  502:    entry->result_ownership,
+        -:  503:    entry->result_type_id
+        -:  504:  );
+        -:  505:}
+        -:  506:
+        -:  507:// =============================================================================
+        -:  508:// Standard Library FFI Registration
+        -:  509:// =============================================================================
+        -:  510:
+      417:  511:fn void omni_ffi_register_stdlib(void) {
+        -:  512:  // Memory
+      417:  513:  omni_ffi_register("mloc", (void*)malloc, OMNI_FFI_PTR_INT, OMNI_OWNED, 0);
+      417:  514:  omni_ffi_register("free", (void*)free, OMNI_FFI_VOID_PTR, OMNI_BORROWED, 0);
+      417:  515:  omni_ffi_register("rloc", (void*)realloc, OMNI_FFI_PTR_PTR_INT, OMNI_OWNED, 0);
+      417:  516:  omni_ffi_register("cloc", (void*)calloc, OMNI_FFI_VARIADIC, OMNI_OWNED, 0);
+        -:  517:
+        -:  518:  // I/O
+      417:  519:  omni_ffi_register("puts", (void*)puts, OMNI_FFI_INT_PTR, OMNI_BORROWED, 0);
+      417:  520:  omni_ffi_register("putc", (void*)putchar, OMNI_FFI_INT_INT, OMNI_BORROWED, 0);
+      417:  521:  omni_ffi_register("getc", (void*)getchar, OMNI_FFI_INT_VOID, OMNI_BORROWED, 0);
+        -:  522:
+        -:  523:  // File I/O
+      417:  524:  omni_ffi_register("fopn", (void*)fopen, OMNI_FFI_PTR_PTR_PTR, OMNI_OWNED, 0);
+      417:  525:  omni_ffi_register("fcls", (void*)fclose, OMNI_FFI_INT_PTR, OMNI_BORROWED, 0);
+      417:  526:  omni_ffi_register("frd", (void*)fread, OMNI_FFI_VARIADIC, OMNI_BORROWED, 0);
+      417:  527:  omni_ffi_register("fwrt", (void*)fwrite, OMNI_FFI_VARIADIC, OMNI_BORROWED, 0);
+      417:  528:}
+        -:  529:

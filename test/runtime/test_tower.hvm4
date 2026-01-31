@@ -1,0 +1,238 @@
+// OmniLisp Runtime Tests: Tower Operations (Reflect/Reify)
+// Tests @omni_reflect, @omni_reify, @omni_reflect_list
+
+// =============================================================================
+// Reflect Tests (Value → Code)
+// =============================================================================
+
+// Test: reflect integer
+@test_reflect_int =
+  !!&result = @omni_reflect(#Cst{42});
+  // Should produce #Lit{42}
+  !!&is_lit = (λ{#Lit: λ&n. (n == 42); _: λ&u_. 0})(result);
+  @assert_eq(#reflect_int)(#Cst{1})(#Cst{is_lit})
+
+// Test: reflect char
+@test_reflect_char =
+  !!&result = @omni_reflect(#CHR{65});
+  !!&is_chr = (λ{#CHR: λ&c. 1; _: λ&u_. 0})(result);
+  @assert_eq(#reflect_char)(#Cst{1})(#Cst{is_chr})
+
+// Test: reflect symbol
+@test_reflect_sym =
+  !!&result = @omni_reflect(#Sym{12345});
+  !!&is_sym = (λ{#Sym: λ&s. 1; _: λ&u_. 0})(result);
+  @assert_eq(#reflect_sym)(#Cst{1})(#Cst{is_sym})
+
+// Test: reflect empty list
+@test_reflect_empty_list =
+  !!&result = @omni_reflect(#NIL);
+  !!&is_qq_nil = (λ{#QQ: λ&inner. λ{#NIL: 1; _: λ&u_. 0}(inner); _: λ&u_. 0})(result);
+  @assert_eq(#reflect_empty_list)(#Cst{1})(#Cst{is_qq_nil})
+
+// Test: reflect true
+@test_reflect_true =
+  !!&result = @omni_reflect(#True{});
+  !!&is_qq_true = (λ{#QQ: λ&inner. λ{#True: 1; _: λ&u_. 0}(inner); _: λ&u_. 0})(result);
+  @assert_eq(#reflect_true)(#Cst{1})(#Cst{is_qq_true})
+
+// Test: reflect false
+@test_reflect_false =
+  !!&result = @omni_reflect(#Fals{});
+  !!&is_qq_false = (λ{#QQ: λ&inner. λ{#Fals: 1; _: λ&u_. 0}(inner); _: λ&u_. 0})(result);
+  @assert_eq(#reflect_false)(#Cst{1})(#Cst{is_qq_false})
+
+// Test: reflect nothing
+@test_reflect_nothing =
+  !!&result = @omni_reflect(#Noth{});
+  !!&is_qq_noth = (λ{#QQ: λ&inner. λ{#Noth: 1; _: λ&u_. 0}(inner); _: λ&u_. 0})(result);
+  @assert_eq(#reflect_nothing)(#Cst{1})(#Cst{is_qq_noth})
+
+// Test: reflect closure returns body
+@test_reflect_closure =
+  !!&body = #Add{#Var{0}, #Lit{1}};
+  !!&result = @omni_reflect(#Clo{#NIL, body});
+  // Should return the body
+  !!&is_add = (λ{#Add: λ&a. λ&b. 1; _: λ&u_. 0})(result);
+  @assert_eq(#reflect_closure)(#Cst{1})(#Cst{is_add})
+
+// Test: reflect list
+@test_reflect_list =
+  !!&list = #CON{#Cst{1}, #CON{#Cst{2}, #NIL}};
+  !!&result = @omni_reflect(list);
+  // Should produce #QQ{#CON{reflected, reflected}}
+  !!&is_qq_con = (λ{#QQ: λ&inner. λ{#CON: λ&h. λ&t. 1; _: λ&u_. 0}(inner); _: λ&u_. 0})(result);
+  @assert_eq(#reflect_list)(#Cst{1})(#Cst{is_qq_con})
+
+// =============================================================================
+// Reify Tests (Code → Value)
+// =============================================================================
+
+// Test: reify literal
+@test_reify_lit =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_reify(menv)(#Lit{42});
+  @assert_num_eq(#reify_lit)(#Cst{42})(result)
+
+// Test: reify quoted code
+@test_reify_qq =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_reify(menv)(#QQ{#Cst{99}});
+  @assert_num_eq(#reify_qq)(#Cst{99})(result)
+
+// Test: reify staged code
+@test_reify_staged =
+  !!&menv = @omni_menv_empty;
+  // Staged addition: should evaluate
+  !!&result = @omni_reify(menv)(#Stag{#Cst{0}, #Add{#Lit{2}, #Lit{3}}});
+  @assert_num_eq(#reify_staged)(#Cst{5})(result)
+
+// Test: reify cons
+@test_reify_cons =
+  !!&menv = @omni_menv_empty;
+  !!&code = #CON{#Lit{10}, #CON{#Lit{20}, #NIL}};
+  !!&result = @omni_reify(menv)(code);
+  // First element should be #Cst{10}
+  !!&head = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#reify_cons)(#Cst{10})(head)
+
+// Test: reify empty list
+@test_reify_empty_list =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_reify(menv)(#NIL);
+  @assert_empty_list(#reify_empty_list)(result)
+
+// Test: reify true
+@test_reify_true =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_reify(menv)(#True{});
+  @assert_true(#reify_true)(result)
+
+// Test: reify false
+@test_reify_false =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_reify(menv)(#Fals{});
+  @assert_false(#reify_false)(result)
+
+// Test: reify nothing
+@test_reify_nothing =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_reify(menv)(#Noth{});
+  @assert_nothing(#reify_nothing)(result)
+
+// Test: reify closure
+@test_reify_closure =
+  !!&menv = @omni_menv_empty;
+  !!&clam = #CLam{#NIL, #Var{0}};
+  !!&result = @omni_reify(menv)(clam);
+  // Should produce #Clo
+  !!&is_clo = (λ{#Clo: λ&e. λ&b. 1; _: λ&u_. 0})(result);
+  @assert_eq(#reify_closure)(#Cst{1})(#Cst{is_clo})
+
+// =============================================================================
+// Round-Trip Tests (Reflect then Reify)
+// =============================================================================
+
+// Test: round-trip integer
+@test_roundtrip_int =
+  !!&menv = @omni_menv_empty;
+  !!&original = #Cst{42};
+  !!&reflected = @omni_reflect(original);
+  !!&reified = @omni_reify(menv)(reflected);
+  @assert_num_eq(#roundtrip_int)(original)(reified)
+
+// Test: round-trip true
+@test_roundtrip_true =
+  !!&menv = @omni_menv_empty;
+  !!&reflected = @omni_reflect(#True{});
+  !!&reified = @omni_reify(menv)(reflected);
+  @assert_true(#roundtrip_true)(reified)
+
+// Test: round-trip false
+@test_roundtrip_false =
+  !!&menv = @omni_menv_empty;
+  !!&reflected = @omni_reflect(#Fals{});
+  !!&reified = @omni_reify(menv)(reflected);
+  @assert_false(#roundtrip_false)(reified)
+
+// Test: round-trip empty list
+@test_roundtrip_empty_list =
+  !!&menv = @omni_menv_empty;
+  !!&reflected = @omni_reflect(#NIL);
+  !!&reified = @omni_reify(menv)(reflected);
+  @assert_empty_list(#roundtrip_empty_list)(reified)
+
+// Test: round-trip nothing
+@test_roundtrip_nothing =
+  !!&menv = @omni_menv_empty;
+  !!&reflected = @omni_reflect(#Noth{});
+  !!&reified = @omni_reify(menv)(reflected);
+  @assert_nothing(#roundtrip_nothing)(reified)
+
+// =============================================================================
+// Reflect List Tests
+// =============================================================================
+
+// Test: reflect empty list
+@test_reflect_list_empty =
+  !!&result = @omni_reflect_list(#NIL);
+  @assert_empty_list(#reflect_list_empty)(result)
+
+// Test: reflect list preserves length
+@test_reflect_list_length =
+  !!&list = #CON{#Cst{1}, #CON{#Cst{2}, #CON{#Cst{3}, #NIL}}};
+  !!&reflected = @omni_reflect_list(list);
+  !!&len = @omni_list_length(reflected);
+  @assert_eq(#reflect_list_length)(#Cst{3})(#Cst{len})
+
+// =============================================================================
+// Meta-Level Tests
+// =============================================================================
+
+// Test: base level is 0
+@test_mlvl_base =
+  !!&menv = @omni_menv_empty;
+  !!&level = @omni_menv_level(menv);
+  @assert_num_eq(#mlvl_base)(#Cst{0})(level)
+
+// Test: child level is parent + 1
+@test_mlvl_child =
+  !!&parent = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{3});
+  !!&child = @omni_menv_child(parent);
+  !!&level = @omni_menv_level(child);
+  @assert_num_eq(#mlvl_child)(#Cst{4})(level)
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@tower_tests = #CON{@test_reflect_int,
+  #CON{@test_reflect_char,
+  #CON{@test_reflect_sym,
+  #CON{@test_reflect_empty_list,
+  #CON{@test_reflect_true,
+  #CON{@test_reflect_false,
+  #CON{@test_reflect_nothing,
+  #CON{@test_reflect_closure,
+  #CON{@test_reflect_list,
+  #CON{@test_reify_lit,
+  #CON{@test_reify_qq,
+  #CON{@test_reify_staged,
+  #CON{@test_reify_cons,
+  #CON{@test_reify_empty_list,
+  #CON{@test_reify_true,
+  #CON{@test_reify_false,
+  #CON{@test_reify_nothing,
+  #CON{@test_reify_closure,
+  #CON{@test_roundtrip_int,
+  #CON{@test_roundtrip_true,
+  #CON{@test_roundtrip_false,
+  #CON{@test_roundtrip_empty_list,
+  #CON{@test_roundtrip_nothing,
+  #CON{@test_reflect_list_empty,
+  #CON{@test_reflect_list_length,
+  #CON{@test_mlvl_base,
+  #CON{@test_mlvl_child,
+  #NIL}}}}}}}}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@tower_tests)

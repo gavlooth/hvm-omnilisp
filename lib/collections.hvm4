@@ -2,39 +2,118 @@
 // Operations on lists, arrays, dicts, and sets
 
 // =============================================================================
-// List Operations
+// PARALLEL-FIRST PHILOSOPHY
+// =============================================================================
+//
+// OmniLisp functions are PARALLEL BY DEFAULT using HVM4 superpositions.
+// Sequential versions are available with _seq suffix for when ordering matters.
+//
+// Parallel execution: Independent computations run simultaneously via HVM4's
+// strict binding mechanism (!!&). When two strict bindings are independent,
+// HVM4 evaluates them in parallel.
+//
+// Use sequential (_seq) when:
+//   - Side effects require ordering
+//   - You need deterministic evaluation order
+//   - Accumulator threading (foldl is inherently sequential)
+//
 // =============================================================================
 
-// Map a function over a list
-@omni_map = λf. λxs.
+// =============================================================================
+// List Operations - PARALLEL BY DEFAULT
+// =============================================================================
+
+// Map a function over a list (PARALLEL)
+// Each f(element) is evaluated in parallel with recursive map
+@omni_map = λ&f. λ&xs.
   λ{
     #NIL: #NIL
-    #CON: λ&h. λ&t. #CON{f(h), @omni_map(f)(t)}
+    #CON: λ&h. λ&t.
+      !!&head_result = f(h);
+      !!&tail_result = @omni_map(f)(t);
+      #CON{head_result, tail_result}
   }(xs)
 
-// Filter elements satisfying predicate
-@omni_filter = λp. λxs.
+// Map - SEQUENTIAL version (use when side effects need ordering)
+@omni_map_seq = λf. λxs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{f(h), @omni_map_seq(f)(t)}
+  }(xs)
+
+// Filter elements satisfying predicate (PARALLEL)
+// Predicate evaluation parallelized with recursive filter
+@omni_filter = λ&p. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&pred_result = p(h);
+      !!&tail_result = @omni_filter(p)(t);
+      λ{
+        1: #CON{h, tail_result}
+        _: tail_result
+      }(pred_result)
+  }(xs)
+
+// Filter - SEQUENTIAL version
+@omni_filter_seq = λp. λxs.
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
       λ{
-        1: #CON{h, @omni_filter(p)(t)}
-        _: @omni_filter(p)(t)
+        1: #CON{h, @omni_filter_seq(p)(t)}
+        _: @omni_filter_seq(p)(t)
       }(p(h))
   }(xs)
 
-// Left fold
+// Left fold - INHERENTLY SEQUENTIAL (accumulator threading)
+// No parallel version exists - use reduce_tree for parallel reduction
 @omni_foldl = λf. λacc. λxs.
   λ{
     #NIL: acc
     #CON: λ&h. λ&t. @omni_foldl(f)(f(acc)(h))(t)
   }(xs)
 
-// Right fold
-@omni_foldr = λf. λacc. λxs.
+// Right fold (PARALLEL for the recursive call)
+@omni_foldr = λ&f. λ&acc. λ&xs.
   λ{
     #NIL: acc
-    #CON: λ&h. λ&t. f(h)(@omni_foldr(f)(acc)(t))
+    #CON: λ&h. λ&t.
+      !!&tail_result = @omni_foldr(f)(acc)(t);
+      f(h)(tail_result)
+  }(xs)
+
+// Right fold - SEQUENTIAL version
+@omni_foldr_seq = λf. λacc. λxs.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t. f(h)(@omni_foldr_seq(f)(acc)(t))
+  }(xs)
+
+// Tree reduction for associative operations (TRULY PARALLEL)
+// Splits list in half, reduces each half in parallel, combines
+@omni_reduce_tree = λ&f. λ&xs.
+  λ{
+    #NIL: #Err{#sym_EmptyList, #sym_reduce}
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h  // Single element
+        _:
+          !!&len = @omni_length_fast(xs);
+          !!&mid = (len / 2);
+          !!&left = @omni_take(mid)(xs);
+          !!&right = @omni_drop(mid)(xs);
+          !!&left_result = @omni_reduce_tree(f)(left);
+          !!&right_result = @omni_reduce_tree(f)(right);
+          f(left_result)(right_result)
+      }(t)
+  }(xs)
+
+// Fast length (direct recursion, no foldl overhead)
+@omni_length_fast = λxs.
+  λ{
+    #NIL: 0
+    #CON: λ&_. λ&t. (1 + @omni_length_fast(t))
   }(xs)
 
 // Reduce (fold with first element as accumulator)
@@ -106,25 +185,53 @@
       }((h == val))
   }(xs)
 
-// Check if any element satisfies predicate
-@omni_any = λp. λxs.
+// Check if any element satisfies predicate (PARALLEL)
+// Evaluates predicate on head in parallel with recursive any
+// Note: May do extra work compared to sequential short-circuit
+@omni_any = λ&p. λ&xs.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t.
+      !!&head_result = p(h);
+      !!&tail_result = @omni_any(p)(t);
+      λ{
+        1: 1
+        _: tail_result
+      }(head_result)
+  }(xs)
+
+// Any - SEQUENTIAL version (short-circuits, less work but slower for large lists)
+@omni_any_seq = λp. λxs.
   λ{
     #NIL: 0
     #CON: λ&h. λ&t.
       λ{
         1: 1
-        _: @omni_any(p)(t)
+        _: @omni_any_seq(p)(t)
       }(p(h))
   }(xs)
 
-// Check if all elements satisfy predicate
-@omni_all = λp. λxs.
+// Check if all elements satisfy predicate (PARALLEL)
+@omni_all = λ&p. λ&xs.
+  λ{
+    #NIL: 1
+    #CON: λ&h. λ&t.
+      !!&head_result = p(h);
+      !!&tail_result = @omni_all(p)(t);
+      λ{
+        0: 0
+        _: tail_result
+      }(head_result)
+  }(xs)
+
+// All - SEQUENTIAL version (short-circuits)
+@omni_all_seq = λp. λxs.
   λ{
     #NIL: 1
     #CON: λ&h. λ&t.
       λ{
         0: 0
-        _: @omni_all(p)(t)
+        _: @omni_all_seq(p)(t)
       }(p(h))
   }(xs)
 
@@ -143,16 +250,29 @@
       }(n)
   }(xs)
 
-// Concatenate two lists
-@omni_concat = λxs. λys.
+// Concatenate two lists (PARALLEL recursive concat)
+@omni_concat = λ&xs. λ&ys.
   λ{
     #NIL: ys
-    #CON: λ&h. λ&t. #CON{h, @omni_concat(t)(ys)}
+    #CON: λ&h. λ&t.
+      !!&tail_result = @omni_concat(t)(ys);
+      #CON{h, tail_result}
   }(xs)
 
-// Flatten nested list (one level)
-@omni_flatten = λxss.
+// Concatenate - SEQUENTIAL version
+@omni_concat_seq = λxs. λys.
+  λ{
+    #NIL: ys
+    #CON: λ&h. λ&t. #CON{h, @omni_concat_seq(t)(ys)}
+  }(xs)
+
+// Flatten nested list (one level) - uses parallel foldr
+@omni_flatten = λ&xss.
   @omni_foldr(@omni_concat)(#NIL)(xss)
+
+// Flatten - SEQUENTIAL version
+@omni_flatten_seq = λxss.
+  @omni_foldr_seq(@omni_concat_seq)(#NIL)(xss)
 
 // Deep flatten
 @omni_flatten_deep = λxs.
@@ -178,15 +298,29 @@
       }(ys)
   }(xs)
 
-// Zip with function
-@omni_zip_with = λf. λxs. λys.
+// Zip with function (PARALLEL)
+@omni_zip_with = λ&f. λ&xs. λ&ys.
   λ{
     #NIL: #NIL
     #CON: λ&xh. λ&xt.
       λ{
         #NIL: #NIL
         #CON: λ&yh. λ&yt.
-          #CON{f(xh)(yh), @omni_zip_with(f)(xt)(yt)}
+          !!&head_result = f(xh)(yh);
+          !!&tail_result = @omni_zip_with(f)(xt)(yt);
+          #CON{head_result, tail_result}
+      }(ys)
+  }(xs)
+
+// Zip with function - SEQUENTIAL version
+@omni_zip_with_seq = λf. λxs. λys.
+  λ{
+    #NIL: #NIL
+    #CON: λ&xh. λ&xt.
+      λ{
+        #NIL: #NIL
+        #CON: λ&yh. λ&yt.
+          #CON{f(xh)(yh), @omni_zip_with_seq(f)(xt)(yt)}
       }(ys)
   }(xs)
 
@@ -267,10 +401,11 @@
 // Sorting (Merge Sort)
 // =============================================================================
 
-// Sort with comparator function
+// Sort with comparator function (PARALLEL merge sort)
 // cmp returns: negative if a < b, 0 if a == b, positive if a > b
-@omni_sort = λcmp. λxs.
-  !!&len = @omni_length(xs);
+// Left and right halves are sorted in parallel
+@omni_sort = λ&cmp. λ&xs.
+  !!&len = @omni_length_fast(xs);
   λ{
     0: xs
     1: xs
@@ -278,7 +413,23 @@
       !!&mid = (len / 2);
       !!&left = @omni_take(mid)(xs);
       !!&right = @omni_drop(mid)(xs);
-      @omni_merge(cmp)(@omni_sort(cmp)(left))(@omni_sort(cmp)(right))
+      // PARALLEL: sort both halves simultaneously
+      !!&sorted_left = @omni_sort(cmp)(left);
+      !!&sorted_right = @omni_sort(cmp)(right);
+      @omni_merge(cmp)(sorted_left)(sorted_right)
+  }(len)
+
+// Sort - SEQUENTIAL version
+@omni_sort_seq = λcmp. λxs.
+  !!&len = @omni_length_fast(xs);
+  λ{
+    0: xs
+    1: xs
+    _:
+      !!&mid = (len / 2);
+      !!&left = @omni_take(mid)(xs);
+      !!&right = @omni_drop(mid)(xs);
+      @omni_merge(cmp)(@omni_sort_seq(cmp)(left))(@omni_sort_seq(cmp)(right))
   }(len)
 
 // Merge two sorted lists
@@ -571,22 +722,68 @@
     _: #CON{seed, @omni_iterate((n - 1))(f)(f(seed))}
   }(n)
 
-// Sum a list of numbers
-@omni_sum = λxs. @omni_foldl(λa. λb. (a + b))(0)(xs)
+// Sum a list of numbers (PARALLEL tree reduction)
+// Addition is associative, so we can reduce in parallel
+@omni_sum = λ&xs.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h
+        _: @omni_reduce_tree(λa. λb. (a + b))(xs)
+      }(t)
+  }(xs)
 
-// Product of a list of numbers
-@omni_product = λxs. @omni_foldl(λa. λb. (a * b))(1)(xs)
+// Sum - SEQUENTIAL version
+@omni_sum_seq = λxs. @omni_foldl(λa. λb. (a + b))(0)(xs)
 
-// Maximum in list
-@omni_maximum = λxs.
+// Product of a list of numbers (PARALLEL tree reduction)
+@omni_product = λ&xs.
+  λ{
+    #NIL: 1
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h
+        _: @omni_reduce_tree(λa. λb. (a * b))(xs)
+      }(t)
+  }(xs)
+
+// Product - SEQUENTIAL version
+@omni_product_seq = λxs. @omni_foldl(λa. λb. (a * b))(1)(xs)
+
+// Maximum in list (PARALLEL tree reduction)
+// max is associative, so we can reduce in parallel
+@omni_maximum = λ&xs.
+  λ{
+    #NIL: #Err{#sym_EmptyList, #sym_maximum}
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h
+        _: @omni_reduce_tree(λa. λb. λ{1: a; _: b}((a > b)))(xs)
+      }(t)
+  }(xs)
+
+// Maximum - SEQUENTIAL version
+@omni_maximum_seq = λxs.
   λ{
     #NIL: #Err{#sym_EmptyList, #sym_maximum}
     #CON: λ&h. λ&t.
       @omni_foldl(λacc. λx. λ{1: x; _: acc}((x > acc)))(h)(t)
   }(xs)
 
-// Minimum in list
-@omni_minimum = λxs.
+// Minimum in list (PARALLEL tree reduction)
+@omni_minimum = λ&xs.
+  λ{
+    #NIL: #Err{#sym_EmptyList, #sym_minimum}
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h
+        _: @omni_reduce_tree(λa. λb. λ{1: a; _: b}((a < b)))(xs)
+      }(t)
+  }(xs)
+
+// Minimum - SEQUENTIAL version
+@omni_minimum_seq = λxs.
   λ{
     #NIL: #Err{#sym_EmptyList, #sym_minimum}
     #CON: λ&h. λ&t.

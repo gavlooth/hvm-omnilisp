@@ -1,0 +1,14 @@
+;; bench_parallel_fold.lisp - Benchmark for fold operations
+;; Run with: ./main -s bench_parallel_fold.lisp
+
+;; Fold operation
+(define foldl [f] [acc] [lst]
+  (match lst
+    ()       acc
+    (h .. t) (foldl f (f acc h) t)))
+
+;; Benchmark: sum via fold
+(define result (foldl (lambda [a] [b] (+ a b)) 0 '(1 2 3)))
+
+;; EXPECT-FINAL: 6
+result

@@ -1,0 +1,152 @@
+// Test: Tree-Shaped Reductions
+// Tests for parallel-friendly tree reductions
+
+// =============================================================================
+// Helper: create test lists
+// =============================================================================
+
+@list5 = #CON{1, #CON{2, #CON{3, #CON{4, #CON{5, #NIL}}}}}
+@list10 = #CON{1, #CON{2, #CON{3, #CON{4, #CON{5, #CON{6, #CON{7, #CON{8, #CON{9, #CON{10, #NIL}}}}}}}}}}
+@list_single = #CON{42, #NIL}
+@list_empty = #NIL
+
+// =============================================================================
+// Basic reduce_tree tests
+// =============================================================================
+
+// Test: reduce_tree with addition
+@test_reduce_tree_add =
+  @reduce_tree(λ&a. λ&b. (a + b))(@list5)
+  // Expected: 1+2+3+4+5 = 15
+
+// Test: reduce_tree with multiplication
+@test_reduce_tree_mul =
+  @reduce_tree(λ&a. λ&b. (a * b))(@list5)
+  // Expected: 1*2*3*4*5 = 120
+
+// Test: single element
+@test_reduce_tree_single =
+  @reduce_tree(λ&a. λ&b. (a + b))(@list_single)
+  // Expected: 42
+
+// =============================================================================
+// reduce_tree_with tests (with default)
+// =============================================================================
+
+// Test: empty list returns default
+@test_reduce_tree_with_empty =
+  @reduce_tree_with(λ&a. λ&b. (a + b))(0)(@list_empty)
+  // Expected: 0
+
+// Test: non-empty list ignores default
+@test_reduce_tree_with_nonempty =
+  @reduce_tree_with(λ&a. λ&b. (a + b))(999)(@list5)
+  // Expected: 15
+
+// =============================================================================
+// Specialized tree reductions
+// =============================================================================
+
+// Test: sum_tree
+@test_sum_tree =
+  @sum_tree(@list10)
+  // Expected: 1+2+...+10 = 55
+
+// Test: sum_tree empty
+@test_sum_tree_empty =
+  @sum_tree(@list_empty)
+  // Expected: 0
+
+// Test: product_tree
+@test_product_tree =
+  @product_tree(@list5)
+  // Expected: 120
+
+// Test: product_tree empty
+@test_product_tree_empty =
+  @product_tree(@list_empty)
+  // Expected: 1
+
+// Test: maximum_tree
+@test_maximum_tree =
+  @maximum_tree(#CON{3, #CON{1, #CON{4, #CON{1, #CON{5, #CON{9, #CON{2, #CON{6, #NIL}}}}}}}})
+  // Expected: 9
+
+// Test: minimum_tree
+@test_minimum_tree =
+  @minimum_tree(#CON{3, #CON{1, #CON{4, #CON{1, #CON{5, #CON{9, #CON{2, #CON{6, #NIL}}}}}}}})
+  // Expected: 1
+
+// =============================================================================
+// all_tree and any_tree tests
+// =============================================================================
+
+// Test: all_tree - all positive
+@test_all_tree_true =
+  @all_tree(λ&x. (x > 0))(@list5)
+  // Expected: #True{}
+
+// Test: all_tree - not all even
+@test_all_tree_false =
+  @all_tree(λ&x. ((x % 2) == 0))(@list5)
+  // Expected: #Fals{}
+
+// Test: any_tree - some even
+@test_any_tree_true =
+  @any_tree(λ&x. ((x % 2) == 0))(@list5)
+  // Expected: #True{}
+
+// Test: any_tree - none > 100
+@test_any_tree_false =
+  @any_tree(λ&x. (x > 100))(@list5)
+  // Expected: #Fals{}
+
+// =============================================================================
+// Helper function tests
+// =============================================================================
+
+// Test: length
+@test_length =
+  @length(@list5)
+  // Expected: 5
+
+// Test: take
+@test_take =
+  @take(3)(@list5)
+  // Expected: [1, 2, 3]
+
+// Test: drop
+@test_drop =
+  @drop(3)(@list5)
+  // Expected: [4, 5]
+
+// Test: head
+@test_head =
+  @head(@list5)
+  // Expected: 1
+
+// Test: tail
+@test_tail =
+  @tail(@list5)
+  // Expected: [2, 3, 4, 5]
+
+// =============================================================================
+// Main test runner
+// =============================================================================
+
+@main =
+  // Run reduction tests
+  !!&t1 = @test_reduce_tree_add;
+  !!&t2 = @test_reduce_tree_mul;
+  !!&t3 = @test_reduce_tree_single;
+  !!&t4 = @test_reduce_tree_with_empty;
+  !!&t5 = @test_sum_tree;
+  !!&t6 = @test_product_tree;
+  !!&t7 = @test_maximum_tree;
+  !!&t8 = @test_minimum_tree;
+  !!&t9 = @test_length;
+  !!&t10 = @test_take;
+  !!&t11 = @test_drop;
+  // Return results as list
+  #CON{t1, #CON{t2, #CON{t3, #CON{t4, #CON{t5, #CON{t6, #CON{t7, #CON{t8, #CON{t9, #CON{t10, #CON{t11, #NIL}}}}}}}}}}}
+  // Expected: [15, 120, 42, 0, 55, 120, 9, 1, 5, [1,2,3], [4,5]]

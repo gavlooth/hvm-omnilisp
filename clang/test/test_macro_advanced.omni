@@ -1,0 +1,119 @@
+;; test_macro_advanced.omni - Advanced macro and quasiquote tests
+
+;; =========================================================================
+;; QUASIQUOTE TESTS
+;; =========================================================================
+
+;; TEST: basic quasiquote
+;; EXPECT: (1 2 3)
+`(1 2 3)
+
+;; TEST: quasiquote with unquote
+;; EXPECT: (1 5 3)
+(let [x 5] `(1 ,x 3))
+
+;; TEST: nested quasiquote
+;; EXPECT: (a (b 10))
+(let [y 10] `(a (b ,y)))
+
+;; TEST: quasiquote in let
+;; EXPECT: (x 42)
+(let [n 42] `(x ,n))
+
+;; =========================================================================
+;; PATTERN MATCHING ADVANCED
+;; =========================================================================
+
+;; TEST: match with multiple patterns
+;; EXPECT: "zero"
+(match 0
+  0 "zero"
+  1 "one"
+  _ "many")
+
+;; TEST: match list destructuring
+;; EXPECT: 1
+(match '(1 2 3)
+  ()       0
+  (h .. t) h)
+
+;; TEST: match nested list
+;; EXPECT: 2
+(match '(1 (2 3))
+  (a (b c)) b
+  _ 0)
+
+;; =========================================================================
+;; FUNCTION COMPOSITION
+;; =========================================================================
+
+(define compose [f] [g]
+  (lambda [x] (f (g x))))
+
+;; TEST: compose two functions
+;; EXPECT: 6
+((compose (lambda [x] (* x 2)) (lambda [x] (+ x 1))) 2)
+
+;; TEST: compose identity
+;; EXPECT: 42
+((compose (lambda [x] x) (lambda [x] x)) 42)
+
+;; =========================================================================
+;; HIGHER-ORDER PATTERNS
+;; =========================================================================
+
+;; Apply function n times
+(define apply-n [f] [n] [x]
+  (if (= n 0)
+    x
+    (apply-n f (- n 1) (f x))))
+
+;; TEST: apply-n with increment
+;; EXPECT: 5
+(apply-n (lambda [x] (+ x 1)) 5 0)
+
+;; TEST: apply-n with double
+;; EXPECT: 16
+(apply-n (lambda [x] (* x 2)) 4 1)
+
+;; =========================================================================
+;; RECURSIVE DATA STRUCTURES
+;; =========================================================================
+
+;; Build tree-like structure
+(define make-tree [val] [left] [right]
+  (list val left right))
+
+(define tree-val [t] (head t))
+(define tree-left [t] (head (tail t)))
+(define tree-right [t] (head (tail (tail t))))
+
+;; TEST: tree construction
+;; EXPECT: 1
+(tree-val (make-tree 1 '() '()))
+
+;; TEST: tree with children
+;; EXPECT: 2
+(tree-val (tree-left (make-tree 1 (make-tree 2 '() '()) '())))
+
+;; =========================================================================
+;; LET* STYLE SEQUENTIAL BINDING
+;; =========================================================================
+
+;; TEST: let* style via nested let
+;; EXPECT: 6
+(let [x 1]
+  (let [y (+ x 1)]
+    (let [z (+ y 1)]
+      (+ x (+ y z)))))
+
+;; TEST: sequential computation
+;; EXPECT: 120
+(let [a 2]
+  (let [b (* a 3)]
+    (let [c (* b 4)]
+      (let [d (* c 5)]
+        d))))
+
+;; EXPECT: true
+(= `(a ,(+ 1 2)) '(a 3))

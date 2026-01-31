@@ -1,0 +1,44 @@
+;; test_ffi.omni - Tests for typed function signatures
+;; Demonstrates type annotations on function parameters
+
+;; TEST: function with Float type
+;; EXPECT: 4
+(define square [x {Float}] (* x x))
+(square 2)
+
+;; TEST: function with Int type
+;; EXPECT: 5
+(define abs-val [x {Int}]
+  (if (< x 0) (- 0 x) x))
+(abs-val -5)
+
+;; TEST: function with String type
+;; EXPECT: 5
+(define str-len [s {String}] (length s))
+(str-len "hello")
+
+;; TEST: function returning Int
+;; EXPECT: 10
+(define double [x {Int}] {Int} (* x 2))
+(double 5)
+
+;; TEST: function with multiple typed args
+;; EXPECT: 15
+(define add-typed [a {Int}] [b {Int}] {Int}
+  (+ a b))
+(add-typed 7 8)
+
+;; TEST: function with Ptr-like dict
+;; EXPECT: 100
+(define get-value [ptr]
+  (get ptr "value"))
+(get-value #{"value" 100})
+
+;; TEST: callback-like pattern
+;; EXPECT: 16
+(define apply-cb [f] [x]
+  (f x))
+(apply-cb (lambda [n] (* n n)) 4)
+
+;; EXPECT: true
+true

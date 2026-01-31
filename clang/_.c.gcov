@@ -1,0 +1,1106 @@
+        -:    0:Source:../hvm4/clang/wnf/_.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// WNF uses an explicit stack to avoid recursion.
+        -:    2:// - Enter/reduce: walk into the head position, pushing eliminators as frames.
+        -:    3://   APP/OP2/EQL/AND/OR/DSU/DDU push their term as a frame and descend into the
+        -:    4://   left/strict field (APP fun, OP2 lhs, etc). DP0/DP1 push and descend into the
+        -:    5://   shared dup expr. MAT/USE/RED add specialized frames when their scrutinee is ready.
+        -:    6:// - Apply: once WHNF is reached, pop frames and dispatch the interaction using
+        -:    7://   the WHNF result. Frames reuse existing heap nodes to avoid allocations.
+  3584228:    8:__attribute__((hot)) fn Term wnf(Term term) {
+  3584228:    9:  wnf_stack_init();
+  3584228:   10:  Term *stack = WNF_STACK;
+  3584228:   11:  u32  s_pos  = WNF_S_POS;
+  3584228:   12:  u32  base   = s_pos;
+  3584228:   13:  Term next   = term;
+        -:   14:  Term whnf;
+        -:   15:
+17175704059:   16:  enter: {
+17175704059:   17:    if (__builtin_expect(DEBUG, 0)) {
+    #####:   18:      printf("wnf_enter: ");
+    #####:   19:      print_term(next);
+    #####:   20:      printf("\n");
+        -:   21:    }
+        -:   22:
+17175704059:   23:    switch (term_tag(next)) {
+ 10497722:   24:      case VAR: {
+ 10497722:   25:        u32 loc = term_val(next);
+ 10497722:   26:        Term cell = heap_read(loc);
+ 10497722:   27:        if (term_sub_get(cell)) {
+    98967:   28:          next = term_sub_set(cell, 0);
+    98967:   29:          goto enter;
+        -:   30:        }
+ 10398755:   31:        whnf = next;
+ 10398755:   32:        goto apply;
+        -:   33:      }
+        -:   34:
+12864033197:   35:      case DP0:
+        -:   36:      case DP1: {
+12864033197:   37:        u32 loc = term_val(next);
+12864033197:   38:        Term cell = heap_take(loc);
+12864033197:   39:        if (term_sub_get(cell)) {
+  6960739:   40:          next = term_sub_set(cell, 0);
+  6960739:   41:          goto enter;
+        -:   42:        }
+12857072458:   43:        stack[s_pos++] = next;
+12857072458:   44:        next = cell;
+12857072458:   45:        goto enter;
+        -:   46:      }
+        -:   47:
+    #####:   48:      case GOT: {
+    #####:   49:        u32 loc = term_val(next);
+    #####:   50:        Term cell = heap_take(loc);
+    #####:   51:        if (term_sub_get(cell)) {
+    #####:   52:          next = term_sub_set(cell, 0);
+    #####:   53:          goto enter;
+        -:   54:        }
+    #####:   55:        if (term_tag(cell) == GOT) {
+    #####:   56:          stack[s_pos++] = next;
+    #####:   57:          whnf = cell;
+    #####:   58:          goto apply;
+        -:   59:        }
+    #####:   60:        stack[s_pos++] = next;
+    #####:   61:        next = cell;
+    #####:   62:        goto enter;
+        -:   63:      }
+        -:   64:
+  3749303:   65:      case APP: {
+  3749303:   66:        u32  loc = term_val(next);
+  3749303:   67:        Term fun = heap_read(loc);
+  3749303:   68:        stack[s_pos++] = next;
+  3749303:   69:        next = fun;
+  3749303:   70:        goto enter;
+        -:   71:      }
+        -:   72:
+   621651:   73:      case DUP: {
+   621651:   74:        u32  loc  = term_val(next);
+   621651:   75:        Term body = heap_read(loc + 1);
+   621651:   76:        next = body;
+   621651:   77:        goto enter;
+        -:   78:      }
+        -:   79:
+    #####:   80:      case MOV: {
+    #####:   81:        u32  loc  = term_val(next);
+    #####:   82:        Term body = heap_read(loc + 1);
+    #####:   83:        next = body;
+    #####:   84:        goto enter;
+        -:   85:      }
+        -:   86:
+    #####:   87:      case UNS: {
+    #####:   88:        next = wnf_uns(next);
+    #####:   89:        goto enter;
+        -:   90:      }
+        -:   91:
+    22463:   92:      case REF: {
+    22463:   93:        u32 nam = term_ext(next);
+    22463:   94:        if (BOOK[nam] != 0) {
+    22463:   95:          u64 alo_loc = heap_alloc(1);
+    22463:   96:          heap_set(alo_loc, (u64)BOOK[nam]);
+    22463:   97:          next = term_new(0, ALO, 0, alo_loc);
+    22463:   98:          goto enter;
+        -:   99:        }
+    #####:  100:        whnf = next;
+    #####:  101:        goto apply;
+        -:  102:      }
+        -:  103:
+  1716085:  104:      case ALO: {
+  1716085:  105:        u32  alo_loc = term_val(next);
+  1716085:  106:        u64  pair    = heap_read(alo_loc);
+  1716085:  107:        u32  tm_loc  = (u32)(pair & 0xFFFFFFFF);
+  1716085:  108:        u32  ls_loc  = (u32)(pair >> 32);
+  1716085:  109:        u32  len     = term_ext(next);
+  1716085:  110:        Term book    = heap_read(tm_loc);
+        -:  111:
+  1716085:  112:        switch (term_tag(book)) {
+    #####:  113:          case VAR: {
+    #####:  114:            next = wnf_alo_var(ls_loc, len, term_val(book), VAR);
+    #####:  115:            goto enter;
+        -:  116:          }
+    #####:  117:          case DP0:
+        -:  118:          case DP1: {
+    #####:  119:            next = wnf_alo_cop(ls_loc, len, term_val(book), term_ext(book),
+    #####:  120:                               term_tag(book) == DP0 ? 0 : 1, term_tag(book));
+    #####:  121:            goto enter;
+        -:  122:          }
+    86728:  123:          case BJV: {
+    86728:  124:            next = wnf_alo_var(ls_loc, len, term_val(book), BJV);
+    86728:  125:            goto enter;
+        -:  126:          }
+    #####:  127:          case BJM: {
+    #####:  128:            next = wnf_alo_got(ls_loc, len, term_val(book));
+    #####:  129:            goto enter;
+        -:  130:          }
+   542825:  131:          case BJ0:
+        -:  132:          case BJ1: {
+   542825:  133:            next = wnf_alo_cop(ls_loc, len, term_val(book), term_ext(book),
+   542825:  134:                               term_tag(book) == BJ0 ? 0 : 1, term_tag(book));
+   542825:  135:            goto enter;
+        -:  136:          }
+    #####:  137:          case NAM: {
+    #####:  138:            next = wnf_alo_nam(term_ext(book));
+    #####:  139:            goto enter;
+        -:  140:          }
+    #####:  141:          case DRY: {
+    #####:  142:            next = wnf_alo_dry(ls_loc, len, term_val(book));
+    #####:  143:            goto enter;
+        -:  144:          }
+   136185:  145:          case LAM: {
+   136185:  146:            next = wnf_alo_lam(ls_loc, len, term_ext(book), term_val(book));
+   136185:  147:            goto enter;
+        -:  148:          }
+   305422:  149:          case APP:
+        -:  150:          case SUP:
+        -:  151:          case MAT:
+        -:  152:          case SWI:
+        -:  153:          case USE:
+        -:  154:          case UNS:
+        -:  155:          case INC:
+        -:  156:          case C00 ... C16:
+        -:  157:          case OP2:
+        -:  158:          case EQL:
+        -:  159:          case AND:
+        -:  160:          case OR:
+        -:  161:          case DSU:
+        -:  162:          case DDU:
+        -:  163:          case RED: {
+   305422:  164:            next = wnf_alo_nod(ls_loc, len, term_val(book), term_tag(book), term_ext(book), term_arity(book));
+   305422:  165:            goto enter;
+        -:  166:          }
+   621651:  167:          case DUP: {
+   621651:  168:            next = wnf_alo_dup(ls_loc, len, term_val(book), term_ext(book));
+   621651:  169:            goto enter;
+        -:  170:          }
+    #####:  171:          case MOV: {
+    #####:  172:            next = wnf_alo_mov(ls_loc, len, term_val(book));
+    #####:  173:            goto enter;
+        -:  174:          }
+     1608:  175:          case NUM: {
+     1608:  176:            next = term_new_num(term_val(book));
+     1608:  177:            goto enter;
+        -:  178:          }
+    21666:  179:          case REF:
+        -:  180:          case ERA:
+        -:  181:          case ANY: {
+    21666:  182:            next = book;
+    21666:  183:            goto enter;
+        -:  184:          }
+        -:  185:        }
+        -:  186:      }
+        -:  187:
+        -:  188:      case OP2: {
+4288657706:  189:        u32  loc = term_val(next);
+4288657706:  190:        Term x   = heap_read(loc + 0);
+4288657706:  191:        stack[s_pos++] = next;
+4288657706:  192:        next = x;
+4288657706:  193:        goto enter;
+        -:  194:      }
+        -:  195:
+    #####:  196:      case EQL: {
+    #####:  197:        u32  loc = term_val(next);
+    #####:  198:        Term a   = heap_read(loc + 0);
+    #####:  199:        stack[s_pos++] = next;
+    #####:  200:        next = a;
+    #####:  201:        goto enter;
+        -:  202:      }
+        -:  203:
+    #####:  204:      case AND: {
+    #####:  205:        u32  loc = term_val(next);
+    #####:  206:        Term a   = heap_read(loc + 0);
+    #####:  207:        stack[s_pos++] = next;
+    #####:  208:        next = a;
+    #####:  209:        goto enter;
+        -:  210:      }
+        -:  211:
+    #####:  212:      case OR: {
+    #####:  213:        u32  loc = term_val(next);
+    #####:  214:        Term a   = heap_read(loc + 0);
+    #####:  215:        stack[s_pos++] = next;
+    #####:  216:        next = a;
+    #####:  217:        goto enter;
+        -:  218:      }
+        -:  219:
+    #####:  220:      case DSU: {
+    #####:  221:        u32  loc = term_val(next);
+    #####:  222:        Term lab = heap_read(loc + 0);
+    #####:  223:        stack[s_pos++] = next;
+    #####:  224:        next = lab;
+    #####:  225:        goto enter;
+        -:  226:      }
+        -:  227:
+    #####:  228:      case DDU: {
+    #####:  229:        u32  loc = term_val(next);
+    #####:  230:        Term lab = heap_read(loc + 0);
+    #####:  231:        stack[s_pos++] = next;
+    #####:  232:        next = lab;
+    #####:  233:        goto enter;
+        -:  234:      }
+        -:  235:
+  6405932:  236:      case RED:
+        -:  237:      case NAM:
+        -:  238:      case BJV:
+        -:  239:      case BJM:
+        -:  240:      case BJ0:
+        -:  241:      case BJ1:
+        -:  242:      case DRY:
+        -:  243:      case ERA:
+        -:  244:      case SUP:
+        -:  245:      case LAM:
+        -:  246:      case NUM:
+        -:  247:      case MAT:
+        -:  248:      case SWI:
+        -:  249:      case USE:
+        -:  250:      case INC:
+        -:  251:      case C00 ... C16: {
+  6405932:  252:        whnf = next;
+  6405932:  253:        goto apply;
+        -:  254:      }
+        -:  255:
+    #####:  256:      default: {
+    #####:  257:        whnf = next;
+    #####:  258:        goto apply;
+        -:  259:      }
+        -:  260:    }
+        -:  261:  }
+        -:  262:
+ 16804687:  263:  apply: {
+ 16804687:  264:    if (__builtin_expect(DEBUG, 0)) {
+    #####:  265:      printf("wnf_apply: ");
+    #####:  266:      print_term(whnf);
+    #####:  267:      printf("\n");
+        -:  268:    }
+        -:  269:
+17156696374:  270:    while (s_pos > base) {
+17153112284:  271:      Term frame = stack[--s_pos];
+        -:  272:
+17153112284*:  273:      switch (term_tag(frame)) {
+        -:  274:        // -----------------------------------------------------------------------
+        -:  275:        // APP frame: (□ x) - we reduced func, now dispatch
+        -:  276:        // -----------------------------------------------------------------------
+  3749303:  277:        case APP: {
+  3749303:  278:          u32  app_loc = term_val(frame);
+  3749303:  279:          Term arg     = heap_read(app_loc + 1);
+        -:  280:
+ 3749303*:  281:          switch (term_tag(whnf)) {
+    #####:  282:            case ERA: {
+    #####:  283:              whnf = wnf_app_era();
+    #####:  284:              continue;
+        -:  285:            }
+    #####:  286:            case NAM:
+        -:  287:            case VAR:
+        -:  288:            case BJV:
+        -:  289:            case BJM:
+        -:  290:            case BJ0:
+        -:  291:            case BJ1: {
+    #####:  292:              whnf = wnf_app_nam(whnf, arg);
+    #####:  293:              continue;
+        -:  294:            }
+    #####:  295:            case DRY: {
+    #####:  296:              whnf = wnf_app_dry(whnf, arg);
+    #####:  297:              continue;
+        -:  298:            }
+   106373:  299:            case LAM: {
+   106373:  300:              next = wnf_app_lam(whnf, arg);
+   106373:  301:              goto enter;
+        -:  302:            }
+    #####:  303:            case SUP: {
+    #####:  304:              whnf = wnf_app_sup(frame, whnf);
+    #####:  305:              continue;
+        -:  306:            }
+    #####:  307:            case INC: {
+    #####:  308:              whnf = wnf_app_inc(frame, whnf);
+    #####:  309:              continue;
+        -:  310:            }
+  3635964:  311:            case MAT:
+        -:  312:            case SWI: {
+  3635964:  313:              stack[s_pos++] = whnf;
+  3635964:  314:              next = arg;
+  3635964:  315:              goto enter;
+        -:  316:            }
+     6833:  317:            case USE: {
+     6833:  318:              stack[s_pos++] = whnf;
+     6833:  319:              next = arg;
+     6833:  320:              goto enter;
+        -:  321:            }
+    #####:  322:            case RED: {
+        -:  323:              // ((f ~> g) x): write RED to heap, push F_APP_RED(app_loc), enter g
+    #####:  324:              heap_set(app_loc + 0, whnf);  // update heap so F_APP_RED can read it
+    #####:  325:              u32  red_loc = term_val(whnf);
+    #####:  326:              Term g       = heap_read(red_loc + 1);
+    #####:  327:              stack[s_pos++] = term_new(0, F_APP_RED, 0, app_loc);
+    #####:  328:              next = g;
+    #####:  329:              goto enter;
+        -:  330:            }
+        2:  331:            case NUM: {
+        2:  332:              fprintf(stderr, "RUNTIME_ERROR: cannot apply a number\n");
+        2:  333:              exit(1);
+        -:  334:            }
+      131:  335:            case C00 ... C16: {
+      131:  336:              fprintf(stderr, "RUNTIME_ERROR: cannot apply a constructor\n");
+      131:  337:              exit(1);
+        -:  338:            }
+    #####:  339:            default: {
+    #####:  340:              whnf = term_new_app(whnf, arg);
+    #####:  341:              continue;
+        -:  342:            }
+        -:  343:          }
+        -:  344:        }
+        -:  345:
+        -:  346:        // -----------------------------------------------------------------------
+        -:  347:        // F_APP_RED frame: ((f ~> □) x) - we reduced g, now dispatch on g
+        -:  348:        // -----------------------------------------------------------------------
+    #####:  349:        case F_APP_RED: {
+    #####:  350:          u32  app_loc = term_val(frame);
+    #####:  351:          Term red     = heap_read(app_loc + 0);
+    #####:  352:          u32  red_loc = term_val(red);
+    #####:  353:          Term f       = heap_read(red_loc + 0);
+    #####:  354:          Term arg     = heap_read(app_loc + 1);
+    #####:  355:          Term g       = whnf;
+        -:  356:
+    #####:  357:          switch (term_tag(g)) {
+    #####:  358:            case ERA: {
+    #####:  359:              whnf = wnf_app_red_era();
+    #####:  360:              continue;
+        -:  361:            }
+    #####:  362:            case SUP: {
+    #####:  363:              whnf = wnf_app_red_sup(f, g, arg);
+    #####:  364:              continue;
+        -:  365:            }
+    #####:  366:            case INC: {
+    #####:  367:              whnf = wnf_app_red_inc(f, g, arg);
+    #####:  368:              continue;
+        -:  369:            }
+    #####:  370:            case LAM: {
+    #####:  371:              whnf = wnf_app_red_lam(f, g, arg);
+    #####:  372:              continue;
+        -:  373:            }
+    #####:  374:            case RED: {
+    #####:  375:              whnf = wnf_app_red_red(f, g, arg);
+    #####:  376:              continue;
+        -:  377:            }
+    #####:  378:            case MAT:
+        -:  379:            case SWI: {
+        -:  380:              // ((f ~> mat) x): store mat in RED's g slot, push F_RED_MAT, enter arg
+    #####:  381:              heap_set(red_loc + 1, g);  // store mat where g was
+    #####:  382:              stack[s_pos++] = term_new(0, F_RED_MAT, 0, app_loc);
+    #####:  383:              next = arg;
+    #####:  384:              goto enter;
+        -:  385:            }
+    #####:  386:            case USE: {
+        -:  387:              // ((f ~> use) x): store use in RED's g slot, push F_RED_USE, enter arg
+    #####:  388:              heap_set(red_loc + 1, g);
+    #####:  389:              stack[s_pos++] = term_new(0, F_RED_USE, 0, app_loc);
+    #####:  390:              next = arg;
+    #####:  391:              goto enter;
+        -:  392:            }
+    #####:  393:            case NAM:
+        -:  394:            case BJV:
+        -:  395:            case BJM:
+        -:  396:            case BJ0:
+        -:  397:            case BJ1: {
+    #####:  398:              whnf = wnf_app_red_nam(f, g, arg);
+    #####:  399:              continue;
+        -:  400:            }
+    #####:  401:            case DRY: {
+    #####:  402:              whnf = wnf_app_red_dry(f, g, arg);
+    #####:  403:              continue;
+        -:  404:            }
+    #####:  405:            case C00 ... C16: {
+    #####:  406:              whnf = wnf_app_red_ctr(f, g, arg);
+    #####:  407:              continue;
+        -:  408:            }
+    #####:  409:            default: {
+    #####:  410:              whnf = term_new_app(term_new_red(f, g), arg);
+    #####:  411:              continue;
+        -:  412:            }
+        -:  413:          }
+        -:  414:        }
+        -:  415:
+        -:  416:        // -----------------------------------------------------------------------
+        -:  417:        // MAT/SWI frame: (mat □) - we reduced arg, dispatch mat interaction
+        -:  418:        // -----------------------------------------------------------------------
+  3635835:  419:        case MAT:
+        -:  420:        case SWI: {
+  3635835:  421:          Term mat = frame;
+ 3635835*:  422:          switch (term_tag(whnf)) {
+    #####:  423:            case ERA: {
+    #####:  424:              whnf = wnf_app_era();
+    #####:  425:              continue;
+        -:  426:            }
+    28079:  427:            case SUP: {
+    28079:  428:              whnf = wnf_app_mat_sup(mat, whnf);
+    28079:  429:              continue;
+        -:  430:            }
+    #####:  431:            case INC: {
+    #####:  432:              whnf = wnf_mat_inc(mat, whnf);
+    #####:  433:              continue;
+        -:  434:            }
+   124286:  435:            case C00 ... C16: {
+   124286:  436:              next = wnf_app_mat_ctr(mat, whnf);
+   124286:  437:              goto enter;
+        -:  438:            }
+      706:  439:            case NUM: {
+        -:  440:              // (mat #n): compare ext(mat) to val(num)
+      706:  441:              ITRS++;
+      706:  442:              u32 loc = term_val(mat);
+      706:  443:              u32 ext = term_ext(mat);
+      706:  444:              u32 val = term_val(whnf);
+      706:  445:              if (ext == val) {
+      368:  446:                next = heap_read(loc + 0);
+        -:  447:              } else {
+      338:  448:                Term g = heap_read(loc + 1);
+      338:  449:                next = term_new_app_at(loc, g, whnf);
+        -:  450:              }
+      706:  451:              goto enter;
+        -:  452:            }
+    #####:  453:            case RED: {
+        -:  454:              // (mat (g ~> h)): drop g, reduce (mat h)
+    #####:  455:              u32  red_loc = term_val(whnf);
+    #####:  456:              Term h = heap_read(red_loc + 1);
+    #####:  457:              stack[s_pos++] = mat;
+    #####:  458:              next = h;
+    #####:  459:              goto enter;
+        -:  460:            }
+    #####:  461:            case NAM:
+        -:  462:            case BJV:
+        -:  463:            case BJM:
+        -:  464:            case BJ0:
+        -:  465:            case BJ1:
+        -:  466:            case DRY: {
+        -:  467:              // (mat ^n) or (mat ^(f x)): stuck, produce DRY
+    #####:  468:              whnf = term_new_dry(mat, whnf);
+    #####:  469:              continue;
+        -:  470:            }
+  3482764:  471:            default: {
+  3482764:  472:              whnf = term_new_app(mat, whnf);
+  3482764:  473:              continue;
+        -:  474:            }
+        -:  475:          }
+        -:  476:        }
+        -:  477:
+        -:  478:        // -----------------------------------------------------------------------
+        -:  479:        // F_RED_MAT frame: ((f ~> mat) □) - we reduced arg, dispatch guarded mat
+        -:  480:        // -----------------------------------------------------------------------
+    #####:  481:        case F_RED_MAT: {
+    #####:  482:          u32  app_loc = term_val(frame);
+    #####:  483:          Term red     = heap_read(app_loc + 0);
+    #####:  484:          u32  red_loc = term_val(red);
+    #####:  485:          Term f       = heap_read(red_loc + 0);
+    #####:  486:          Term mat     = heap_read(red_loc + 1);  // mat was stored here
+    #####:  487:          switch (term_tag(whnf)) {
+    #####:  488:            case ERA: {
+    #####:  489:              whnf = wnf_app_red_mat_era();
+    #####:  490:              continue;
+        -:  491:            }
+    #####:  492:            case SUP: {
+    #####:  493:              whnf = wnf_app_red_mat_sup(f, mat, whnf);
+    #####:  494:              continue;
+        -:  495:            }
+    #####:  496:            case INC: {
+    #####:  497:              whnf = wnf_app_red_mat_inc(f, mat, whnf);
+    #####:  498:              continue;
+        -:  499:            }
+    #####:  500:            case C00 ... C16: {
+    #####:  501:              if (term_ext(mat) == term_ext(whnf)) {
+    #####:  502:                next = wnf_app_red_mat_ctr_match(f, mat, whnf);
+        -:  503:              } else {
+    #####:  504:                next = wnf_app_red_mat_ctr_miss(f, mat, whnf);
+        -:  505:              }
+    #####:  506:              goto enter;
+        -:  507:            }
+    #####:  508:            case NUM: {
+    #####:  509:              if (term_ext(mat) == term_val(whnf)) {
+    #####:  510:                next = wnf_app_red_mat_num_match(f, mat, whnf);
+        -:  511:              } else {
+    #####:  512:                next = wnf_app_red_mat_num_miss(f, mat, whnf);
+        -:  513:              }
+    #####:  514:              goto enter;
+        -:  515:            }
+    #####:  516:            case RED: {
+        -:  517:              // ((f ~> mat) (g ~> h)): drop g, reduce (mat h) in guarded context
+    #####:  518:              u32  arg_red_loc = term_val(whnf);
+    #####:  519:              Term h = heap_read(arg_red_loc + 1);
+    #####:  520:              stack[s_pos++] = frame;  // keep F_RED_MAT frame
+    #####:  521:              next = h;
+    #####:  522:              goto enter;
+        -:  523:            }
+    #####:  524:            default: {
+        -:  525:              // Stuck - drop g, return ^(f arg)
+    #####:  526:              whnf = term_new_dry(f, whnf);
+    #####:  527:              continue;
+        -:  528:            }
+        -:  529:          }
+        -:  530:        }
+        -:  531:
+        -:  532:        // -----------------------------------------------------------------------
+        -:  533:        // USE frame: (use □) - we reduced arg, dispatch use interaction
+        -:  534:        // -----------------------------------------------------------------------
+     6833:  535:        case USE: {
+     6833:  536:          Term use = frame;
+    6833*:  537:          switch (term_tag(whnf)) {
+    #####:  538:            case ERA: {
+    #####:  539:              whnf = wnf_use_era();
+    #####:  540:              continue;
+        -:  541:            }
+       16:  542:            case SUP: {
+       16:  543:              whnf = wnf_use_sup(use, whnf);
+       16:  544:              continue;
+        -:  545:            }
+    #####:  546:            case INC: {
+    #####:  547:              whnf = wnf_use_inc(use, whnf);
+    #####:  548:              continue;
+        -:  549:            }
+    #####:  550:            case RED: {
+        -:  551:              // (use (g ~> h)): drop g, reduce (use h)
+    #####:  552:              u32  red_loc = term_val(whnf);
+    #####:  553:              Term h = heap_read(red_loc + 1);
+    #####:  554:              stack[s_pos++] = use;
+    #####:  555:              next = h;
+    #####:  556:              goto enter;
+        -:  557:            }
+     6817:  558:            default: {
+     6817:  559:              next = wnf_use_val(use, whnf);
+     6817:  560:              goto enter;
+        -:  561:            }
+        -:  562:          }
+        -:  563:        }
+        -:  564:
+        -:  565:        // -----------------------------------------------------------------------
+        -:  566:        // F_RED_USE frame: ((f ~> use) □) - we reduced arg, dispatch guarded use
+        -:  567:        // -----------------------------------------------------------------------
+    #####:  568:        case F_RED_USE: {
+    #####:  569:          u32  app_loc = term_val(frame);
+    #####:  570:          Term red     = heap_read(app_loc + 0);
+    #####:  571:          u32  red_loc = term_val(red);
+    #####:  572:          Term f       = heap_read(red_loc + 0);
+    #####:  573:          Term use     = heap_read(red_loc + 1);  // use was stored here
+    #####:  574:          switch (term_tag(whnf)) {
+    #####:  575:            case ERA: {
+    #####:  576:              whnf = wnf_app_red_use_era();
+    #####:  577:              continue;
+        -:  578:            }
+    #####:  579:            case SUP: {
+    #####:  580:              whnf = wnf_app_red_use_sup(f, use, whnf);
+    #####:  581:              continue;
+        -:  582:            }
+    #####:  583:            case INC: {
+    #####:  584:              whnf = wnf_app_red_use_inc(f, use, whnf);
+    #####:  585:              continue;
+        -:  586:            }
+    #####:  587:            case RED: {
+        -:  588:              // ((f ~> use) (g ~> h)): drop g, reduce (use h) in guarded context
+    #####:  589:              u32  arg_red_loc = term_val(whnf);
+    #####:  590:              Term h = heap_read(arg_red_loc + 1);
+    #####:  591:              stack[s_pos++] = frame;  // keep F_RED_USE frame
+    #####:  592:              next = h;
+    #####:  593:              goto enter;
+        -:  594:            }
+    #####:  595:            case NAM:
+        -:  596:            case BJV:
+        -:  597:            case BJM:
+        -:  598:            case BJ0:
+        -:  599:            case BJ1:
+        -:  600:            case DRY: {
+        -:  601:              // Stuck - drop g, return ^(f arg)
+    #####:  602:              whnf = term_new_dry(f, whnf);
+    #####:  603:              continue;
+        -:  604:            }
+    #####:  605:            default: {
+    #####:  606:              whnf = wnf_app_red_use_val(f, use, whnf);
+    #####:  607:              continue;
+        -:  608:            }
+        -:  609:          }
+        -:  610:        }
+        -:  611:
+        -:  612:        // -----------------------------------------------------------------------
+        -:  613:        // DP0/DP1 frame: DUP node - we reduced the expr, dispatch dup interaction
+        -:  614:        // -----------------------------------------------------------------------
+12857069483:  615:        case DP0:
+        -:  616:        case DP1: {
+12857069483:  617:          u8  side = (term_tag(frame) == DP0) ? 0 : 1;
+12857069483:  618:          u32 loc  = term_val(frame);
+12857069483:  619:          u32 lab  = term_ext(frame);
+        -:  620:
+12857069483*:  621:          switch (term_tag(whnf)) {
+    #####:  622:            case NAM:
+        -:  623:            case BJV:
+        -:  624:            case BJM:
+        -:  625:            case BJ0:
+        -:  626:            case BJ1: {
+    #####:  627:              whnf = wnf_dup_nam(lab, loc, side, whnf);
+    #####:  628:              continue;
+        -:  629:            }
+    #####:  630:            case DRY: {
+    #####:  631:              whnf = wnf_dup_dry(lab, loc, side, whnf);
+    #####:  632:              continue;
+        -:  633:            }
+    #####:  634:            case RED: {
+    #####:  635:              whnf = wnf_dup_red(lab, loc, side, whnf);
+    #####:  636:              continue;
+        -:  637:            }
+    48434:  638:            case LAM: {
+    48434:  639:              whnf = wnf_dup_lam(lab, loc, side, whnf);
+    48434:  640:              continue;
+        -:  641:            }
+    56205:  642:            case SUP: {
+    56205:  643:              next = wnf_dup_sup(lab, loc, side, whnf);
+    56205:  644:              goto enter;
+        -:  645:            }
+   442194:  646:            case ERA:
+        -:  647:            case ANY:
+        -:  648:            case NUM: {
+   442194:  649:              whnf = wnf_dup_nod(lab, loc, side, whnf);
+   442194:  650:              continue;
+        -:  651:            }
+        -:  652:            // case APP: // !! DO NOT ADD: DP0/DP1 do not interact with APP.
+  9282821:  653:            case MAT:
+        -:  654:            case SWI:
+        -:  655:            case USE:
+        -:  656:            case INC:
+        -:  657:            case OP2:
+        -:  658:            case DSU:
+        -:  659:            case DDU:
+        -:  660:            case C00 ... C16: {
+  9282821:  661:              next = wnf_dup_nod(lab, loc, side, whnf);
+  9282821:  662:              goto enter;
+        -:  663:            }
+25694479656:  664:            default: {
+12847239829:  665:              u64 new_loc   = heap_alloc(1);
+12847239827:  666:              heap_set(new_loc, whnf);
+12847239827:  667:              heap_subst_var(loc, term_new(0, side == 0 ? DP1 : DP0, lab, new_loc));
+12847239827:  668:              whnf          = term_new(0, side == 0 ? DP0 : DP1, lab, new_loc);
+12847239827:  669:              continue;
+        -:  670:            }
+        -:  671:          }
+        -:  672:        }
+        -:  673:
+        -:  674:        // -----------------------------------------------------------------------
+        -:  675:        // GOT frame: MOV node - we reduced the expr, dispatch mov interaction
+        -:  676:        // -----------------------------------------------------------------------
+    #####:  677:        case GOT: {
+    #####:  678:          u32 loc = term_val(frame);
+        -:  679:
+    #####:  680:          switch (term_tag(whnf)) {
+    #####:  681:            case GOT: {
+    #####:  682:              Term val = wnf_mov_mov(loc, whnf);
+    #####:  683:              stack[s_pos++] = frame;
+    #####:  684:              next = val;
+    #####:  685:              goto enter;
+        -:  686:            }
+    #####:  687:            case NAM:
+        -:  688:            case BJV:
+        -:  689:            case BJM:
+        -:  690:            case BJ0:
+        -:  691:            case BJ1: {
+    #####:  692:              whnf = wnf_mov_nam(loc, whnf);
+    #####:  693:              continue;
+        -:  694:            }
+    #####:  695:            case DRY: {
+    #####:  696:              whnf = wnf_mov_dry(loc, whnf);
+    #####:  697:              continue;
+        -:  698:            }
+    #####:  699:            case RED: {
+    #####:  700:              whnf = wnf_mov_red(loc, whnf);
+    #####:  701:              continue;
+        -:  702:            }
+    #####:  703:            case LAM: {
+    #####:  704:              whnf = wnf_mov_lam(loc, whnf);
+    #####:  705:              continue;
+        -:  706:            }
+    #####:  707:            case SUP: {
+    #####:  708:              next = wnf_mov_sup(loc, whnf);
+    #####:  709:              goto enter;
+        -:  710:            }
+    #####:  711:            case ERA:
+        -:  712:            case ANY:
+        -:  713:            case NUM: {
+    #####:  714:              whnf = wnf_mov_nod(loc, whnf);
+    #####:  715:              continue;
+        -:  716:            }
+        -:  717:            // case APP: // !! DO NOT ADD: GOT does not interact with APP.
+    #####:  718:            case MAT:
+        -:  719:            case SWI:
+        -:  720:            case USE:
+        -:  721:            case INC:
+        -:  722:            case OP2:
+        -:  723:            case DSU:
+        -:  724:            case DDU:
+        -:  725:            case C00 ... C16: {
+    #####:  726:              next = wnf_mov_nod(loc, whnf);
+    #####:  727:              goto enter;
+        -:  728:            }
+    #####:  729:            default: {
+    #####:  730:              u64 new_loc = heap_alloc(1);
+    #####:  731:              heap_set(new_loc, whnf);
+    #####:  732:              Term got = term_new_got(new_loc);
+    #####:  733:              heap_subst_var(loc, got);
+    #####:  734:              whnf = got;
+    #####:  735:              continue;
+        -:  736:            }
+        -:  737:          }
+        -:  738:        }
+        -:  739:
+        -:  740:        // -----------------------------------------------------------------------
+        -:  741:        // OP2 frame: (□ op y) - we reduced x, dispatch or transition to F_OP2_NUM
+        -:  742:        // -----------------------------------------------------------------------
+4288650376:  743:        case OP2: {
+4288650376:  744:          u32  opr = term_ext(frame);
+4288650376:  745:          u32  loc = term_val(frame);
+4288650376:  746:          Term y   = heap_read(loc + 1);
+        -:  747:
+4288650376*:  748:          switch (term_tag(whnf)) {
+    #####:  749:            case ERA: {
+    #####:  750:              whnf = wnf_op2_era();
+    #####:  751:              continue;
+        -:  752:            }
+      454:  753:            case NUM: {
+      454:  754:              u8 y_tag = term_tag(y);
+     454*:  755:              if (y_tag == NUM) {
+    #####:  756:                whnf = wnf_op2_num_num_raw(opr, term_val(whnf), term_val(y));
+    #####:  757:                continue;
+        -:  758:              }
+        -:  759:              // x is NUM, now reduce y: push F_OP2_NUM frame
+      454:  760:              stack[s_pos++] = term_new(0, F_OP2_NUM, opr, term_val(whnf));
+      454:  761:              next = y;
+      454:  762:              goto enter;
+        -:  763:            }
+     7469:  764:            case SUP: {
+     7469:  765:              whnf = wnf_op2_sup(opr, whnf, y);
+     7469:  766:              continue;
+        -:  767:            }
+    #####:  768:            case INC: {
+    #####:  769:              whnf = wnf_op2_inc_x(opr, whnf, y);
+    #####:  770:              continue;
+        -:  771:            }
+4288642453:  772:            default: {
+4288642453:  773:              whnf = term_new_op2(opr, whnf, y);
+4288642450:  774:              continue;
+        -:  775:            }
+        -:  776:          }
+        -:  777:        }
+        -:  778:
+        -:  779:        // -----------------------------------------------------------------------
+        -:  780:        // F_OP2_NUM frame: (x op □) - x is NUM, we reduced y, dispatch
+        -:  781:        // -----------------------------------------------------------------------
+      454:  782:        case F_OP2_NUM: {
+      454:  783:          u32 opr   = term_ext(frame);
+      454:  784:          u32 x_val = term_val(frame);
+        -:  785:
+     454*:  786:          switch (term_tag(whnf)) {
+    #####:  787:            case ERA: {
+    #####:  788:              whnf = wnf_op2_num_era();
+    #####:  789:              continue;
+        -:  790:            }
+      357:  791:            case NUM: {
+      357:  792:              whnf = wnf_op2_num_num_raw(opr, x_val, term_val(whnf));
+      357:  793:              continue;
+        -:  794:            }
+    #####:  795:            case SUP: {
+    #####:  796:              Term x = term_new_num(x_val);
+    #####:  797:              whnf = wnf_op2_num_sup(opr, x, whnf);
+    #####:  798:              continue;
+        -:  799:            }
+    #####:  800:            case RED: {
+        -:  801:              // (x op (f ~> g)): drop f, reduce (x op g)
+    #####:  802:              u32  red_loc = term_val(whnf);
+    #####:  803:              Term g = heap_read(red_loc + 1);
+    #####:  804:              stack[s_pos++] = frame;
+    #####:  805:              next = g;
+    #####:  806:              goto enter;
+        -:  807:            }
+    #####:  808:            case INC: {
+    #####:  809:              Term x = term_new_num(x_val);
+    #####:  810:              whnf = wnf_op2_inc_y(opr, x, whnf);
+    #####:  811:              continue;
+        -:  812:            }
+      194:  813:            default: {
+        -:  814:              // Stuck: (x op y) where x is NUM, y is not
+       97:  815:              Term x = term_new_num(x_val);
+       97:  816:              whnf = term_new_op2(opr, x, whnf);
+       97:  817:              continue;
+        -:  818:            }
+        -:  819:          }
+        -:  820:        }
+        -:  821:
+        -:  822:        // -----------------------------------------------------------------------
+        -:  823:        // EQL frame: (□ === b) - we reduced a, transition to F_EQL_R or dispatch
+        -:  824:        // -----------------------------------------------------------------------
+    #####:  825:        case EQL: {
+    #####:  826:          u32  loc = term_val(frame);
+    #####:  827:          Term b   = heap_read(loc + 1);
+        -:  828:
+    #####:  829:          switch (term_tag(whnf)) {
+    #####:  830:            case ERA: {
+    #####:  831:              whnf = wnf_eql_era_l();
+    #####:  832:              continue;
+        -:  833:            }
+    #####:  834:            case ANY: {
+    #####:  835:              whnf = wnf_eql_any_l();
+    #####:  836:              continue;
+        -:  837:            }
+    #####:  838:            case SUP: {
+    #####:  839:              whnf = wnf_eql_sup_l(whnf, b);
+    #####:  840:              continue;
+        -:  841:            }
+    #####:  842:            case INC: {
+    #####:  843:              whnf = wnf_eql_inc_l(whnf, b);
+    #####:  844:              continue;
+        -:  845:            }
+    #####:  846:            default: {
+        -:  847:              // Store a's WHNF location, push F_EQL_R, enter b
+        -:  848:              // We store a in heap_read(loc+0) for later retrieval
+    #####:  849:              heap_set(loc + 0, whnf);
+    #####:  850:              stack[s_pos++] = term_new(0, F_EQL_R, 0, loc);
+    #####:  851:              next = b;
+    #####:  852:              goto enter;
+        -:  853:            }
+        -:  854:          }
+        -:  855:        }
+        -:  856:
+        -:  857:        // -----------------------------------------------------------------------
+        -:  858:        // F_EQL_R frame: (a === □) - we reduced b, now compare both WHNFs
+        -:  859:        // -----------------------------------------------------------------------
+    #####:  860:        case F_EQL_R: {
+    #####:  861:          u32  loc = term_val(frame);
+    #####:  862:          Term a   = heap_read(loc + 0);  // a's WHNF was stored here
+        -:  863:
+    #####:  864:          switch (term_tag(whnf)) {
+    #####:  865:            case ERA: {
+    #####:  866:              whnf = wnf_eql_era_r();
+    #####:  867:              continue;
+        -:  868:            }
+    #####:  869:            case ANY: {
+    #####:  870:              whnf = wnf_eql_any_r();
+    #####:  871:              continue;
+        -:  872:            }
+    #####:  873:            case SUP: {
+    #####:  874:              whnf = wnf_eql_sup_r(a, whnf);
+    #####:  875:              continue;
+        -:  876:            }
+    #####:  877:            case INC: {
+    #####:  878:              whnf = wnf_eql_inc_r(a, whnf);
+    #####:  879:              continue;
+        -:  880:            }
+    #####:  881:            default: {
+        -:  882:              // Both a and b are WHNF, now dispatch based on types
+    #####:  883:              u8 a_tag = term_tag(a);
+    #####:  884:              u8 b_tag = term_tag(whnf);
+        -:  885:
+        -:  886:              // ANY === x or x === ANY
+    #####:  887:              if (a_tag == ANY || b_tag == ANY) {
+    #####:  888:                whnf = wnf_eql_any_r();
+    #####:  889:                continue;
+        -:  890:              }
+        -:  891:              // NUM === NUM
+    #####:  892:              if (a_tag == NUM && b_tag == NUM) {
+    #####:  893:                whnf = wnf_eql_num(a, whnf);
+    #####:  894:                continue;
+        -:  895:              }
+        -:  896:              // LAM === LAM
+    #####:  897:              if (a_tag == LAM && b_tag == LAM) {
+    #####:  898:                next = wnf_eql_lam(a, whnf);
+    #####:  899:                goto enter;
+        -:  900:              }
+        -:  901:              // CTR === CTR
+    #####:  902:              if (a_tag >= C00 && a_tag <= C16 && b_tag >= C00 && b_tag <= C16) {
+    #####:  903:                next = wnf_eql_ctr(a, whnf);
+    #####:  904:                goto enter;
+        -:  905:              }
+        -:  906:              // MAT/SWI === MAT/SWI
+    #####:  907:              if ((a_tag == MAT || a_tag == SWI) && (b_tag == MAT || b_tag == SWI)) {
+    #####:  908:                next = wnf_eql_mat(a, whnf);
+    #####:  909:                goto enter;
+        -:  910:              }
+        -:  911:              // USE === USE
+    #####:  912:              if (a_tag == USE && b_tag == USE) {
+    #####:  913:                next = wnf_eql_use(a, whnf);
+    #####:  914:                goto enter;
+        -:  915:              }
+        -:  916:              // NAM/BJ* === NAM/BJ*
+    #####:  917:              if ((a_tag == NAM || a_tag == BJV || a_tag == BJM || a_tag == BJ0 || a_tag == BJ1) &&
+    #####:  918:                  (b_tag == NAM || b_tag == BJV || b_tag == BJM || b_tag == BJ0 || b_tag == BJ1)) {
+    #####:  919:                whnf = wnf_eql_nam(a, whnf);
+    #####:  920:                continue;
+        -:  921:              }
+        -:  922:              // DRY === DRY
+    #####:  923:              if (a_tag == DRY && b_tag == DRY) {
+    #####:  924:                next = wnf_eql_dry(a, whnf);
+    #####:  925:                goto enter;
+        -:  926:              }
+        -:  927:              // Otherwise: not equal
+    #####:  928:              ITRS++;
+    #####:  929:              whnf = term_new_num(0);
+    #####:  930:              continue;
+        -:  931:            }
+        -:  932:          }
+        -:  933:        }
+        -:  934:
+        -:  935:        // -----------------------------------------------------------------------
+        -:  936:        // DSU frame: &(□){a,b} - we reduced lab, dispatch
+        -:  937:        // -----------------------------------------------------------------------
+    #####:  938:        case DSU: {
+    #####:  939:          u32  loc = term_val(frame);
+    #####:  940:          Term a   = heap_read(loc + 1);
+    #####:  941:          Term b   = heap_read(loc + 2);
+        -:  942:
+    #####:  943:          switch (term_tag(whnf)) {
+    #####:  944:            case ERA: {
+    #####:  945:              whnf = wnf_dsu_era();
+    #####:  946:              continue;
+        -:  947:            }
+    #####:  948:            case NUM: {
+    #####:  949:              whnf = wnf_dsu_num(whnf, a, b);
+    #####:  950:              continue;
+        -:  951:            }
+    #####:  952:            case SUP: {
+    #####:  953:              whnf = wnf_dsu_sup(whnf, a, b);
+    #####:  954:              continue;
+        -:  955:            }
+    #####:  956:            case INC: {
+    #####:  957:              whnf = wnf_dsu_inc(whnf, a, b);
+    #####:  958:              continue;
+        -:  959:            }
+    #####:  960:            default: {
+    #####:  961:              whnf = term_new_dsu(whnf, a, b);
+    #####:  962:              continue;
+        -:  963:            }
+        -:  964:          }
+        -:  965:        }
+        -:  966:
+        -:  967:        // -----------------------------------------------------------------------
+        -:  968:        // DDU frame: ! x &(□) = val; bod - we reduced lab, dispatch
+        -:  969:        // -----------------------------------------------------------------------
+    #####:  970:        case DDU: {
+    #####:  971:          u32  loc = term_val(frame);
+    #####:  972:          Term val = heap_read(loc + 1);
+    #####:  973:          Term bod = heap_read(loc + 2);
+        -:  974:
+    #####:  975:          switch (term_tag(whnf)) {
+    #####:  976:            case ERA: {
+    #####:  977:              whnf = wnf_ddu_era();
+    #####:  978:              continue;
+        -:  979:            }
+    #####:  980:            case NUM: {
+    #####:  981:              next = wnf_ddu_num(whnf, val, bod);
+    #####:  982:              goto enter;
+        -:  983:            }
+    #####:  984:            case SUP: {
+    #####:  985:              whnf = wnf_ddu_sup(whnf, val, bod);
+    #####:  986:              continue;
+        -:  987:            }
+    #####:  988:            case INC: {
+    #####:  989:              whnf = wnf_ddu_inc(whnf, val, bod);
+    #####:  990:              continue;
+        -:  991:            }
+    #####:  992:            default: {
+    #####:  993:              whnf = term_new_ddu(whnf, val, bod);
+    #####:  994:              continue;
+        -:  995:            }
+        -:  996:          }
+        -:  997:        }
+        -:  998:
+        -:  999:        // -----------------------------------------------------------------------
+        -: 1000:        // AND frame: (□ .&. b) - we reduced a, dispatch
+        -: 1001:        // -----------------------------------------------------------------------
+    #####: 1002:        case AND: {
+    #####: 1003:          u32  loc = term_val(frame);
+    #####: 1004:          Term b   = heap_read(loc + 1);
+        -: 1005:
+    #####: 1006:          switch (term_tag(whnf)) {
+    #####: 1007:            case ERA: {
+    #####: 1008:              whnf = wnf_and_era();
+    #####: 1009:              continue;
+        -: 1010:            }
+    #####: 1011:            case SUP: {
+    #####: 1012:              whnf = wnf_and_sup(whnf, b);
+    #####: 1013:              continue;
+        -: 1014:            }
+    #####: 1015:            case INC: {
+    #####: 1016:              whnf = wnf_and_inc(whnf, b);
+    #####: 1017:              continue;
+        -: 1018:            }
+    #####: 1019:            case NUM: {
+    #####: 1020:              next = wnf_and_num(whnf, b);
+    #####: 1021:              goto enter;
+        -: 1022:            }
+    #####: 1023:            default: {
+    #####: 1024:              whnf = term_new_and(whnf, b);
+    #####: 1025:              continue;
+        -: 1026:            }
+        -: 1027:          }
+        -: 1028:        }
+        -: 1029:
+        -: 1030:        // -----------------------------------------------------------------------
+        -: 1031:        // OR frame: (□ .|. b) - we reduced a, dispatch
+        -: 1032:        // -----------------------------------------------------------------------
+    #####: 1033:        case OR: {
+    #####: 1034:          u32  loc = term_val(frame);
+    #####: 1035:          Term b   = heap_read(loc + 1);
+        -: 1036:
+    #####: 1037:          switch (term_tag(whnf)) {
+    #####: 1038:            case ERA: {
+    #####: 1039:              whnf = wnf_or_era();
+    #####: 1040:              continue;
+        -: 1041:            }
+    #####: 1042:            case SUP: {
+    #####: 1043:              whnf = wnf_or_sup(whnf, b);
+    #####: 1044:              continue;
+        -: 1045:            }
+    #####: 1046:            case INC: {
+    #####: 1047:              whnf = wnf_or_inc(whnf, b);
+    #####: 1048:              continue;
+        -: 1049:            }
+    #####: 1050:            case NUM: {
+    #####: 1051:              next = wnf_or_num(whnf, b);
+    #####: 1052:              goto enter;
+        -: 1053:            }
+    #####: 1054:            default: {
+    #####: 1055:              whnf = term_new_or(whnf, b);
+    #####: 1056:              continue;
+        -: 1057:            }
+        -: 1058:          }
+        -: 1059:        }
+        -: 1060:
+    #####: 1061:        default: {
+    #####: 1062:          continue;
+        -: 1063:        }
+        -: 1064:      }
+        -: 1065:    }
+        -: 1066:  }
+        -: 1067:
+  3584090: 1068:  WNF_S_POS = s_pos;
+  3584090: 1069:  return whnf;
+        -: 1070:}
+        -: 1071:
+  3608397: 1072:fn Term wnf_at(u32 loc) {
+  3608397: 1073:  Term cur = heap_peek(loc);
+  3608397: 1074:  switch (term_tag(cur)) {
+    24169: 1075:    case RED:
+        -: 1076:    case NAM:
+        -: 1077:    case BJV:
+        -: 1078:    case BJM:
+        -: 1079:    case BJ0:
+        -: 1080:    case BJ1:
+        -: 1081:    case DRY:
+        -: 1082:    case ERA:
+        -: 1083:    case SUP:
+        -: 1084:    case LAM:
+        -: 1085:    case NUM:
+        -: 1086:    case MAT:
+        -: 1087:    case SWI:
+        -: 1088:    case USE:
+        -: 1089:    case INC:
+        -: 1090:    case C00 ... C16: {
+    24169: 1091:      return cur;
+        -: 1092:    }
+  3584228: 1093:    default: {
+  3584228: 1094:      break;
+        -: 1095:    }
+        -: 1096:  }
+  3584228: 1097:  Term res = wnf(cur);
+  3584090: 1098:  if (res != cur) {
+  3580373: 1099:    heap_set(loc, res);
+        -: 1100:  }
+  3584090: 1101:  return res;
+        -: 1102:}

@@ -1,0 +1,64 @@
+;; test_effect_row.omni - Tests for effect handling and ^:pure
+
+;; OmniLisp uses handle/perform for algebraic effects
+;; ^:pure marks functions as having no effects
+
+;; TEST: pure function with metadata
+(define add-pure [x] [y] ^:pure (+ x y))
+
+;; EXPECT: 9
+(add-pure 4 5)
+
+;; TEST: pure function composition
+;; EXPECT: 15
+(add-pure (add-pure 1 2) (add-pure 4 8))
+
+;; TEST: basic effect perform and handle
+;; EXPECT: 42
+(handle
+  (perform get-val)
+  (get-val [resume] (resume 42)))
+
+;; TEST: effect with argument
+;; EXPECT: 100
+(handle
+  (perform double 50)
+  (double [x resume] (resume (* x 2))))
+
+;; TEST: multiple performs in sequence
+;; EXPECT: 30
+(handle
+  (+ (perform val1) (perform val2))
+  (val1 [resume] (resume 10))
+  (val2 [resume] (resume 20)))
+
+;; TEST: effect used inside function
+(define effectful-add [x]
+  (+ x (perform increment)))
+
+;; EXPECT: 15
+(handle
+  (effectful-add 10)
+  (increment [resume] (resume 5)))
+
+;; TEST: nested handles
+;; EXPECT: 30
+(handle
+  (handle
+    (+ (perform outer) (perform inner))
+    (inner [resume] (resume 10)))
+  (outer [resume] (resume 20)))
+
+;; TEST: effect that doesn't resume
+;; EXPECT: "short-circuit"
+(handle
+  (do
+    (perform abort "short-circuit")
+    "not reached")
+  (abort [msg resume] msg))
+
+;; EXPECT: true
+(= (handle
+     (+ 1 (perform get-two))
+     (get-two [resume] (resume 2)))
+   3)

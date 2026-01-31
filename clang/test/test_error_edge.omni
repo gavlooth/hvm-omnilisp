@@ -1,0 +1,62 @@
+;; test_error_edge.omni - Tests for error handling edge cases
+
+;; TEST: empty list operations
+;; EXPECT: true
+(empty? '())
+
+;; TEST: empty array operations
+;; EXPECT: true
+(empty? [])
+
+;; TEST: nothing checks
+;; EXPECT: true
+(nothing? nothing)
+
+;; TEST: nothing vs empty list distinction
+;; EXPECT: false
+(nothing? '())
+
+;; TEST: false vs nothing
+;; EXPECT: false
+(nothing? false)
+
+;; TEST: head of empty list returns nothing
+;; EXPECT: nothing
+(head '())
+
+;; TEST: tail of empty list
+;; EXPECT: ()
+(tail '())
+
+;; TEST: get with default on missing key
+;; EXPECT: 42
+(get #{"a" 1} "missing" 42)
+
+;; TEST: get on empty dict
+;; EXPECT: nothing
+(get #{} "key")
+
+;; TEST: nth on empty array
+;; EXPECT: nothing
+(nth [] 0)
+
+;; TEST: safe division handling
+;; EXPECT: 0
+(handle
+  (let [result (/ 10 2)]
+    result)
+  (error [msg resume] 0))
+
+;; TEST: match with no matching pattern uses wildcard
+;; EXPECT: 99
+(match "unknown"
+  1 "one"
+  2 "two"
+  _ 99)
+
+;; TEST: safe string conversion of nothing
+;; EXPECT: "nothing"
+(str nothing)
+
+;; EXPECT: true
+(and (empty? '()) (and (empty? []) (nothing? nothing)))

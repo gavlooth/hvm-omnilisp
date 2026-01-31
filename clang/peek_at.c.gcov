@@ -1,0 +1,8 @@
+        -:    0:Source:../hvm4/clang/parse/peek_at.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+153873321:    1:fn char parse_peek_at(PState *s, u32 offset) {
+153873321:    2:  u32 idx = s->pos + offset;
+153873321:    3:  return (idx >= s->len) ? 0 : s->src[idx];
+        -:    4:}

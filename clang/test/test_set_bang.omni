@@ -1,0 +1,67 @@
+;; test_set_bang.omni - Tests for mutable binding (set!)
+
+;; set! rebinds a name to a new value
+
+;; TEST: basic set! mutation
+;; EXPECT: 20
+(let [^:mutable x 10]
+  (do
+    (set! x 20)
+    x))
+
+;; TEST: set! with computation
+;; EXPECT: 15
+(let [^:mutable counter 5]
+  (do
+    (set! counter (+ counter 10))
+    counter))
+
+;; TEST: multiple set! operations
+;; EXPECT: 3
+(let [^:mutable n 0]
+  (do
+    (set! n 1)
+    (set! n 2)
+    (set! n 3)
+    n))
+
+;; TEST: set! in sequence
+;; EXPECT: 55
+(let [^:mutable sum 0]
+  (do
+    (set! sum (+ sum 10))
+    (set! sum (+ sum 15))
+    (set! sum (+ sum 30))
+    sum))
+
+;; TEST: set! with conditional
+;; EXPECT: 100
+(let [^:mutable result 0]
+  (do
+    (if true
+      (set! result 100)
+      (set! result 0))
+    result))
+
+;; TEST: set! preserves surrounding bindings
+;; EXPECT: 30
+(let [a 10]
+  (let [^:mutable b 5]
+    (do
+      (set! b 20)
+      (+ a b))))
+
+;; TEST: nested set! operations
+;; EXPECT: 25
+(let [^:mutable x 5]
+  (let [^:mutable y 10]
+    (do
+      (set! x (+ x y))
+      (set! y x)
+      y)))
+
+;; EXPECT: 42
+(let [^:mutable answer 0]
+  (do
+    (set! answer 42)
+    answer))

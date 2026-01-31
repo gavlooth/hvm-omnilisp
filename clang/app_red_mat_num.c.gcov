@@ -1,0 +1,32 @@
+        -:    0:Source:../hvm4/clang/wnf/app_red_mat_num.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// ((f ~> λ{n:z; m}) #n)
+        -:    2:// --------------------- APP-RED-MAT-NUM-MAT
+        -:    3:// (f #n) ~> z
+    #####:    4:fn Term wnf_app_red_mat_num_match(Term f, Term mat, Term num) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  mat_loc = term_val(mat);
+    #####:    7:  Term z       = heap_read(mat_loc + 0);
+    #####:    8:  return term_new_red(term_new_app(f, num), z);
+        -:    9:}
+        -:   10:
+        -:   11:// ((f ~> λ{n:z; m}) #k) where k != n
+        -:   12:// ---------------------------------- APP-RED-MAT-NUM-MIS
+        -:   13:// ((λp.(f p) ~> m) #k)
+    #####:   14:fn Term wnf_app_red_mat_num_miss(Term f, Term mat, Term num) {
+    #####:   15:  ITRS++;
+    #####:   16:  u32  mat_loc = term_val(mat);
+    #####:   17:  Term m       = heap_read(mat_loc + 1);
+        -:   18:
+        -:   19:  // Build λp.(f p)
+    #####:   20:  u64 lam_loc   = heap_alloc(1);
+    #####:   21:  Term var_p    = term_new(0, VAR, 0, lam_loc);
+    #####:   22:  Term body     = term_new_app(f, var_p);
+    #####:   23:  heap_write(lam_loc, body);
+    #####:   24:  Term lam      = term_new(0, LAM, 0, lam_loc);
+        -:   25:
+        -:   26:  // (lam ~> m) #k
+    #####:   27:  return term_new_app(term_new_red(lam, m), num);
+        -:   28:}

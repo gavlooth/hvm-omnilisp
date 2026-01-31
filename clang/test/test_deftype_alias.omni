@@ -1,0 +1,40 @@
+;; test_deftype_alias.omni - Tests for typed function parameters
+;; OmniLisp uses {Type} annotations in parameter slots
+
+;; TEST: basic typed parameter
+;; EXPECT: 10
+(define double-int [n {Int}] (* n 2))
+(double-int 5)
+
+;; TEST: multiple typed parameters
+;; EXPECT: 15
+(define add-ints [a {Int}] [b {Int}] (+ a b))
+(add-ints 7 8)
+
+;; TEST: string typed parameter
+;; EXPECT: 5
+(define str-len [s {String}] (length s))
+(str-len "hello")
+
+;; TEST: function with typed return annotation
+;; EXPECT: 20
+(define square [x {Int}] {Int} (* x x))
+(square 4)
+
+;; Nested function with types
+(define apply-twice [f] [x {Int}]
+  (f (f x)))
+
+;; TEST: higher-order with types
+;; EXPECT: 12
+(apply-twice (lambda [n] (+ n 2)) 8)
+
+;; TEST: typed in let binding
+;; EXPECT: 100
+(let [x {Int} 50]
+  (+ x x))
+
+;; EXPECT: 25
+(let [a {Int} 10]
+  (let [b {Int} 15]
+    (+ a b)))

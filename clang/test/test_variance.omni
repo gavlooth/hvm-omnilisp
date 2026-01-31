@@ -1,0 +1,42 @@
+;; test_variance.omni - Tests for record types and field access
+
+;; OmniLisp uses #{} for dict literals
+
+;; TEST: basic dict field access
+;; EXPECT: 42
+(let [box #{"contents" 42}]
+  (get box "contents"))
+
+;; TEST: nested dict access
+;; EXPECT: 99
+(let [inner #{"value" 99}]
+  (let [outer #{"inner" inner}]
+    (get (get outer "inner") "value")))
+
+;; TEST: dict pattern (simulating box pattern)
+;; EXPECT: 50
+(let [box #{"x" 50}]
+  (get box "x"))
+
+;; TEST: pair as dict
+;; EXPECT: 1
+(let [p #{"fst" 1 "snd" 2}]
+  (get p "fst"))
+
+;; TEST: pair second element
+;; EXPECT: 2
+(let [p #{"fst" 1 "snd" 2}]
+  (get p "snd"))
+
+;; TEST: updating dict
+;; EXPECT: "new"
+(let [d #{"key" "old"}]
+  (let [d2 (assoc d "key" "new")]
+    (get d2 "key")))
+
+;; TEST: dict with symbol keys
+;; EXPECT: 10
+(get #{:a 10 :b 20} :a)
+
+;; EXPECT: true
+(= (get #{:x 100} :x) 100)

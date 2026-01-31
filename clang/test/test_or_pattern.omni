@@ -1,0 +1,64 @@
+;; test_or_pattern.omni - Tests for or patterns in match
+
+;; Or patterns match any of several alternatives using (| ...) syntax
+
+;; TEST: basic or pattern
+;; EXPECT: "one or two"
+(match 1
+  (| 1 2) "one or two"
+  _       "other")
+
+;; TEST: or pattern matches second alternative
+;; EXPECT: "one or two"
+(match 2
+  (| 1 2) "one or two"
+  _       "other")
+
+;; TEST: or pattern no match
+;; EXPECT: "other"
+(match 3
+  (| 1 2) "one or two"
+  _       "other")
+
+;; TEST: or with more alternatives
+;; EXPECT: "small"
+(match 3
+  (| 1 2 3)    "small"
+  (| 4 5 6)    "medium"
+  (| 7 8 9 10) "large"
+  _            "huge")
+
+;; TEST: or with strings
+;; EXPECT: "greeting"
+(match "hi"
+  (| "hello" "hi" "hey") "greeting"
+  _                      "not greeting")
+
+;; TEST: or pattern medium range
+;; EXPECT: "medium"
+(match 5
+  (| 1 2 3)    "small"
+  (| 4 5 6)    "medium"
+  _            "other")
+
+;; TEST: or pattern large
+;; EXPECT: "large"
+(match 8
+  (| 1 2 3)    "small"
+  (| 4 5 6)    "medium"
+  (| 7 8 9 10) "large"
+  _            "huge")
+
+;; TEST: or pattern fallback
+;; EXPECT: "huge"
+(match 100
+  (| 1 2 3)    "small"
+  (| 4 5 6)    "medium"
+  (| 7 8 9 10) "large"
+  _            "huge")
+
+;; EXPECT: true
+(= (match 100
+     (| 100 200 300) true
+     _               false)
+   true)

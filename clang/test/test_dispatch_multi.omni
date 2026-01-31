@@ -1,0 +1,65 @@
+;; test_dispatch_multi.lisp - Tests for multiple dispatch
+
+;; Multiple dispatch on multiple argument types
+(defgfun collide [a] [b])
+
+(defmethod collide [a {Asteroid}] [b {Asteroid}]
+  "asteroid-asteroid")
+
+(defmethod collide [a {Asteroid}] [b {Ship}]
+  "asteroid-ship")
+
+(defmethod collide [a {Ship}] [b {Asteroid}]
+  "ship-asteroid")
+
+(defmethod collide [a {Ship}] [b {Ship}]
+  "ship-ship")
+
+;; TEST: collide asteroid-asteroid
+;; EXPECT: "asteroid-asteroid"
+(collide #{"type" "asteroid"} #{"type" "asteroid"})
+
+;; TEST: collide asteroid-ship
+;; EXPECT: "asteroid-ship"
+(collide #{"type" "asteroid"} #{"type" "ship"})
+
+;; TEST: collide ship-asteroid
+;; EXPECT: "ship-asteroid"
+(collide #{"type" "ship"} #{"type" "asteroid"})
+
+;; Binary operations with multiple dispatch
+(defgfun add [x] [y])
+
+(defmethod add [x {Int}] [y {Int}]
+  (+ x y))
+
+(defmethod add [x {Int}] [y {Float}]
+  (+ (int->float x) y))
+
+(defmethod add [x {Float}] [y {Int}]
+  (+ x (int->float y)))
+
+(defmethod add [x {String}] [y {String}]
+  (str-concat x y))
+
+;; TEST: add int int
+;; EXPECT: 5
+(add 2 3)
+
+;; TEST: add int float
+;; EXPECT: 5.5
+(add 2 3.5)
+
+;; TEST: add string string
+;; EXPECT: "hello world"
+(add "hello " "world")
+
+;; Three-way dispatch
+(defgfun combine3 [a] [b] [c])
+
+(defmethod combine3 [a {Int}] [b {Int}] [c {Int}]
+  (+ a (+ b c)))
+
+;; TEST: combine3 all ints
+;; EXPECT: 6
+(combine3 1 2 3)

@@ -731,13 +731,15 @@ fn int parse_omni_slot(PState *s, OmniSlot *out) {
     out->is_destruct = 0;
   }
 
-  // Optional type
+  // Optional type (skip whitespace after name first)
+  omni_skip(s);
   if (parse_peek(s) == '{') {
     out->type = parse_omni_type(s);
   } else {
     out->type = omni_nil();
   }
 
+  omni_skip(s);
   omni_expect_char(s, ']');
   return 1;
 }
@@ -1673,9 +1675,107 @@ fn Term parse_omni_atom(PState *s) {
     return parse_omni_type(s);
   }
 
-  // Array literal: [...]
+  // Array literal or comprehension: [...]
   if (c == '[') {
     omni_expect_char(s, '[');
+    omni_skip(s);
+
+    // Check for comprehension: [for ...]
+    u32 save_pos = s->pos;
+    u32 sym_start, sym_len;
+    if (omni_parse_symbol_raw(s, &sym_start, &sym_len) &&
+        omni_symbol_is(s, sym_start, sym_len, "for")) {
+      // This is a comprehension: [for x <- xs ... yield expr]
+      // Restore position and parse comprehension
+      s->pos = sym_start;
+
+      // Build list of clauses
+      Term clauses = omni_nil();
+      Term *clauses_tail = &clauses;
+      Term yield_expr = omni_nil();
+      u32 binding_base = OMNI_BINDS_LEN;  // Save binding stack depth
+
+      while (parse_peek(s) != ']' && !parse_at_end(s)) {
+        omni_skip(s);
+        if (parse_peek(s) == ']') break;
+
+        // Parse keyword: for, when, or yield
+        u32 kw_start, kw_len;
+        if (!omni_parse_symbol_raw(s, &kw_start, &kw_len)) {
+          parse_error(s, "for/when/yield", parse_peek(s));
+          break;
+        }
+
+        if (omni_symbol_is(s, kw_start, kw_len, "for")) {
+          // for var <- collection
+          omni_skip(s);
+
+          // Parse variable name
+          u32 var_start, var_len;
+          if (!omni_parse_symbol_raw(s, &var_start, &var_len)) {
+            parse_error(s, "variable name", parse_peek(s));
+            break;
+          }
+          u32 var_nick = omni_symbol_nick(s, var_start, var_len);
+          omni_skip(s);
+
+          // Expect <- arrow
+          if (parse_peek(s) == '<' && s->pos + 1 < s->len && s->src[s->pos + 1] == '-') {
+            parse_advance(s);  // skip <
+            parse_advance(s);  // skip -
+          } else {
+            parse_error(s, "<-", parse_peek(s));
+            break;
+          }
+          omni_skip(s);
+
+          // Parse collection expression (var not in scope yet)
+          Term coll = parse_omni_expr(s);
+
+          // NOW push the binding so it's in scope for subsequent clauses
+          omni_bind_push(var_nick);
+
+          // Add CFor{var_nick, collection} to clauses
+          Term cfor = omni_ctr2(OMNI_NAM_CFOR, omni_sym(var_nick), coll);
+          Term cell = omni_cons(cfor, omni_nil());
+          *clauses_tail = cell;
+          clauses_tail = &HEAP[term_val(cell) + 1];
+
+        } else if (omni_symbol_is(s, kw_start, kw_len, "when")) {
+          // when predicate
+          omni_skip(s);
+          Term pred = parse_omni_expr(s);
+
+          // Add CWhn{predicate} to clauses
+          Term cwhn = omni_ctr1(OMNI_NAM_CWHN, pred);
+          Term cell = omni_cons(cwhn, omni_nil());
+          *clauses_tail = cell;
+          clauses_tail = &HEAP[term_val(cell) + 1];
+
+        } else if (omni_symbol_is(s, kw_start, kw_len, "yield")) {
+          // yield expression (bindings are in scope)
+          omni_skip(s);
+          yield_expr = parse_omni_expr(s);
+          break;  // yield must be last
+
+        } else {
+          parse_error(s, "for/when/yield", parse_peek(s));
+          break;
+        }
+      }
+
+      // Restore binding stack
+      OMNI_BINDS_LEN = binding_base;
+
+      omni_expect_char(s, ']');
+
+      // Return #Cmpr{clauses, yield_expr}
+      return omni_ctr2(OMNI_NAM_CMPR, clauses, yield_expr);
+    }
+
+    // Not a comprehension, restore and parse as regular array
+    s->pos = save_pos;
+
     Term items = omni_nil();
     Term *tail = &items;
     while (parse_peek(s) != ']' && !parse_at_end(s)) {
@@ -2578,6 +2678,28 @@ fn Term parse_omni_sexp(PState *s) {
       }
     }
 
+    // Parse ^:associative metadata - marks function as associative (can use tree reduction)
+    int is_associative = 0;
+    if (parse_peek(s) == '^') {
+      u32 saved_assoc_pos = s->pos;
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len) &&
+            omni_symbol_is(s, meta_start, meta_len, "associative")) {
+          is_associative = 1;
+          omni_skip(s);
+        } else {
+          // Not ^:associative, restore position
+          s->pos = saved_assoc_pos;
+        }
+      } else {
+        // Not ^:something, restore position
+        s->pos = saved_assoc_pos;
+      }
+    }
+
     // Push parameter bindings
     for (u32 i = 0; i < slot_count; i++) {
       omni_bind_push(slots[i].name_nick);
@@ -2680,6 +2802,12 @@ fn Term parse_omni_sexp(PState *s) {
     // #Pure{fn} indicates function has no side effects
     if (is_pure) {
       body = omni_ctr1(OMNI_NAM_PURE, body);
+    }
+
+    // Wrap with associativity marker if ^:associative was specified
+    // #Assc{fn} indicates function is associative (can use tree reduction)
+    if (is_associative) {
+      body = omni_ctr1(OMNI_NAM_ASSC, body);
     }
 
     // Check if this is a typed function (for multiple dispatch)
@@ -2906,6 +3034,7 @@ fn Term parse_omni_sexp(PState *s) {
       Term value;         // Value expression
       int is_destruct;    // 1 if destructuring, 0 if simple
       int is_strict;      // 1 if ^:strict metadata, 0 for lazy (default)
+      int is_parallel;    // 1 if ^:parallel metadata (force parallel even with deps)
     } LetBinding;
     LetBinding bindings[64];
     u32 binding_count = 0;
@@ -2915,10 +3044,11 @@ fn Term parse_omni_sexp(PState *s) {
     while (parse_peek(s) == '[' && binding_count < 64) {
       omni_expect_char(s, '[');
 
-      // Check for ^:strict metadata on this binding
+      // Check for ^:strict or ^:parallel metadata on this binding
       int binding_is_strict = 0;
+      int binding_is_parallel = 0;
       omni_skip(s);
-      if (parse_peek(s) == '^') {
+      while (parse_peek(s) == '^') {
         parse_advance(s);  // skip ^
         if (parse_peek(s) == ':') {
           parse_advance(s);  // skip :
@@ -2926,13 +3056,15 @@ fn Term parse_omni_sexp(PState *s) {
           if (omni_parse_symbol_raw(s, &bmeta_start, &bmeta_len)) {
             if (omni_symbol_is(s, bmeta_start, bmeta_len, "strict")) {
               binding_is_strict = 1;
+            } else if (omni_symbol_is(s, bmeta_start, bmeta_len, "parallel")) {
+              binding_is_parallel = 1;
             }
-            // Could add other per-binding metadata here
           }
         }
         omni_skip(s);
       }
       bindings[binding_count].is_strict = binding_is_strict;
+      bindings[binding_count].is_parallel = binding_is_parallel;
 
       // Check if this is a destructuring pattern (starts with [ for array)
       if (parse_peek(s) == '[') {
@@ -2956,13 +3088,18 @@ fn Term parse_omni_sexp(PState *s) {
           parse_omni_type(s);  // Ignore type for now
         }
 
-        // Push binding for simple case
-        omni_bind_push(bind_nick);
+        // NOTE: Do NOT push binding here - it should not be in scope
+        // when parsing its own value. Push AFTER parsing value below.
       }
 
-      // Parse value
+      // Parse value (binding is NOT in scope yet, as it should be)
       Term val = parse_omni_expr(s);
       bindings[binding_count].value = val;
+
+      // NOW push the binding so it's in scope for subsequent bindings and body
+      if (!bindings[binding_count].is_destruct) {
+        omni_bind_push(bindings[binding_count].name_nick);
+      }
 
       omni_expect_char(s, ']');
       binding_count++;
@@ -3014,16 +3151,19 @@ fn Term parse_omni_sexp(PState *s) {
       return omni_ctr3(nlet_tag, term_new_num(loop_name_nick), init_values, loop_body);
     } else {
       // Regular let: construct let chain from innermost to outermost
-      // Bindings are lazy by default (#Let), use #LetS for ^:strict bindings
+      // Bindings are lazy by default (#Let), use #LetS for ^:strict, #LetP for ^:parallel
       Term result = body;
       for (int i = (int)binding_count - 1; i >= 0; i--) {
         if (bindings[i].is_destruct) {
           // Destructuring let: #DLet{pattern, value, body}
-          // TODO: Support ^:strict on destructuring bindings
+          // TODO: Support ^:strict and ^:parallel on destructuring bindings
           result = omni_ctr3(OMNI_NAM_DLET, bindings[i].pattern, bindings[i].value, result);
         } else if (bindings[i].is_strict) {
           // Strict let: #LetS{value, body} - forces eager evaluation
           result = omni_lets(bindings[i].value, result);
+        } else if (bindings[i].is_parallel) {
+          // Parallel let: #LetP{value, body} - force parallel evaluation
+          result = omni_ctr2(OMNI_NAM_LETP, bindings[i].value, result);
         } else {
           // Lazy let: #Let{value, body} - default, allows parallel evaluation
           result = omni_let(bindings[i].value, result);
@@ -3093,7 +3233,30 @@ fn Term parse_omni_sexp(PState *s) {
   // if: (if cond then else) - SYNTACTIC SUGAR for match
   // Desugars to: (match cond [true] then [_] else)
   // This makes 'match' the single source of truth for conditional logic
+  // Optional ^:speculate for parallel speculative evaluation of both branches
   if (omni_symbol_is(s, sym_start, sym_len, "if")) {
+    // Check for ^:speculate metadata
+    int is_speculative = 0;
+    omni_skip(s);
+    if (parse_peek(s) == '^') {
+      u32 saved_spec_pos = s->pos;
+      parse_advance(s);  // skip ^
+      if (parse_peek(s) == ':') {
+        parse_advance(s);  // skip :
+        u32 meta_start, meta_len;
+        if (omni_parse_symbol_raw(s, &meta_start, &meta_len) &&
+            omni_symbol_is(s, meta_start, meta_len, "speculate")) {
+          is_speculative = 1;
+          omni_skip(s);
+        } else {
+          // Not ^:speculate, restore position
+          s->pos = saved_spec_pos;
+        }
+      } else {
+        s->pos = saved_spec_pos;
+      }
+    }
+
     Term cond = parse_omni_expr(s);
     Term then_br = parse_omni_expr(s);
     Term else_br = omni_nothing();
@@ -3110,6 +3273,11 @@ fn Term parse_omni_sexp(PState *s) {
     Term else_case = omni_case(wild_pat, omni_nil(), else_br);
 
     Term cases = omni_cons(true_case, omni_cons(else_case, omni_nil()));
+
+    // Use speculative match if ^:speculate was specified
+    if (is_speculative) {
+      return omni_match_speculative(cond, cases);
+    }
     return omni_match(cond, cases);
   }
 
@@ -3569,6 +3737,298 @@ fn Term parse_omni_sexp(PState *s) {
     Term lst = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_SND, lst);
+  }
+
+  // fork2: (fork2 a b) - creates HVM4 superposition for parallel execution
+  // Used for explicit parallelism: both a and b are evaluated in parallel
+  if (omni_symbol_is(s, sym_start, sym_len, "fork2")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_FORK, a, b);
+  }
+
+  // choice: (choice list) - creates nested superposition from list
+  // Used for nondeterministic/parallel exploration of multiple options
+  if (omni_symbol_is(s, sym_start, sym_len, "choice")) {
+    Term opts = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_CHOI, opts);
+  }
+
+  // amb: (amb list) - alias for choice
+  if (omni_symbol_is(s, sym_start, sym_len, "amb")) {
+    Term opts = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_CHOI, opts);
+  }
+
+  // explore: (explore list) - alias for choice (non-deterministic exploration)
+  // Creates HVM4 superposition - all choices evaluated in parallel
+  if (omni_symbol_is(s, sym_start, sym_len, "explore")) {
+    Term opts = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_CHOI, opts);
+  }
+
+  // reject: (reject) - mark current branch as dead end (returns nothing)
+  if (omni_symbol_is(s, sym_start, sym_len, "reject")) {
+    omni_expect_char(s, ')');
+    return omni_nothing();
+  }
+
+  // require: (require cond) - reject if condition is false
+  // Shorthand for (if cond nothing (reject))
+  if (omni_symbol_is(s, sym_start, sym_len, "require")) {
+    Term cond = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_REQT, cond);
+  }
+
+  // explore-first: (explore-first choices pred) - find first choice satisfying pred
+  // Creates #ExFr{choices, pred} node for C interpretation
+  if (omni_symbol_is(s, sym_start, sym_len, "explore-first")) {
+    Term choices = parse_omni_expr(s);
+    Term pred = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_EXFR, choices, pred);
+  }
+
+  // explore-all: (explore-all choices body) - collect all valid results
+  // Creates #ExAl{choices, body} node for C interpretation
+  if (omni_symbol_is(s, sym_start, sym_len, "explore-all")) {
+    Term choices = parse_omni_expr(s);
+    Term body = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_EXAL, choices, body);
+  }
+
+  // explore-range: (explore-range lo hi) - explore integer range [lo, hi)
+  // Creates #ExRg{lo, hi} node for C interpretation
+  if (omni_symbol_is(s, sym_start, sym_len, "explore-range")) {
+    Term lo = parse_omni_expr(s);
+    Term hi = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_EXRG, lo, hi);
+  }
+
+  // =========================================================================
+  // A3: Speculative Transactions
+  // =========================================================================
+
+  // rollback: (rollback reason) - abort current transaction branch
+  // Returns nothing, effectively killing this exploration path
+  if (omni_symbol_is(s, sym_start, sym_len, "rollback")) {
+    Term reason = omni_nothing();
+    if (parse_peek(s) != ')') {
+      reason = parse_omni_expr(s);
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_ROLL, reason);
+  }
+
+  // commit: (commit value) - successfully commit transaction with value
+  // Returns the value, marking this branch as successful
+  if (omni_symbol_is(s, sym_start, sym_len, "commit")) {
+    Term value = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_COMT, value);
+  }
+
+  // speculative-transaction: (speculative-transaction strategy1 strategy2 ...)
+  // Race multiple strategies in parallel, first to commit wins
+  // Each strategy is a thunk (zero-arg function)
+  if (omni_symbol_is(s, sym_start, sym_len, "speculative-transaction")) {
+    Term strategies = omni_nil();
+    Term *tail = &strategies;
+    while (parse_peek(s) != ')') {
+      Term strategy = parse_omni_expr(s);
+      Term cell = omni_cons(strategy, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SPTX, strategies);
+  }
+
+  // with-rollback: (with-rollback body cleanup)
+  // Execute body, if rollback is called, run cleanup before propagating
+  if (omni_symbol_is(s, sym_start, sym_len, "with-rollback")) {
+    Term body = parse_omni_expr(s);
+    Term cleanup = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_WROL, body, cleanup);
+  }
+
+  // =========================================================================
+  // A5: Ambient Parallelism
+  // =========================================================================
+
+  // parallel-context: (parallel-context) - get current parallel context
+  // Returns a dict with workers-available, worker-count, chunk-size, depth-limit
+  if (omni_symbol_is(s, sym_start, sym_len, "parallel-context")) {
+    omni_expect_char(s, ')');
+    return term_new_ctr(OMNI_NAM_PCTX, 0, NULL);
+  }
+
+  // fork-join: (fork-join task1 task2 ...) - execute tasks in parallel
+  // Each task is a thunk; returns list of results
+  if (omni_symbol_is(s, sym_start, sym_len, "fork-join")) {
+    Term tasks = omni_nil();
+    Term *tail = &tasks;
+    while (parse_peek(s) != ')') {
+      Term task = parse_omni_expr(s);
+      Term cell = omni_cons(task, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_FJOI, tasks);
+  }
+
+  // with-parallelism: (with-parallelism n-workers body)
+  // Set up parallel context with n workers for body execution
+  if (omni_symbol_is(s, sym_start, sym_len, "with-parallelism")) {
+    Term workers = parse_omni_expr(s);
+    Term body = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_WPAR, workers, body);
+  }
+
+  // =========================================================================
+  // PROBABILISTIC EFFECTS (A7)
+  // =========================================================================
+
+  // bernoulli: (bernoulli prob) - Bernoulli distribution with probability p
+  if (omni_symbol_is(s, sym_start, sym_len, "bernoulli")) {
+    Term prob = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_BERN, prob);
+  }
+
+  // categorical: (categorical probs) - Categorical distribution over discrete values
+  // probs is a list of (value, probability) pairs
+  if (omni_symbol_is(s, sym_start, sym_len, "categorical")) {
+    Term probs = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_CATG, probs);
+  }
+
+  // uniform: (uniform lo hi) - Uniform distribution over [lo, hi]
+  if (omni_symbol_is(s, sym_start, sym_len, "uniform")) {
+    Term lo = parse_omni_expr(s);
+    Term hi = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_UNIF, lo, hi);
+  }
+
+  // beta: (beta alpha beta) - Beta distribution with shape parameters
+  if (omni_symbol_is(s, sym_start, sym_len, "beta")) {
+    Term alpha = parse_omni_expr(s);
+    Term beta_param = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_BETA, alpha, beta_param);
+  }
+
+  // mixture: (mixture dist1 dist2 ... weight1 weight2 ...) or (mixture ((dist1 w1) (dist2 w2) ...))
+  // Weighted combination of distributions
+  if (omni_symbol_is(s, sym_start, sym_len, "mixture") ||
+      omni_symbol_is(s, sym_start, sym_len, "dist-mix")) {
+    // Parse list of (distribution weight) pairs
+    Term components = omni_nil();
+    Term *ctail = &components;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      Term elem = parse_omni_expr(s);
+      Term cell = omni_cons(elem, omni_nil());
+      *ctail = cell;
+      ctail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_DMIX, components);
+  }
+
+  // product: (product dist1 dist2 ...) - Independent joint distribution
+  // Sampling returns tuple of independent samples
+  if (omni_symbol_is(s, sym_start, sym_len, "product") ||
+      omni_symbol_is(s, sym_start, sym_len, "dist-product") ||
+      omni_symbol_is(s, sym_start, sym_len, "joint")) {
+    Term dists = omni_nil();
+    Term *dtail = &dists;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      Term elem = parse_omni_expr(s);
+      Term cell = omni_cons(elem, omni_nil());
+      *dtail = cell;
+      dtail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_DPRD, dists);
+  }
+
+  // dist-map: (dist-map fn dist) - Transform distribution by applying fn to samples
+  if (omni_symbol_is(s, sym_start, sym_len, "dist-map") ||
+      omni_symbol_is(s, sym_start, sym_len, "fmap-dist")) {
+    Term func = parse_omni_expr(s);
+    Term dist = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_DMAP, func, dist);
+  }
+
+  // sample: (sample dist) - Sample a value from distribution
+  if (omni_symbol_is(s, sym_start, sym_len, "sample")) {
+    Term dist = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SMPL, dist);
+  }
+
+  // observe: (observe condition) - Condition on observation being true
+  // In probabilistic context, filters out executions where condition is false
+  if (omni_symbol_is(s, sym_start, sym_len, "observe")) {
+    Term cond = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_OBSV, cond);
+  }
+
+  // factor: (factor weight) - Weight current execution path by weight
+  // Used for soft constraints and importance sampling
+  if (omni_symbol_is(s, sym_start, sym_len, "factor")) {
+    Term weight = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_FCTR, weight);
+  }
+
+  // flip: (flip prob) - Weighted coin flip, returns true with probability prob
+  // Shorthand for (sample (bernoulli prob))
+  if (omni_symbol_is(s, sym_start, sym_len, "flip")) {
+    Term prob = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_FLIP, prob);
+  }
+
+  // enumerate-infer: (enumerate-infer model) - exact probabilistic inference
+  // Exhaustively explores all branches and computes exact posterior
+  if (omni_symbol_is(s, sym_start, sym_len, "enumerate-infer") ||
+      omni_symbol_is(s, sym_start, sym_len, "infer-exact")) {
+    Term model = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_ENMR, model);
+  }
+
+  // importance-sample: (importance-sample model n) - approximate inference
+  // Runs model n times with importance weighting
+  if (omni_symbol_is(s, sym_start, sym_len, "importance-sample") ||
+      omni_symbol_is(s, sym_start, sym_len, "infer-approx")) {
+    Term model = parse_omni_expr(s);
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_IMPS, model, n);
+  }
+
+  // weighted: (weighted val weight) - create weighted value for inference
+  if (omni_symbol_is(s, sym_start, sym_len, "weighted")) {
+    Term val = parse_omni_expr(s);
+    Term weight = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_WGTS, val, weight);
   }
 
   // begin/do: (begin e1 e2 ...) - sequencing
@@ -4573,6 +5033,36 @@ fn Term parse_omni_sexp(PState *s) {
     Term val = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_TYOF, val);
+  }
+
+  // effect-free?: (effect-free? func) - check if function has empty effect row
+  if (omni_symbol_is(s, sym_start, sym_len, "effect-free?")) {
+    Term func = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_EFFR, func);
+  }
+
+  // staged-pure?: (staged-pure? code) - compile-time purity analysis of AST
+  if (omni_symbol_is(s, sym_start, sym_len, "staged-pure?")) {
+    Term code = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_STPR, code);
+  }
+
+  // map-chunks: (map-chunks f xs chunk-size) - chunked parallel map
+  if (omni_symbol_is(s, sym_start, sym_len, "map-chunks")) {
+    Term f = parse_omni_expr(s);
+    Term xs = parse_omni_expr(s);
+    Term size = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_MPCH, f, xs, size);
+  }
+
+  // compile-parallel-map: (compile-parallel-map f) - generate parallel map code
+  if (omni_symbol_is(s, sym_start, sym_len, "compile-parallel-map")) {
+    Term f = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_CPMF, f);
   }
 
   // doc: (doc symbol) - get documentation

@@ -1,0 +1,7 @@
+        -:    0:Source:../hvm4/clang/term/new/var.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+    86728:    1:fn Term term_new_var(u32 loc) {
+    86728:    2:  return term_new(0, VAR, 0, loc);
+        -:    3:}

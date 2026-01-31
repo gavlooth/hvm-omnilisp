@@ -1,0 +1,60 @@
+;; test_re_quantifiers.lisp - Tests for regex quantifiers
+
+;; Quantifiers control repetition
+;; TEST: zero or more
+;; EXPECT: true
+(re-test #"ab*c" "ac")
+
+;; TEST: zero or more with matches
+;; EXPECT: true
+(re-test #"ab*c" "abbbbc")
+
+;; TEST: one or more
+;; EXPECT: true
+(re-test #"ab+c" "abc")
+
+;; TEST: one or more requires one
+;; EXPECT: false
+(re-test #"ab+c" "ac")
+
+;; TEST: optional
+;; EXPECT: true
+(re-test #"colou?r" "color")
+
+;; TEST: optional with char
+;; EXPECT: true
+(re-test #"colou?r" "colour")
+
+;; TEST: exact count
+;; EXPECT: true
+(re-test #"a{3}" "aaa")
+
+;; TEST: exact count fails
+;; EXPECT: false
+(re-test #"a{3}" "aa")
+
+;; TEST: min count
+;; EXPECT: true
+(re-test #"a{2,}" "aaaaa")
+
+;; TEST: range count
+;; EXPECT: true
+(re-test #"a{2,4}" "aaa")
+
+;; TEST: range count fails
+;; EXPECT: false
+(re-test #"a{2,4}" "aaaaa")
+
+;; TEST: lazy quantifier
+;; EXPECT: "ab"
+(first (re-find #"a.*?b" "axxbxxb"))
+
+;; TEST: possessive quantifier
+;; EXPECT: false
+(re-test #"a++ab" "aaab")
+
+;; TEST: greedy vs lazy
+;; EXPECT: ("axxbxxb" "axxb")
+(list
+  (first (re-find #"a.*b" "axxbxxb"))
+  (first (re-find #"a.*?b" "axxbxxb")))

@@ -1,0 +1,155 @@
+;; test_dispatch_edge.omni - Edge case tests for multiple dispatch
+;; Tests specificity ordering and shadowing
+
+;; =========================================================================
+;; SPECIFICITY ORDERING (SINGLE ARG)
+;; =========================================================================
+
+;; Setup types for tests
+(deftype Animal [])
+(deftype Dog [] :extends Animal)
+(deftype Cat [] :extends Animal)
+(deftype Poodle [] :extends Dog)
+
+;; Generic function for specificity tests
+(defgfun speak [x])
+(defmethod speak [x {Animal}] "generic-animal")
+(defmethod speak [x {Dog}] "dog-sound")
+(defmethod speak [x {Cat}] "cat-sound")
+
+;; TEST: most specific type (Dog) wins over parent (Animal)
+;; EXPECT: "dog-sound"
+(speak (Dog))
+
+;; TEST: Cat type gets correct method
+;; EXPECT: "cat-sound"
+(speak (Cat))
+
+;; TEST: child without own method inherits from parent
+;; EXPECT: "dog-sound"
+(speak (Poodle))
+
+;; TEST: base type gets generic method
+;; EXPECT: "generic-animal"
+(speak (Animal))
+
+;; =========================================================================
+;; DEEP HIERARCHY
+;; =========================================================================
+
+(deftype Level1 [])
+(deftype Level2 [] :extends Level1)
+(deftype Level3 [] :extends Level2)
+(deftype Level4 [] :extends Level3)
+
+(defgfun depth-test [x])
+(defmethod depth-test [x {Level1}] "L1")
+(defmethod depth-test [x {Level2}] "L2")
+(defmethod depth-test [x {Level4}] "L4")
+
+;; TEST: Level4 matches its own method
+;; EXPECT: "L4"
+(depth-test (Level4))
+
+;; TEST: Level3 inherits from Level2
+;; EXPECT: "L2"
+(depth-test (Level3))
+
+;; TEST: Level2 matches its own
+;; EXPECT: "L2"
+(depth-test (Level2))
+
+;; TEST: Level1 matches its own
+;; EXPECT: "L1"
+(depth-test (Level1))
+
+;; =========================================================================
+;; MULTI-ARGUMENT SPECIFICITY
+;; =========================================================================
+
+(deftype Shape [])
+(deftype Circle [] :extends Shape)
+(deftype Square [] :extends Shape)
+
+(defgfun overlap [a] [b])
+(defmethod overlap [a {Shape}] [b {Shape}] "shape-shape")
+(defmethod overlap [a {Circle}] [b {Shape}] "circle-shape")
+(defmethod overlap [a {Shape}] [b {Circle}] "shape-circle")
+(defmethod overlap [a {Circle}] [b {Circle}] "circle-circle")
+
+;; TEST: both Circle - most specific
+;; EXPECT: "circle-circle"
+(overlap (Circle) (Circle))
+
+;; TEST: Circle first - circle-shape wins
+;; EXPECT: "circle-shape"
+(overlap (Circle) (Square))
+
+;; TEST: Circle second - shape-circle wins
+;; EXPECT: "shape-circle"
+(overlap (Square) (Circle))
+
+;; TEST: both generic Shape
+;; EXPECT: "shape-shape"
+(overlap (Shape) (Shape))
+
+;; =========================================================================
+;; METHOD ORDER INDEPENDENCE
+;; =========================================================================
+
+(deftype Base [])
+(deftype Derived [] :extends Base)
+
+(defgfun order-test [x])
+;; Define less specific FIRST
+(defmethod order-test [x {Base}] "base")
+;; Define more specific SECOND
+(defmethod order-test [x {Derived}] "derived")
+
+;; TEST: more specific wins regardless of definition order
+;; EXPECT: "derived"
+(order-test (Derived))
+
+;; TEST: base still works
+;; EXPECT: "base"
+(order-test (Base))
+
+;; =========================================================================
+;; CURRIED DISPATCH
+;; =========================================================================
+
+(defgfun binary-op [x] [y])
+(defmethod binary-op [x {Int}] [y {Int}] (+ x y))
+
+;; TEST: partial application then complete
+;; EXPECT: 15
+((binary-op 5) 10)
+
+;; TEST: direct call works
+;; EXPECT: 30
+(binary-op 10 20)
+
+;; =========================================================================
+;; SAME TYPE - FIRST DEFINED WINS
+;; =========================================================================
+
+(deftype Same [])
+(defgfun same-test [x])
+(defmethod same-test [x {Same}] "first-defined")
+(defmethod same-test [x {Same}] "second-defined")
+
+;; TEST: first defined method wins when types equal
+;; EXPECT: "first-defined"
+(same-test (Same))
+
+;; =========================================================================
+;; NO METHOD ERROR
+;; =========================================================================
+
+(defgfun strict-fn [x])
+(defmethod strict-fn [x {Int}] "integer")
+
+;; TEST: no matching method for String
+;; EXPECT: #Err{NoMethod}
+(strict-fn "string")
+

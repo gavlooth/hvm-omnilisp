@@ -1,0 +1,24 @@
+;; test_seq_metadata.lisp - Tests for sequential operations
+
+;; Define map (sequential)
+(define map [f] [lst]
+  (match lst
+    ()       nil
+    (h .. t) (cons (f h) (map f t))))
+
+(define double [x] (* x 2))
+
+;; TEST: map small list
+;; EXPECT: (2 4 6)
+(map double '(1 2 3))
+
+;; TEST: map empty
+;; EXPECT: ()
+(map double nil)
+
+;; TEST: map single
+;; EXPECT: (4)
+(map double '(2))
+
+;; EXPECT: (2 4 6 8)
+(map double '(1 2 3 4))

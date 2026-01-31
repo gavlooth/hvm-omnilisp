@@ -1,0 +1,50 @@
+;; test_transactions.lisp - A3: Speculative Transactions
+;; Tests for rollback, commit, speculative-transaction, and with-rollback
+
+;; TEST: commit returns the value
+;; EXPECT: 42
+(commit 42)
+
+;; TEST: rollback returns nothing
+;; EXPECT: nothing
+(rollback)
+
+;; TEST: rollback with reason also returns nothing
+;; EXPECT: nothing
+(rollback "failed validation")
+
+;; TEST: speculative-transaction returns first successful commit
+;; EXPECT: 10
+(speculative-transaction (commit 10) (commit 20) (commit 30))
+
+;; TEST: speculative-transaction skips rollback branches
+;; EXPECT: 20
+(speculative-transaction (rollback) (commit 20) (commit 30))
+
+;; TEST: speculative-transaction with all rollbacks returns nothing
+;; EXPECT: nothing
+(speculative-transaction (rollback) (rollback) (rollback))
+
+;; TEST: speculative-transaction with mixed results
+;; EXPECT: 50
+(speculative-transaction (rollback) (rollback) (commit 50))
+
+;; TEST: with-rollback passes through commit value
+;; EXPECT: 100
+(with-rollback (commit 100) (+ 1 1))
+
+;; TEST: with-rollback returns nothing on rollback (after cleanup)
+;; EXPECT: nothing
+(with-rollback (rollback) (+ 1 1))
+
+;; TEST: nested speculative transactions
+;; EXPECT: 25
+(speculative-transaction (rollback) (speculative-transaction (rollback) (commit 25)))
+
+;; TEST: commit in conditional
+;; EXPECT: 99
+(speculative-transaction (if true (commit 99) (rollback)) (commit 1))
+
+;; TEST: rollback in conditional
+;; EXPECT: 2
+(speculative-transaction (if false (commit 1) (rollback)) (commit 2))

@@ -1,0 +1,33 @@
+;; test_pure.lisp - Tests for ^:pure metadata on function definitions
+
+;; TEST: basic pure function
+;; EXPECT: 3
+(define add_pure [x] [y] ^:pure (+ x y))
+(add_pure 1 2)
+
+;; TEST: pure function with multiply
+;; EXPECT: 12
+(define mul_pure [x] [y] ^:pure (* x y))
+(mul_pure 3 4)
+
+;; TEST: pure function single argument
+;; EXPECT: 25
+(define square [n] ^:pure (* n n))
+(square 5)
+
+;; TEST: pure function can call other pure functions
+;; EXPECT: 100
+(define double_pure [x] ^:pure (+ x x))
+(square (double_pure 5))
+
+;; TEST: pure function with let binding
+;; EXPECT: 50
+(define calc_pure [a] [b] ^:pure
+  (let [sum (+ a b)]
+       [diff (- a b)]
+    (* sum diff)))
+(calc_pure 10 5)
+
+;; EXPECT: 42
+(define answer ^:pure 42)
+answer

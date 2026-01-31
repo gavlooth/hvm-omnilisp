@@ -1,0 +1,169 @@
+;; test_memo_effects.omni - Tests for effect-based memoization
+;;
+;; Memoization via effects allows caching within handler scope
+;; Effects: MemoLookup (check cache), MemoStore (save to cache)
+
+;; ============================================================
+;; BASIC MEMOIZATION PATTERN
+;; ============================================================
+
+;; TEST: memo lookup miss returns nothing
+;; EXPECT: nothing
+(handle
+  (perform MemoLookup 'key1)
+  (MemoLookup [key resume] (resume nothing)))
+
+;; TEST: memo store and lookup
+;; EXPECT: 42
+(handle
+  (do
+    (perform MemoStore '(key1 42))
+    (perform MemoLookup 'key1))
+  (MemoLookup [key resume] (resume 42))
+  (MemoStore [kv resume] (resume nil)))
+
+;; ============================================================
+;; MEMOIZED FUNCTION PATTERN
+;; ============================================================
+
+;; Memoized fibonacci using effects
+;; The handler maintains the cache state
+(define memo-fib [n]
+  (match (perform MemoLookup n)
+    (Some v) v
+    nothing  (let [result (if (< n 2)
+                            n
+                            (+ (memo-fib (- n 1))
+                               (memo-fib (- n 2))))]
+               (do
+                 (perform MemoStore (list n result))
+                 result))))
+
+;; Simple handler that doesn't actually cache (for testing structure)
+;; TEST: memo-fib with trivial handler
+;; EXPECT: 5
+(handle
+  (memo-fib 5)
+  (MemoLookup [key resume] (resume nothing))
+  (MemoStore [kv resume] (resume nil)))
+
+;; TEST: memo-fib base case
+;; EXPECT: 1
+(handle
+  (memo-fib 1)
+  (MemoLookup [key resume] (resume nothing))
+  (MemoStore [kv resume] (resume nil)))
+
+;; ============================================================
+;; CACHE WITH DICT STATE
+;; ============================================================
+
+;; Handler that uses state effect for cache
+;; Combines MemoLookup/MemoStore with Get/Put for the cache dict
+
+;; TEST: memoization with state-backed cache
+;; EXPECT: 8
+(handle
+  (handle
+    (let [a (do
+              (match (perform MemoLookup 'x)
+                nothing (do (perform MemoStore '(x 8)) 8)
+                (Some v) v))]
+      (match (perform MemoLookup 'x)
+        nothing 0
+        (Some v) v))
+    (MemoLookup [key resume]
+      (let [cache (perform Get nil)]
+        (resume (get cache key))))
+    (MemoStore [kv resume]
+      (let [cache (perform Get nil)]
+        (do
+          (perform Put (assoc cache (first kv) (second kv)))
+          (resume nil)))))
+  (Get [_ resume] (resume #{}))
+  (Put [v resume] (resume nil)))
+
+;; ============================================================
+;; AUTOMATIC MEMOIZATION VIA WRAPPER
+;; ============================================================
+
+;; with-memo: wraps a function to memoize its calls
+(define with-memo [f]
+  (lambda [x]
+    (match (perform MemoLookup x)
+      (Some v) v
+      nothing  (let [result (f x)]
+                 (do
+                   (perform MemoStore (list x result))
+                   result)))))
+
+;; TEST: with-memo wrapper
+;; EXPECT: 25
+(handle
+  (let [square-memo (with-memo (lambda [x] (* x x)))]
+    (square-memo 5))
+  (MemoLookup [key resume] (resume nothing))
+  (MemoStore [kv resume] (resume nil)))
+
+;; ============================================================
+;; CACHE STATISTICS
+;; ============================================================
+
+;; Effects for tracking cache hits/misses
+;; TEST: track cache miss
+;; EXPECT: 1
+(handle
+  (do
+    (perform CacheMiss nil)
+    (perform GetMisses nil))
+  (CacheMiss [_ resume] (resume nil))
+  (GetMisses [_ resume] (resume 1)))
+
+;; TEST: track cache hit
+;; EXPECT: 3
+(handle
+  (do
+    (perform CacheHit nil)
+    (perform CacheHit nil)
+    (perform CacheHit nil)
+    (perform GetHits nil))
+  (CacheHit [_ resume] (resume nil))
+  (GetHits [_ resume] (resume 3)))
+
+;; ============================================================
+;; LRU CACHE PATTERN (conceptual)
+;; ============================================================
+
+;; LRU eviction can be modeled with effects
+;; MemoEvict: remove least recently used entry
+
+;; TEST: evict effect
+;; EXPECT: 'evicted
+(handle
+  (do
+    (perform MemoStore '(a 1))
+    (perform MemoStore '(b 2))
+    (perform MemoStore '(c 3))
+    (perform MemoEvict nil)  ;; evict oldest
+    'evicted)
+  (MemoStore [kv resume] (resume nil))
+  (MemoEvict [_ resume] (resume nil)))
+
+;; ============================================================
+;; SCOPED MEMOIZATION
+;; ============================================================
+
+;; Nested handlers create independent cache scopes
+
+;; TEST: nested memo scopes are independent
+;; EXPECT: nothing
+(handle
+  (do
+    ;; Inner scope stores value
+    (handle
+      (perform MemoStore '(inner-key 100))
+      (MemoStore [kv resume] (resume nil)))
+    ;; Outer scope doesn't see it
+    (perform MemoLookup 'inner-key))
+  (MemoLookup [key resume] (resume nothing))
+  (MemoStore [kv resume] (resume nil)))

@@ -1,0 +1,38 @@
+;; test_speculate_if.lisp - Tests for ^:speculate metadata on if
+
+;; TEST: basic speculative if - true branch
+;; EXPECT: "yes"
+(if ^:speculate true "yes" "no")
+
+;; TEST: basic speculative if - false branch
+;; EXPECT: "no"
+(if ^:speculate false "yes" "no")
+
+;; TEST: speculative if with computation
+;; EXPECT: "big"
+(if ^:speculate (> 10 5) "big" "small")
+
+;; TEST: speculative if with expression result
+;; EXPECT: 100
+(if ^:speculate (= 1 1) (* 10 10) (* 5 5))
+
+;; TEST: regular if still works (no speculation)
+;; EXPECT: "hello"
+(if true "hello" "goodbye")
+
+;; TEST: nested speculative if
+;; EXPECT: "middle"
+(if ^:speculate (< 5 1)
+    "small"
+    (if ^:speculate (< 5 10)
+        "middle"
+        "large"))
+
+;; EXPECT: "positive"
+(define classify [n]
+  (if ^:speculate (< n 0)
+      "negative"
+      (if ^:speculate (= n 0)
+          "zero"
+          "positive")))
+(classify 42)

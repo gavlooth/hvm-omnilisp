@@ -1,0 +1,64 @@
+;; test_map_indexed.lisp - Tests for map-indexed
+
+;; Map-indexed provides both index and element
+(define map-indexed [f] [lst]
+  (let helper [l lst] [i 0] [acc '()]
+    (match l
+      ()       (reverse acc)
+      (h .. t) (helper t (+ i 1) (cons (f i h) acc)))))
+
+;; TEST: map-indexed basic
+;; EXPECT: ((0 "a") (1 "b") (2 "c"))
+(map-indexed (lambda [i] [x] (list i x)) '("a" "b" "c"))
+
+;; TEST: map-indexed with computation
+;; EXPECT: (0 2 6)
+(map-indexed (lambda [i] [x] (* i x)) '(1 2 3))
+
+;; TEST: map-indexed empty
+;; EXPECT: ()
+(map-indexed (lambda [i] [x] (list i x)) '())
+
+;; TEST: map-indexed single
+;; EXPECT: ((0 42))
+(map-indexed (lambda [i] [x] (list i x)) '(42))
+
+;; TEST: map-indexed ignore index
+;; EXPECT: (2 4 6)
+(map-indexed (lambda [_] [x] (* x 2)) '(1 2 3))
+
+;; TEST: map-indexed ignore value
+;; EXPECT: (0 1 2 3 4)
+(map-indexed (lambda [i] [_] i) '(a b c d e))
+
+;; Filter-indexed
+(define filter-indexed [pred] [lst]
+  (let helper [l lst] [i 0] [acc '()]
+    (match l
+      ()       (reverse acc)
+      (h .. t) (if (pred i h)
+                 (helper t (+ i 1) (cons h acc))
+                 (helper t (+ i 1) acc)))))
+
+;; TEST: filter-indexed even indices
+;; EXPECT: ("a" "c" "e")
+(filter-indexed (lambda [i] [_] (= (% i 2) 0)) '("a" "b" "c" "d" "e"))
+
+;; TEST: filter-indexed by both
+;; EXPECT: (2 4)
+(filter-indexed (lambda [i] [x] (and (> i 0) (= (% x 2) 0))) '(1 2 3 4 5))
+
+;; Find-index
+(define find-index [pred] [lst]
+  (let helper [l lst] [i 0]
+    (match l
+      ()       nothing
+      (h .. t) (if (pred h) i (helper t (+ i 1))))))
+
+;; TEST: find-index found
+;; EXPECT: 2
+(find-index (lambda [x] (= x 3)) '(1 2 3 4 5))
+
+;; TEST: find-index not found
+;; EXPECT: nothing
+(find-index (lambda [x] (= x 99)) '(1 2 3))

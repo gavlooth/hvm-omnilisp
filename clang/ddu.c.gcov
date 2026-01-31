@@ -1,0 +1,13 @@
+        -:    0:Source:../hvm4/clang/term/new/ddu.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// DynDup(lab, val, bod): dynamic DUP binder, strict on lab
+        -:    2:// Layout: heap_read(loc+0) = lab, heap_read(loc+1) = val, heap_read(loc+2) = bod
+    #####:    3:fn Term term_new_ddu(Term lab, Term val, Term bod) {
+    #####:    4:  u32 loc = heap_alloc(3);
+    #####:    5:  heap_write(loc + 0, lab);
+    #####:    6:  heap_write(loc + 1, val);
+    #####:    7:  heap_write(loc + 2, bod);
+    #####:    8:  return term_new(0, DDU, 0, loc);
+        -:    9:}

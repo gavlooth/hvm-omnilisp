@@ -1,0 +1,41 @@
+        -:    0:Source:../hvm4/clang/wnf/eql_sup.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// (&L{a0,a1} === b)
+        -:    2:// ---------------------- EQL-SUP-L
+        -:    3:// ! B &L = b
+        -:    4:// &L{(a0 === B₀), (a1 === B₁)}
+    #####:    5:fn Term wnf_eql_sup_l(Term sup, Term b) {
+    #####:    6:  ITRS++;
+    #####:    7:  u32  lab = term_ext(sup);
+    #####:    8:  u32  loc = term_val(sup);
+    #####:    9:  Term a0  = heap_read(loc + 0);
+    #####:   10:  Term a1  = heap_read(loc + 1);
+    #####:   11:  u64  dup_loc = heap_alloc(2);
+    #####:   12:  heap_set(dup_loc + 0, b);
+    #####:   13:  Term b0 = term_new_dp0(lab, dup_loc);
+    #####:   14:  Term b1 = term_new_dp1(lab, dup_loc);
+    #####:   15:  Term eq0 = term_new_eql(a0, b0);
+    #####:   16:  Term eq1 = term_new_eql(a1, b1);
+    #####:   17:  return term_new_sup(lab, eq0, eq1);
+        -:   18:}
+        -:   19:
+        -:   20:// (a === &L{b0,b1})
+        -:   21:// ---------------------- EQL-SUP-R
+        -:   22:// ! A &L = a
+        -:   23:// &L{(A₀ === b0), (A₁ === b1)}
+    #####:   24:fn Term wnf_eql_sup_r(Term a, Term sup) {
+    #####:   25:  ITRS++;
+    #####:   26:  u32  lab = term_ext(sup);
+    #####:   27:  u32  loc = term_val(sup);
+    #####:   28:  Term b0  = heap_read(loc + 0);
+    #####:   29:  Term b1  = heap_read(loc + 1);
+    #####:   30:  u64  dup_loc = heap_alloc(2);
+    #####:   31:  heap_set(dup_loc + 0, a);
+    #####:   32:  Term a0 = term_new_dp0(lab, dup_loc);
+    #####:   33:  Term a1 = term_new_dp1(lab, dup_loc);
+    #####:   34:  Term eq0 = term_new_eql(a0, b0);
+    #####:   35:  Term eq1 = term_new_eql(a1, b1);
+    #####:   36:  return term_new_sup(lab, eq0, eq1);
+        -:   37:}

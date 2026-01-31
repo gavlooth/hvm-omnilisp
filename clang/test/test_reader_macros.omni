@@ -1,0 +1,64 @@
+;; test_reader_macros.omni - Tests for reader macro syntax
+
+;; Reader macros start with # and transform input at read time
+
+;; TEST: #{} - dict/hash literal
+;; EXPECT: 10
+(get #{:a 10 :b 20} :a)
+
+;; TEST: #{} empty dict
+;; EXPECT: true
+(empty? #{})
+
+;; TEST: #{} with string keys
+;; EXPECT: 42
+(get #{"answer" 42 "question" 0} "answer")
+
+;; TEST: #{} can represent sets (elements map to true)
+;; EXPECT: true
+(get #{1 2 3} 2)
+
+;; TEST: #\ - character literal
+;; EXPECT: true
+(char? #\a)
+
+;; TEST: #\ uppercase
+;; EXPECT: true
+(char? #\Z)
+
+;; TEST: #\newline - named character
+;; EXPECT: true
+(= #\newline (char 10))
+
+;; TEST: #\space - space character
+;; EXPECT: true
+(= #\space (char 32))
+
+;; TEST: #\tab - tab character
+;; EXPECT: true
+(= #\tab (char 9))
+
+;; TEST: #\xNN - hex character code
+;; EXPECT: true
+(= #\x41 #\A)
+
+;; TEST: ' - quote reader macro
+;; EXPECT: (1 2 3)
+'(1 2 3)
+
+;; TEST: ` - quasiquote reader macro
+;; EXPECT: (1 2 3)
+`(1 2 3)
+
+;; TEST: , - unquote reader macro (inside quasiquote)
+;; EXPECT: (1 10 3)
+(let [x 10]
+  `(1 ,x 3))
+
+;; TEST: ,@ - splice-unquote
+;; EXPECT: (1 2 3 4 5)
+(let [mid '(2 3 4)]
+  `(1 ,@mid 5))
+
+;; EXPECT: true
+(and (char? #\a) (dict? #{}))

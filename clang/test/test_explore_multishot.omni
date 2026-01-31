@@ -1,0 +1,54 @@
+;; test_explore_multishot.lisp - Multi-shot exploration with effects
+;; Tests for effect-based exploration that uses HVM4 superposition
+
+;; NOTE: In the C interpreter, explore/choice returns only the first option.
+;; In HVM4, these create superpositions that explore all paths in parallel.
+
+;; TEST: Simple constraint solving - find x where x^2 = 4
+;; C interpreter returns first choice (1) even though it doesn't satisfy constraint
+;; In HVM4, this would explore all and find 2
+;; EXPECT: 1
+(let [x (explore '(1 2 3 4))]
+  x)
+
+;; TEST: Exploring handler pattern (effect-based)
+;; This is how you'd write exploration with effects
+;; The handle captures the exploration and the resume continues it
+;; EXPECT: 1
+(handle
+  (let [x (explore '(1 2 3))]
+    x)
+  (choice [opts resume]
+    (resume (head opts))))
+
+;; TEST: Exploring with require pattern - finds first valid
+;; EXPECT: 4
+(explore-first '(1 2 3 4 5) (lambda [x] (> x 3)))
+
+;; TEST: Pythagorean triple search
+;; Find a, b, c where a^2 + b^2 = c^2 and a < b < c <= 10
+;; This demonstrates backtracking search pattern
+;; In C interpreter, explores first values only
+;; EXPECT: 3
+(explore-first '(3 4 5 6)
+  (lambda [a]
+    (explore-first '(4 5 6 7 8)
+      (lambda [b]
+        (explore-first '(5 6 7 8 9 10)
+          (lambda [c]
+            (and (< a b)
+                 (and (< b c)
+                      (= (+ (* a a) (* b b)) (* c c))))))))))
+
+;; TEST: Map with filtering (parallel in HVM4)
+;; Double only even numbers
+;; EXPECT: (4 8 12)
+(explore-all '(1 2 3 4 5 6)
+  (lambda [x]
+    (if (= 0 (% x 2))
+      (* x 2)
+      nothing)))
+
+;; TEST: Range exploration
+;; EXPECT: 5
+(explore-range 5 10)

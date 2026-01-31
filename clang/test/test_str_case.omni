@@ -1,0 +1,64 @@
+;; test_str_case.lisp - Tests for case transformations
+
+;; Str-upper converts to uppercase
+;; TEST: upper basic
+;; EXPECT: "HELLO"
+(str-upper "hello")
+
+;; TEST: upper mixed
+;; EXPECT: "HELLO WORLD"
+(str-upper "Hello World")
+
+;; TEST: upper already upper
+;; EXPECT: "HELLO"
+(str-upper "HELLO")
+
+;; TEST: upper with numbers
+;; EXPECT: "ABC123"
+(str-upper "abc123")
+
+;; TEST: upper empty
+;; EXPECT: ""
+(str-upper "")
+
+;; Str-lower converts to lowercase
+;; TEST: lower basic
+;; EXPECT: "hello"
+(str-lower "HELLO")
+
+;; TEST: lower mixed
+;; EXPECT: "hello world"
+(str-lower "Hello World")
+
+;; TEST: lower already lower
+;; EXPECT: "hello"
+(str-lower "hello")
+
+;; TEST: lower with numbers
+;; EXPECT: "abc123"
+(str-lower "ABC123")
+
+;; TEST: lower empty
+;; EXPECT: ""
+(str-lower "")
+
+;; Str-capitalize capitalizes first letter
+;; TEST: capitalize
+;; EXPECT: "Hello"
+(str-capitalize "hello")
+
+;; TEST: capitalize already
+;; EXPECT: "Hello"
+(str-capitalize "Hello")
+
+;; TEST: capitalize upper
+;; EXPECT: "HELLO"
+(str-capitalize "hELLO")
+
+;; TEST: capitalize single
+;; EXPECT: "A"
+(str-capitalize "a")
+
+;; TEST: capitalize empty
+;; EXPECT: ""
+(str-capitalize "")

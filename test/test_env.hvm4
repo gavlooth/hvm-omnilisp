@@ -1,0 +1,27 @@
+// Tests for Environment functions
+// Run from project root: ./hvm4/clang/main test/test_env.hvm4
+
+#include "../lib/runtime.hvm4"
+
+// Test @omni_env_extend adds a value to env
+@test_env_extend =
+  !!&env = #NIL;
+  !!&new_env = @omni_env_extend(env)(#Cst{42});
+  (λ{
+    #CON: λ&h. λ&t. 1
+    _: 0
+  })(new_env)
+// Expected: 1
+
+// Test @omni_env_get retrieves value at index 0
+@test_env_get_0 =
+  !!&env = #CON{#Cst{100}, #NIL};
+  !!&val = @omni_env_get(env)(0);
+  (λ{
+    #Cst: λ&n. (λ{100: 1; _: 0})(n)
+    _: 0
+  })(val)
+// Expected: 1
+
+// Run all tests - sum should be 2
+@main = (@test_env_extend + @test_env_get_0)

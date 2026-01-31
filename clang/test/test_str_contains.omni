@@ -1,0 +1,59 @@
+;; test_str_contains.lisp - Tests for string containment
+
+;; Str-contains? checks if string contains substring
+;; TEST: contains - middle
+;; EXPECT: true
+(str-contains? "hello world" "lo wo")
+
+;; TEST: contains - start
+;; EXPECT: true
+(str-contains? "hello world" "hello")
+
+;; TEST: contains - end
+;; EXPECT: true
+(str-contains? "hello world" "world")
+
+;; TEST: contains - not found
+;; EXPECT: false
+(str-contains? "hello world" "xyz")
+
+;; TEST: contains - empty needle
+;; EXPECT: true
+(str-contains? "hello" "")
+
+;; TEST: contains - in empty haystack
+;; EXPECT: false
+(str-contains? "" "x")
+
+;; TEST: contains - single char found
+;; EXPECT: true
+(str-contains? "hello" "e")
+
+;; TEST: contains - single char not found
+;; EXPECT: false
+(str-contains? "hello" "x")
+
+;; TEST: contains - whole string
+;; EXPECT: true
+(str-contains? "hello" "hello")
+
+;; TEST: contains - needle longer than haystack
+;; EXPECT: false
+(str-contains? "hi" "hello")
+
+;; Index-of returns position or -1
+;; TEST: index-of found
+;; EXPECT: 4
+(str-index-of "hello world" "o")
+
+;; TEST: index-of not found
+;; EXPECT: -1
+(str-index-of "hello" "x")
+
+;; TEST: index-of at start
+;; EXPECT: 0
+(str-index-of "hello" "h")
+
+;; TEST: index-of substring
+;; EXPECT: 6
+(str-index-of "hello world" "world")

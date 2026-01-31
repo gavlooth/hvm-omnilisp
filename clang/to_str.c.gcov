@@ -1,0 +1,25 @@
+        -:    0:Source:../hvm4/clang/nick/to_str.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+     1581:    1:fn void nick_to_str(u32 name, char *buf, u32 buf_size) {
+        -:    2:  // Extract 4 characters from the 24-bit name (6 bits each)
+        -:    3:  // Names are stored most significant first
+        -:    4:  char tmp[5];
+     1581:    5:  int len = 0;
+     7905:    6:  for (int i = 3; i >= 0; i--) {
+     6324:    7:    int b64 = (name >> (i * 6)) & 0x3F;
+     6324:    8:    if (b64 != 0 || len > 0) {  // Skip leading underscores (zeros)
+     4896:    9:      tmp[len++] = nick_b64_to_letter(b64);
+        -:   10:    }
+        -:   11:  }
+     1581:   12:  if (len == 0) {
+       25:   13:    tmp[len++] = '_';  // Empty name becomes single underscore
+        -:   14:  }
+     1581:   15:  tmp[len] = '\0';
+        -:   16:  // Copy to output buffer
+     6502:   17:  for (int i = 0; i < len && i < (int)buf_size - 1; i++) {
+     4921:   18:    buf[i] = tmp[i];
+        -:   19:  }
+    1581*:   20:  buf[len < (int)buf_size - 1 ? len : buf_size - 1] = '\0';
+     1581:   21:}

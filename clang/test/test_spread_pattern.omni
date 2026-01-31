@@ -1,0 +1,58 @@
+;; test_spread_pattern.omni - Tests for spread operator (..) in patterns
+
+;; The spread operator .. captures remaining elements in patterns
+;; NOTE: OmniLisp uses .. NOT & for rest parameters
+
+;; TEST: spread in array pattern
+;; EXPECT: (3 4 5)
+(match [1 2 3 4 5]
+  [a b .. rest] rest)
+
+;; TEST: spread captures first elements
+;; EXPECT: 1
+(match [1 2 3 4 5]
+  [first .. rest] first)
+
+;; TEST: spread with single element captured
+;; EXPECT: (2 3 4 5)
+(match [1 2 3 4 5]
+  [head .. tail] tail)
+
+;; TEST: spread in function parameters
+(define sum-all [first .. rest]
+  (foldl + first rest))
+
+;; EXPECT: 15
+(sum-all 1 2 3 4 5)
+
+;; TEST: spread captures empty when exhausted
+;; EXPECT: ()
+(match [1 2]
+  [a b .. rest] rest)
+
+;; TEST: spread in let destructuring
+;; EXPECT: (3 4 5)
+(let [[x y .. remaining] [1 2 3 4 5]]
+  remaining)
+
+;; TEST: spread with computation on rest
+;; EXPECT: 12
+(match [1 2 3 4 5]
+  [a b .. rest] (foldl + 0 rest))
+
+;; TEST: multiple elements before spread
+;; EXPECT: 3
+(match [1 2 3 4 5]
+  [a b c .. rest] c)
+
+;; TEST: spread in nested pattern
+;; EXPECT: (3 4)
+(match [[1 2] [3 4]]
+  [[a b] .. rest] (head rest))
+
+;; TEST: spread in define parameters
+(define make-list [head .. tail]
+  (cons head tail))
+
+;; EXPECT: (1 2 3 4)
+(make-list 1 2 3 4)

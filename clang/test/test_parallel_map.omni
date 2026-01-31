@@ -1,0 +1,39 @@
+;; test_parallel_map.lisp - Tests for map operations
+
+;; Define map
+(define map [f] [lst]
+  (match lst
+    ()       '()
+    (h .. t) (cons (f h) (map f t))))
+
+(define double [x] (* x 2))
+(define square [x] (* x x))
+
+;; TEST: map empty list
+;; EXPECT: ()
+(map double '())
+
+;; TEST: map single element
+;; EXPECT: (4)
+(map double '(2))
+
+;; TEST: map doubles list
+;; EXPECT: (2 4 6 8 10)
+(map double '(1 2 3 4 5))
+
+;; TEST: map squares
+;; EXPECT: (1 4 9 16 25)
+(map square '(1 2 3 4 5))
+
+;; TEST: nested map
+;; EXPECT: (4 8 12)
+(map double (map double '(1 2 3)))
+
+;; Sum to verify
+(define sum [lst]
+  (match lst
+    ()       0
+    (h .. t) (+ h (sum t))))
+
+;; EXPECT: 30
+(sum (map double '(1 2 3 4 5)))

@@ -54,17 +54,16 @@ This document compares features in the hvm-omnilisp implementation against the o
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Constructor patterns | ✅ | `[Point(x y) ...]` |
-| Literal patterns | ✅ | `[0] [1] ["str"]` |
+| Constructor patterns | ✅ | `(Point x y) result` |
+| Literal patterns | ✅ | `0 "zero"`, `1 "one"` |
 | Wildcard `_` | ✅ | Match anything |
-| Variable binding | ✅ | `[x]` binds to x |
-| Rest/spread `..` | ✅ | `[h .. t]` in list patterns |
-| Guard `&` | ✅ | `[x & (> x 0)]` |
-| `:when` guard | ✅ | `[x :when (> x 0)]` in match clause |
-| `as` patterns | ✅ | `[Point(x y) as p]` |
-| String patterns | ✅ | `["hello"]` matches string |
-| Or patterns | ❌ | `[0 \| 1]` match either |
-| View patterns | ❌ | `[(@ len n) & (> n 0)]` |
+| Variable binding | ✅ | `x` binds to x |
+| Rest/spread `..` | ✅ | `(h .. t)` in list patterns |
+| Guard `&` | ✅ | `x & (> x 0) result` |
+| `as` patterns | ✅ | `(Point x y) as p result` |
+| String patterns | ✅ | `"hello"` matches string |
+| Or patterns | ✅ | `(or 0 1) "binary"` |
+| View patterns | ❌ | `(-> len n) & (> n 0)` |
 
 ---
 

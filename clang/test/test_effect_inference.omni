@@ -1,0 +1,89 @@
+;; test_effect_inference.omni - Tests for effect handling patterns
+;; Tests various effect patterns with handle/perform
+
+;; =========================================================================
+;; PURE COMPUTATIONS (NO EFFECTS)
+;; =========================================================================
+
+;; TEST: pure arithmetic
+;; EXPECT: 3
+(+ 1 2)
+
+;; TEST: pure nested arithmetic
+;; EXPECT: 6
+(+ 1 (+ 2 3))
+
+;; TEST: identity function
+;; EXPECT: 42
+((lambda [x] x) 42)
+
+;; TEST: constant function
+;; EXPECT: 42
+((lambda [x] 42) 99)
+
+;; TEST: pure match expression
+;; EXPECT: "zero"
+(match 0
+  0 "zero"
+  _ "other")
+
+;; TEST: pure if expression
+;; EXPECT: 5
+(if (> 5 0) 5 (- 0 5))
+
+;; TEST: pure let binding
+;; EXPECT: 11
+(let [y (* 5 2)] (+ y 1))
+
+;; =========================================================================
+;; EFFECTFUL COMPUTATIONS
+;; =========================================================================
+
+;; TEST: perform with handler
+;; EXPECT: "logged"
+(handle
+  (perform log "message")
+  (log [msg resume] (resume "logged")))
+
+;; TEST: state effect read
+;; EXPECT: 42
+(handle
+  (perform get-state nothing)
+  (get-state [_ resume] (resume 42)))
+
+;; TEST: state effect write
+;; EXPECT: "written"
+(handle
+  (perform set-state 100)
+  (set-state [val resume] (resume "written")))
+
+;; =========================================================================
+;; HANDLED EFFECTS
+;; =========================================================================
+
+;; TEST: handled effects return value
+;; EXPECT: 10
+(handle
+  (+ (perform get-x nothing) 5)
+  (get-x [_ resume] (resume 5)))
+
+;; =========================================================================
+;; COMPOSED HANDLERS
+;; =========================================================================
+
+;; TEST: nested handlers
+;; EXPECT: 30
+(handle
+  (handle
+    (+ (perform outer-val nothing) (perform inner-val nothing))
+    (inner-val [_ resume] (resume 10)))
+  (outer-val [_ resume] (resume 20)))
+
+;; TEST: effectful in body with handler
+;; EXPECT: 99
+(handle
+  (do (perform side-effect "msg") 99)
+  (side-effect [msg resume] (resume nothing)))
+
+;; EXPECT: true
+(= 42 (handle (perform val nothing) (val [_ resume] (resume 42))))

@@ -2,7 +2,8 @@
 // Safe handle-based memory management for FFI pointers
 // Uses generation counters for ABA protection
 
-#include "../../../hvm4/clang/hvm4.c"
+// hvm4.c is already included by main.c before this file
+// #include "../../../hvm4/clang/hvm4.c"
 
 // =============================================================================
 // Ownership Kinds
@@ -114,7 +115,8 @@ fn Term omni_ffi_handle_alloc(void *ptr, OmniOwnership ownership, u32 type_id) {
   if (OMNI_HANDLES.free_head == UINT32_MAX) {
     if (!omni_ffi_handle_grow()) {
       // Out of handles - return error
-      return term_new(CTR, OMNI_NAM_ERR, 0);
+      Term args[1] = {term_new_num(0)};
+      return term_new_ctr(OMNI_NAM_ERR, 1, args);
     }
   }
 
@@ -130,10 +132,11 @@ fn Term omni_ffi_handle_alloc(void *ptr, OmniOwnership ownership, u32 type_id) {
   slot->type_id = type_id;
   // generation already set (preserved across reuse)
 
-  // Return #Hndl{idx, gen} as a CTR node
+  // Return #Hndl{packed} as a CTR node
   // Pack idx (20 bits) and gen (12 bits) into val
   u32 packed = (idx & 0xFFFFF) | ((slot->generation & 0xFFF) << 20);
-  return term_new(CTR, OMNI_NAM_HNDL, heap_alloc(1, &packed));
+  Term args[1] = {term_new_num(packed)};
+  return term_new_ctr(OMNI_NAM_HNDL, 1, args);
 }
 
 // =============================================================================
@@ -142,10 +145,13 @@ fn Term omni_ffi_handle_alloc(void *ptr, OmniOwnership ownership, u32 type_id) {
 
 // Free a handle and optionally the underlying pointer
 fn int omni_ffi_handle_free(Term handle) {
-  if (term_tag(handle) != CTR) return 0;
+  // Check if it's a constructor with 1 arg (C01)
+  if (term_tag(handle) != C01) return 0;
   if (term_ext(handle) != OMNI_NAM_HNDL) return 0;
 
-  u32 packed = heap[term_val(handle)];
+  // Get packed value from the constructor's argument
+  Term arg = HEAP[term_val(handle)];
+  u32 packed = term_val(arg);
   u32 idx = packed & 0xFFFFF;
   u32 gen = (packed >> 20) & 0xFFF;
 
@@ -183,10 +189,11 @@ fn int omni_ffi_handle_free(Term handle) {
 
 // Get the pointer from a handle (with validation)
 fn void* omni_ffi_handle_deref(Term handle) {
-  if (term_tag(handle) != CTR) return NULL;
+  if (term_tag(handle) != C01) return NULL;
   if (term_ext(handle) != OMNI_NAM_HNDL) return NULL;
 
-  u32 packed = heap[term_val(handle)];
+  Term arg = HEAP[term_val(handle)];
+  u32 packed = term_val(arg);
   u32 idx = packed & 0xFFFFF;
   u32 gen = (packed >> 20) & 0xFFF;
 
@@ -204,10 +211,11 @@ fn void* omni_ffi_handle_deref(Term handle) {
 
 // Get handle slot info (for ownership checking)
 fn OmniHandleSlot* omni_ffi_handle_slot(Term handle) {
-  if (term_tag(handle) != CTR) return NULL;
+  if (term_tag(handle) != C01) return NULL;
   if (term_ext(handle) != OMNI_NAM_HNDL) return NULL;
 
-  u32 packed = heap[term_val(handle)];
+  Term arg = HEAP[term_val(handle)];
+  u32 packed = term_val(arg);
   u32 idx = packed & 0xFFFFF;
   u32 gen = (packed >> 20) & 0xFFF;
 
@@ -308,21 +316,18 @@ fn Term omni_ffi_ptr_wrap(void *ptr) {
   u32 lo = (u32)(p & 0xFFFFFFFF);
   u32 hi = (u32)(p >> 32);
 
-  u32 loc = heap_alloc(2, NULL);
-  heap[loc] = hi;
-  heap[loc + 1] = lo;
-
-  return term_new(CTR, OMNI_NAM_PTR, loc);
+  Term args[2] = {term_new_num(hi), term_new_num(lo)};
+  return term_new_ctr(OMNI_NAM_PTR, 2, args);
 }
 
 // Unwrap a #Ptr{hi, lo} to a raw pointer
 fn void* omni_ffi_ptr_unwrap(Term ptr_term) {
-  if (term_tag(ptr_term) != CTR) return NULL;
+  if (term_tag(ptr_term) != C02) return NULL;
   if (term_ext(ptr_term) != OMNI_NAM_PTR) return NULL;
 
   u32 loc = term_val(ptr_term);
-  u32 hi = heap[loc];
-  u32 lo = heap[loc + 1];
+  u32 hi = term_val(HEAP[loc]);
+  u32 lo = term_val(HEAP[loc + 1]);
 
   uintptr_t p = ((uintptr_t)hi << 32) | (uintptr_t)lo;
   return (void*)p;

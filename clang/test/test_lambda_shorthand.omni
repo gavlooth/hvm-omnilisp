@@ -1,0 +1,43 @@
+;; test_lambda_shorthand.lisp - Tests for lambda shorthand syntax
+
+;; The \ (backslash) is shorthand for lambda
+;; TEST: basic shorthand
+;; EXPECT: 6
+((\ [x] (* x 2)) 3)
+
+;; TEST: shorthand with multiple params
+;; EXPECT: 10
+((\ [a b] (+ a b)) 4 6)
+
+;; TEST: shorthand curried
+;; EXPECT: 12
+(((\ [x] [y] (* x y)) 3) 4)
+
+;; TEST: shorthand in map
+;; EXPECT: (2 4 6)
+(map (\ [x] (* x 2)) '(1 2 3))
+
+;; TEST: fn is also shorthand
+;; EXPECT: 9
+((fn [x] (* x x)) 3)
+
+;; TEST: λ unicode shorthand
+;; EXPECT: 5
+((λ [x] (+ x 2)) 3)
+
+;; TEST: shorthand with rest
+;; EXPECT: 6
+((\ [first .. rest] (+ first (fold + 0 rest))) 1 2 3)
+
+;; TEST: shorthand in let
+;; EXPECT: 25
+(let [square (\ [x] (* x x))]
+  (square 5))
+
+;; TEST: nested shorthands
+;; EXPECT: 20
+((\ [f] (\ [x] (f (f x)))) (\ [n] (+ n 5)) 10)
+
+;; TEST: shorthand returns shorthand
+;; EXPECT: 7
+(((\ [n] (\ [x] (+ x n))) 3) 4)

@@ -1,0 +1,124 @@
+// OmniLisp Runtime Tests: Environment Operations
+// Tests @omni_env_get, @omni_env_extend, @omni_env_extend_many
+// Tests @omni_menv_* functions
+
+// =============================================================================
+// Environment Get/Extend Tests
+// =============================================================================
+
+// Test: extend then get index 0 returns the extended value
+@test_env_extend_get_0 =
+  !!&env = #NIL;
+  !!&env1 = @omni_env_extend(env)(#Cst{42});
+  !!&val = @omni_env_get(env1)(0);
+  @assert_num_eq(#env_extend_get_0)(#Cst{42})(val)
+
+// Test: extend twice, get index 0 returns most recent
+@test_env_extend_get_recent =
+  !!&env = #NIL;
+  !!&env1 = @omni_env_extend(env)(#Cst{10});
+  !!&env2 = @omni_env_extend(env1)(#Cst{20});
+  !!&val = @omni_env_get(env2)(0);
+  @assert_num_eq(#env_get_recent)(#Cst{20})(val)
+
+// Test: extend twice, get index 1 returns older value
+@test_env_extend_get_older =
+  !!&env = #NIL;
+  !!&env1 = @omni_env_extend(env)(#Cst{10});
+  !!&env2 = @omni_env_extend(env1)(#Cst{20});
+  !!&val = @omni_env_get(env2)(1);
+  @assert_num_eq(#env_get_older)(#Cst{10})(val)
+
+// Test: get from empty env returns error
+@test_env_get_empty =
+  !!&val = @omni_env_get(#NIL)(0);
+  @assert_err(#env_get_empty)(#sym_unbound)(val)
+
+// Test: get out of bounds returns error
+@test_env_get_oob =
+  !!&env = @omni_env_extend(#NIL)(#Cst{1});
+  !!&val = @omni_env_get(env)(5);
+  @assert_err(#env_get_oob)(#sym_unbound)(val)
+
+// Test: extend_many adds multiple bindings
+@test_env_extend_many =
+  !!&env = #NIL;
+  !!&vals = #CON{#Cst{1}, #CON{#Cst{2}, #CON{#Cst{3}, #NIL}}};
+  !!&env1 = @omni_env_extend_many(env)(vals);
+  !!&v0 = @omni_env_get(env1)(0);
+  !!&v1 = @omni_env_get(env1)(1);
+  !!&v2 = @omni_env_get(env1)(2);
+  // extend_many adds in order, so first element is at highest index
+  !!&sum = (λ{#Cst: λ&a. λ{#Cst: λ&b. λ{#Cst: λ&c. (a + b + c); _: λ&u_. 0}(v2); _: λ&u_. 0}(v1); _: λ&u_. 0})(v0);
+  @assert_eq(#env_extend_many)(#Cst{6})(#Cst{sum})
+
+// Test: extend preserves different value types
+@test_env_extend_types =
+  !!&env = #NIL;
+  !!&env1 = @omni_env_extend(env)(#True{});
+  !!&env2 = @omni_env_extend(env1)(#NIL);
+  !!&env3 = @omni_env_extend(env2)(#Sym{1234});
+  !!&v0 = @omni_env_get(env3)(0);
+  !!&v1 = @omni_env_get(env3)(1);
+  !!&v2 = @omni_env_get(env3)(2);
+  !!&check = (λ{#Sym: λ&s. λ{#NIL: λ{#True: 1; _: λ&u_. 0}(v2); _: λ&u_. 0}(v1); _: λ&u_. 0})(v0);
+  @assert_eq(#env_extend_types)(#Cst{1})(#Cst{check})
+
+// =============================================================================
+// Meta-Environment Tests
+// =============================================================================
+
+// Test: menv_empty has level 0
+@test_menv_empty_level =
+  !!&level = @omni_menv_level(@omni_menv_empty);
+  @assert_num_eq(#menv_empty_level)(#Cst{0})(level)
+
+// Test: menv_new creates menv with correct level
+@test_menv_new_level =
+  !!&menv = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{5});
+  !!&level = @omni_menv_level(menv);
+  @assert_num_eq(#menv_new_level)(#Cst{5})(level)
+
+// Test: menv_child increments level
+@test_menv_child_level =
+  !!&parent = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{2});
+  !!&child = @omni_menv_child(parent);
+  !!&level = @omni_menv_level(child);
+  @assert_num_eq(#menv_child_level)(#Cst{3})(level)
+
+// Test: menv_extend creates new menv with updated env
+@test_menv_extend =
+  !!&menv = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{0});
+  !!&new_env = #CON{#Cst{42}, #NIL};
+  !!&menv2 = @omni_menv_extend(menv)(new_env);
+  // Extract env from menv2 and check first binding
+  !!&env = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. e})(menv2);
+  !!&val = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(env);
+  @assert_num_eq(#menv_extend)(#Cst{42})(val)
+
+// Test: menv_extend preserves level
+@test_menv_extend_preserves_level =
+  !!&menv = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{7});
+  !!&menv2 = @omni_menv_extend(menv)(#CON{#Cst{1}, #NIL});
+  !!&level = @omni_menv_level(menv2);
+  @assert_num_eq(#menv_extend_level)(#Cst{7})(level)
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@env_tests = #CON{@test_env_extend_get_0,
+  #CON{@test_env_extend_get_recent,
+  #CON{@test_env_extend_get_older,
+  #CON{@test_env_get_empty,
+  #CON{@test_env_get_oob,
+  #CON{@test_env_extend_many,
+  #CON{@test_env_extend_types,
+  #CON{@test_menv_empty_level,
+  #CON{@test_menv_new_level,
+  #CON{@test_menv_child_level,
+  #CON{@test_menv_extend,
+  #CON{@test_menv_extend_preserves_level,
+  #NIL}}}}}}}}}}}}
+
+@main = @run_tests(@env_tests)

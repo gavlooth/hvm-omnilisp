@@ -1,0 +1,61 @@
+;; test_print.lisp - Tests for print functions
+
+;; Print outputs value to stdout
+;; TEST: print returns nil
+;; EXPECT: nil
+(print "hello")
+
+;; TEST: println adds newline
+;; EXPECT: nil
+(println "world")
+
+;; TEST: print multiple args
+;; EXPECT: nil
+(print "a" "b" "c")
+
+;; TEST: print integer
+;; EXPECT: nil
+(print 42)
+
+;; TEST: print list
+;; EXPECT: nil
+(print '(1 2 3))
+
+;; TEST: print dict
+;; EXPECT: nil
+(print #{"a" 1})
+
+;; Pr for programmer-readable output
+;; TEST: pr string (with quotes)
+;; EXPECT: nil
+(pr "hello")
+
+;; TEST: prn with newline
+;; EXPECT: nil
+(prn "world")
+
+;; Print to string
+;; TEST: print-str
+;; EXPECT: "hello world"
+(print-str "hello" " " "world")
+
+;; TEST: pr-str with quotes
+;; EXPECT: "\"hello\""
+(pr-str "hello")
+
+;; TEST: pr-str list
+;; EXPECT: "(1 2 3)"
+(pr-str '(1 2 3))
+
+;; Formatted print
+;; TEST: printf style
+;; EXPECT: nil
+(printf "Value: %d\n" 42)
+
+;; TEST: sprintf
+;; EXPECT: "Hello Alice!"
+(sprintf "Hello %s!" "Alice")
+
+;; TEST: sprintf with multiple
+;; EXPECT: "x=10, y=20"
+(sprintf "x=%d, y=%d" 10 20)

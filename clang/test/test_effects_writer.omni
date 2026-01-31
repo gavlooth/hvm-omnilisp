@@ -1,0 +1,60 @@
+;; test_effects_writer.omni - Tests for Writer effect pattern
+;; Writer effect accumulates output (logs)
+
+;; TEST: single tell
+;; EXPECT: "logged"
+(handle
+  (do
+    (perform tell "message")
+    "logged")
+  (tell [msg resume] (resume msg)))
+
+;; TEST: multiple tells
+;; EXPECT: "done"
+(handle
+  (do
+    (perform tell "step 1")
+    (perform tell "step 2")
+    (perform tell "step 3")
+    "done")
+  (tell [msg resume] (resume msg)))
+
+;; Log and compute function
+(define log-compute [x]
+  (handle
+    (let [doubled (* x 2)]
+      (perform log-msg "doubled")
+      (+ doubled 10))
+    (log-msg [msg resume] (resume msg))))
+
+;; TEST: log and compute
+;; EXPECT: 30
+(log-compute 10)
+
+;; TEST: log with value
+;; EXPECT: 42
+(handle
+  (let [x (perform get-val)]
+    (perform tell-val x)
+    x)
+  (get-val [resume] (resume 42))
+  (tell-val [msg resume] (resume msg)))
+
+;; Trace effect for debugging
+;; TEST: trace calls
+;; EXPECT: "result"
+(handle
+  (do
+    (perform trace "enter")
+    (perform trace "process")
+    "result")
+  (trace [msg resume] (resume msg)))
+
+;; EXPECT: true
+(handle
+  (do
+    (if true
+      (perform log "true")
+      (perform log "false"))
+    true)
+  (log [msg resume] (resume msg)))

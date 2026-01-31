@@ -1,0 +1,22 @@
+;; bench_parallel_map.lisp - Benchmark for map operations
+;; Run with: ./main -s bench_parallel_map.lisp
+
+;; Map operation
+(define map [f] [lst]
+  (match lst
+    ()       nil
+    (h .. t) (cons (f h) (map f t))))
+
+;; Sum for verification
+(define sum [lst]
+  (match lst
+    ()       0
+    (h .. t) (+ h (sum t))))
+
+(define square [x] (* x x))
+
+;; Benchmark: map square over list
+(define result (sum (map square '(1 2 3 4 5))))
+
+;; EXPECT-FINAL: 55
+result

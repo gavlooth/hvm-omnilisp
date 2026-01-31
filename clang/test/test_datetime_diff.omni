@@ -1,0 +1,45 @@
+;; test_datetime_diff.omni - Tests for numeric difference operations
+
+;; TEST: simple subtract
+;; EXPECT: 1
+(- 2 1)
+
+;; TEST: diff larger
+;; EXPECT: 24
+(- 26 2)
+
+;; TEST: diff negative result
+;; EXPECT: -5
+(- 5 10)
+
+;; Diff function
+(define diff [a] [b] (- a b))
+
+;; TEST: diff function
+;; EXPECT: 90
+(diff 100 10)
+
+;; TEST: diff zero
+;; EXPECT: 0
+(diff 50 50)
+
+;; Absolute difference
+(define abs-diff [a] [b]
+  (let [d (- a b)]
+    (if (< d 0) (- 0 d) d)))
+
+;; TEST: abs diff positive
+;; EXPECT: 5
+(abs-diff 10 5)
+
+;; TEST: abs diff negative
+;; EXPECT: 5
+(abs-diff 5 10)
+
+;; TEST: chained diff
+;; EXPECT: 36
+(- (- 50 10) 4)
+
+;; EXPECT: true
+(let [result (- 10 3)]
+  (>= result 0))

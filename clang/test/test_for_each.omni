@@ -1,0 +1,51 @@
+;; test_for_each.omni - Tests for for-each (side-effecting iteration)
+
+;; For-each applies function for side effects, returns nothing
+(define for-each [f] [lst]
+  (match lst
+    ()       nothing
+    (h .. t) (do (f h) (for-each f t))))
+
+;; TEST: for-each returns nothing
+;; EXPECT: nothing
+(for-each (lambda [x] x) '(1 2 3))
+
+;; To test for-each processes all elements, use foldl instead
+;; TEST: foldl processes all elements (for-each alternative)
+;; EXPECT: 6
+(foldl (lambda [acc] [x] (+ acc x)) 0 '(1 2 3))
+
+;; TEST: for-each empty
+;; EXPECT: nothing
+(for-each (lambda [x] x) '())
+
+;; TEST: for-each with identity (side effect)
+;; EXPECT: nothing
+(for-each (lambda [x] x) '("a" "b" "c"))
+
+;; For-each-indexed
+(define for-each-indexed [f] [lst]
+  (let helper [l lst] [i 0]
+    (match l
+      ()       nothing
+      (h .. t) (do (f i h) (helper t (+ i 1))))))
+
+;; TEST: for-each-indexed
+;; EXPECT: nothing
+(for-each-indexed (lambda [i] [x] i) '(a b c))
+
+;; For-each with early exit uses take-while for counting
+(define count-while [pred] [lst]
+  (match lst
+    ()       0
+    (h .. t) (if (pred h)
+               (+ 1 (count-while pred t))
+               0)))
+
+;; TEST: count-while stops at predicate failure
+;; EXPECT: 3
+(count-while (lambda [x] (< x 4)) '(1 2 3 4 5))
+
+;; TEST: count elements
+;; EXPECT: 5
+(length '(1 2 3 4 5))

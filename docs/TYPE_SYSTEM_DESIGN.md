@@ -55,7 +55,7 @@ Gradual multiple dispatch is achieved through **multiple `define` declarations**
 ```
 
 **Match expressions:**
-Pattern matching uses single `[]` brackets for pattern-result pairs:
+Pattern matching uses flat pattern-result pairs with `&` for guards:
 
 ## The Problem: Multiple Dispatch + Covariant Containers
 
@@ -530,6 +530,67 @@ The algorithm extends naturally to multiple parameters:
 ;; Can we detect at module load time?
 ;; Solution: Module-level disambiguation metadata
 ```
+
+---
+
+## Superposition Types
+
+OmniLisp's type system includes first-class support for HVM4's superposition semantics:
+
+### `{(Sup T)}` - Superposition Type
+
+A value of type `{(Sup T)}` represents a non-deterministic superposition of values of type `T`. This is the type-level representation of HVM4's parallel branching:
+
+```omnilisp
+;; fork2 creates a superposition
+(define both-values {(Sup Int)}
+  (fork2 1 2))  ; Returns 1 OR 2 (computed in parallel)
+
+;; Operations on superpositions distribute
+(define doubled {(Sup Int)}
+  (* 2 both-values))  ; Returns 2 OR 4
+
+;; Superposition-returning function
+(define flip [p {Float}] {(Sup Bool)}
+  (if (< (random) p) true false))
+```
+
+**Key Properties:**
+- `{(Sup T)} <: T` for all `T` (superposition collapses to element)
+- Pure functions over superpositions parallelize automatically
+- Effectful functions must handle each branch explicitly
+
+### `{(WSup T)}` - Weighted Superposition Type
+
+For probabilistic programming, weighted superpositions track probability weights:
+
+```omnilisp
+;; sample creates a weighted superposition
+(define coin-bias {(WSup Float)}
+  (sample (beta 2 2)))  ; Prior distribution
+
+;; observe updates weights (soft conditioning)
+(observe (flip coin-bias))  ; Observed heads
+
+;; Weighted superposition type tracks that inference is needed
+(define posterior {(WSup Float)}
+  (infer coin-bias))
+```
+
+**Key Properties:**
+- `{(WSup T)}` carries probability weights
+- `importance-sample` and `enumerate` collapse weighted superpositions
+- Used for Bayesian inference with effect handlers
+
+### Superposition Type Rules
+
+| Expression | Type | Notes |
+|------------|------|-------|
+| `(fork2 a b)` | `{(Sup T)}` where `a, b : T` | Parallel branching |
+| `(choice xs)` | `{(Sup T)}` where `xs : (List T)` | Non-deterministic choice |
+| `(sample dist)` | `{(WSup T)}` | Probabilistic sampling |
+| `(collapse x)` | `T` where `x : (Sup T)` | Force single value |
+| `(enumerate x)` | `(List (Pair T Float))` where `x : (WSup T)` | Exact inference |
 
 ---
 

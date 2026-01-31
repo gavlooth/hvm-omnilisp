@@ -351,49 +351,49 @@ All other conditional forms (`if`, `when`, `unless`) are syntactic sugar that de
 
 ```lisp
 (match value
-  [1 "one"]
-  [2 "two"]
-  [_ "other"])
+  1  "one"
+  2  "two"
+  _  "other")
 ```
 
 ### Variable Binding Patterns
 
 ```lisp
 (match value
-  [x (* x 2)])        ; binds x to value
+  x  (* x 2))         ; binds x to value
 ```
 
 ### Destructuring Patterns
 
 ```lisp
 (match [1 2 3]
-  [[x y z] (+ x y z)])      ; binds x=1, y=2, z=3
+  [x y z]  (+ x y z))       ; binds x=1, y=2, z=3
 
 (match [[1 2] 3]
-  [[[a b] c] (+ a b c)])    ; nested destructuring
+  [[a b] c]  (+ a b c))     ; nested destructuring
 ```
 
 ### As Patterns
 
 ```lisp
 (match [1 2]
-  [[x y] as pair] pair)     ; binds x=1, y=2, pair=[1 2]
+  [x y] as pair  pair)      ; binds x=1, y=2, pair=[1 2]
 ```
 
 ### Guards
 
 ```lisp
 (match value
-  [x :when (> x 0) "positive"]
-  [x :when (< x 0) "negative"]
-  [_ "zero"])
+  x & (> x 0)  "positive"
+  x & (< x 0)  "negative"
+  _            "zero")
 ```
 
 ### Rest Patterns
 
 ```lisp
 (match [1 2 3 4 5]
-  [[x y .. rest] rest])     ; binds x=1, y=2, rest=[3 4 5]
+  [x y .. rest]  rest)      ; binds x=1, y=2, rest=[3 4 5]
 ```
 
 ---
@@ -463,9 +463,9 @@ Value types constrain a type to a single literal value. Syntax: `{literal}` = `#
 **Use in patterns:**
 ```lisp
 (match x
-  [n {0}] "zero"
-  [n {1}] "one"
-  [n {Int}] "other")
+  n {0}    "zero"
+  n {1}    "one"
+  n {Int}  "other")
 ```
 
 ---
@@ -711,8 +711,8 @@ All conditional forms desugar to `match` at parse time. They exist for convenien
 
 ;; Desugars to:
 (match condition
-  [true]  then-expr
-  [_]     else-expr)
+  true   then-expr
+  _      else-expr)
 ```
 
 #### `when` - Single-Branch Conditional
@@ -721,8 +721,8 @@ All conditional forms desugar to `match` at parse time. They exist for convenien
 
 ;; Desugars to:
 (match condition
-  [true]  body...
-  [_]     nothing)
+  true   body...
+  _      nothing)
 ```
 
 #### `unless` - Negated Conditional
@@ -731,8 +731,8 @@ All conditional forms desugar to `match` at parse time. They exist for convenien
 
 ;; Desugars to:
 (match condition
-  [true]  nothing
-  [_]     body...)
+  true   nothing
+  _      body...)
 ```
 
 **Why syntactic sugar?** Using `match` as the single control flow primitive:
@@ -899,19 +899,168 @@ OmniLisp supports hygienic macros and multi-stage programming for metaprogrammin
 
 ### Syntax Macros
 
+Define macros with pattern → template rules:
+
 ```lisp
-;; Define a syntax macro with patterns and templates
+;; Basic macro definition
 (define [syntax when]
-  ;; Pattern → Template
   [(when ?cond ?body ...)
    (match ?cond
-     [true] (do ?body ...)
-     [_]    nothing)])
+     true  (do ?body ...)
+     _     nothing)])
 
 ;; Usage
 (when (> x 0)
   (print "positive")
   (process x))
+```
+
+### Pattern Variables
+
+Pattern variables capture parts of the input:
+
+| Syntax | Meaning | Example |
+|--------|---------|---------|
+| `?name` | Capture single form | `?cond` matches `(> x 0)` |
+| `?name ...` | Capture zero or more | `?body ...` matches `(a) (b) (c)` |
+| `literal` | Match exactly | `else` matches only `else` |
+
+### Ellipsis Patterns
+
+The `...` ellipsis matches zero or more forms:
+
+```lisp
+;; Match multiple body forms
+(define [syntax my-begin]
+  [(my-begin ?body ...)
+   (do ?body ...)])
+
+(my-begin (print "a") (print "b") (print "c"))
+;; Expands to: (do (print "a") (print "b") (print "c"))
+
+;; Recursive patterns with ellipsis
+(define [syntax my-and]
+  [(my-and) true]
+  [(my-and ?x) ?x]
+  [(my-and ?x ?rest ...)
+   (if ?x (my-and ?rest ...) false)])
+
+(my-and a b c)
+;; Expands to: (if a (if b c false) false)
+```
+
+### Literal Keywords
+
+Specify keywords that must match exactly (not as pattern variables):
+
+```lisp
+;; 'else' is a literal keyword
+(define [syntax my-cond]
+  [literals else]
+  [(my-cond (else ?result)) ?result]
+  [(my-cond (?test ?result) ?rest ...)
+   (if ?test ?result (my-cond ?rest ...))])
+
+(my-cond
+  ((= x 0) "zero")
+  ((> x 0) "positive")
+  (else "negative"))
+```
+
+### Hygiene
+
+OmniLisp macros are **hygienic by default** using a mark-based system. Variables introduced by macros don't capture variables in user code:
+
+```lisp
+;; Macro introduces 'temp' - won't capture user's 'temp'
+(define [syntax swap!]
+  [(swap! ?a ?b)
+   (let [temp ?a]
+     (do (set! ?a ?b)
+         (set! ?b temp)))])
+
+;; User's 'temp' is safe
+(let [temp 100]
+  (let [x 1] [y 2]
+    (swap! x y)
+    temp))  ;; → 100 (not captured)
+```
+
+### Gensym for Explicit Hygiene
+
+Generate unique symbols when needed:
+
+```lisp
+;; gensym creates unique symbols
+(gensym "temp")  ;; → temp_g42 (unique each call)
+
+;; Use in macros for guaranteed uniqueness
+(define [syntax with-temp]
+  [(with-temp ?body)
+   (let [g (gensym "t")]
+     `(let [,g 0] ,?body))])
+```
+
+### Quasiquote in Macros
+
+Build code with `` ` `` (quasiquote), `,` (unquote), and `,@` (unquote-splicing):
+
+```lisp
+;; Quasiquote builds code structure
+`(+ 1 ,(+ 2 3))        ;; → '(+ 1 5)
+`(list ,@'(a b c))     ;; → '(list a b c)
+
+;; In macro templates
+(define [syntax make-adder]
+  [(make-adder ?n)
+   `(lambda [x] (+ x ,?n))])
+
+((make-adder 5) 10)    ;; → 15
+```
+
+### Macro Expansion
+
+```lisp
+;; Expand macro once
+(expand-1 '(when (> x 0) (print x)))
+;; → (match (> x 0) true (do (print x)) _ nothing)
+
+;; Fully expand all macros recursively
+(expand '(when (> x 0) (print x)))
+;; → (match (> x 0) true (do (print x)) _ nothing)
+
+;; macroexpand-all for deep expansion
+(macroexpand-all '(my-and a (my-or b c)))
+```
+
+### Common Macro Patterns
+
+```lisp
+;; Short-circuit and/or
+(define [syntax and]
+  [(and) true]
+  [(and ?x) ?x]
+  [(and ?x ?rest ...) (if ?x (and ?rest ...) false)])
+
+(define [syntax or]
+  [(or) false]
+  [(or ?x) ?x]
+  [(or ?x ?rest ...)
+   (let [temp ?x] (if temp temp (or ?rest ...)))])
+
+;; Thread-first (->)
+(define [syntax ->]
+  [(-> ?x) ?x]
+  [(-> ?x (?f ?args ...) ?rest ...)
+   (-> (?f ?x ?args ...) ?rest ...)]
+  [(-> ?x ?f ?rest ...)
+   (-> (?f ?x) ?rest ...)])
+
+;; let* via macro
+(define [syntax let*]
+  [(let* () ?body) ?body]
+  [(let* ([?var ?val] ?rest ...) ?body)
+   (let [?var ?val] (let* (?rest ...) ?body))])
 ```
 
 ### Grammar Definitions (Pika-based)
@@ -925,18 +1074,6 @@ OmniLisp supports hygienic macros and multi-stage programming for metaprogrammin
   json-string  := "\"" [^"]* "\""           → (substr $0 1 -1)
   json-array   := "[" (json-value ",")* "]" → (list $1 ...)
   json-object  := "{" (pair ",")* "}"       → (dict $1 ...))
-```
-
-### Macro Expansion
-
-```lisp
-;; Expand macro once
-(expand-1 '(when (> x 0) (print x)))
-;; → (match (> x 0) [true] (do (print x)) [_] nothing)
-
-;; Fully expand all macros
-(expand '(when (> x 0) (print x)))
-;; → (match (> x 0) [true] (do (print x)) [_] nothing)
 ```
 
 ### Staged Computation
@@ -961,21 +1098,115 @@ OmniLisp supports hygienic macros and multi-stage programming for metaprogrammin
 
 Metadata uses the `^` prefix and provides out-of-band instructions.
 
+### Type Metadata
+
 ```lisp
 ^:parent {Number}        ; inheritance
 ^:where [T {Number}]     ; type constraints
 ^:mutable                ; mutability marker
 ^:covar                  ; covariance marker
-^:seq                    ; sequential binding
 ```
 
-Metadata can attach to definitions:
+### Evaluation Metadata
+
+| Metadata | Applies To | Effect |
+|----------|-----------|--------|
+| `^:strict` | `let` bindings | Forces eager evaluation |
+| `^:seq` | `let` bindings | Sequential (ordered) evaluation |
+| `^:parallel` | `let` bindings | Parallel evaluation with dependency analysis |
+| `^:pure` | `define` | Marks function as pure (no side effects) |
+| `^:speculate` | `match`, `if` | Enables speculative branch execution |
+| `^:effects` | `define` | Declares effect row for function |
+
+#### Strict Evaluation (`^:strict`)
+
+By default, `let` bindings are lazy. Use `^:strict` to force immediate evaluation:
 
 ```lisp
-;; Mutable type definition (uses define, NOT defstruct)
+;; Lazy (default) - expr evaluated when x is used
+(let [x (expensive-computation)]
+  (if condition x 0))
+
+;; Strict - expr evaluated immediately
+(let ^:strict [x (expensive-computation)]
+  (if condition x 0))
+
+;; Combine with ^:seq for strict sequential
+(let ^:strict ^:seq
+  [x (compute-x)]       ; evaluated first
+  [y (compute-y x)]     ; evaluated second, after x
+  (combine x y))
+```
+
+**HVM4 Compilation:**
+- Lazy: `!x = expr;` (thunk)
+- Strict: `!!&x = expr;` (forced evaluation)
+
+#### Parallel Let (`^:parallel`)
+
+Enables automatic dependency analysis and parallel scheduling:
+
+```lisp
+(let ^:parallel
+  [a (compute-a)]           ; independent
+  [b (compute-b)]           ; independent
+  [c (combine a b)]         ; depends on a, b
+  c)
+;; a and b run in parallel, c waits for both
+```
+
+#### Pure Functions (`^:pure`)
+
+Marks function as having no side effects:
+
+```lisp
+(define ^:pure square [x] (* x x))
+
+;; Enables:
+;; - Parallel execution in map/filter
+;; - Memoization
+;; - Common subexpression elimination
+```
+
+#### Speculative Execution (`^:speculate`)
+
+Evaluates branches speculatively in parallel:
+
+```lisp
+;; Both branches start executing; unused one discarded
+(if ^:speculate condition
+  (expensive-then)
+  (expensive-else))
+
+;; Speculative match - all arms evaluated in parallel
+(match ^:speculate value
+  pattern1 result1
+  pattern2 result2)
+```
+
+#### Effect Rows (`^:effects`)
+
+Declares what effects a function may perform:
+
+```lisp
+(define log-value [x]
+  ^:effects [IO]
+  (do (println x) x))
+
+(define ^:pure add [x] [y] (+ x y))
+;; Equivalent to: ^:effects []
+```
+
+### Definition Metadata
+
+```lisp
+;; Mutable type definition
 (define ^:mutable Player
   [hp {Int32}]
   [name {String}])
+
+;; FFI function
+(define ^:ffi sqrt [x {Float64}] {Float64})
 ```
 
 ---
@@ -1206,7 +1437,7 @@ This section documents which syntax features are implemented in the Pika parser
 | Format strings | `R_FMT_STRING` | `#fmt"..."` |
 | Value-to-type | `R_HASH_VAL` | `#val 42` → `(value->type 42)` |
 | Comments | `R_COMMENT` | `;` to end of line |
-| Match clauses | Codegen | `[pattern result]` and `[pattern :when guard result]` |
+| Match clauses | Codegen | Flat pairs: `pattern result` and `pattern & guard result` |
 
 ### Analyzer-Level Recognition
 
@@ -1231,8 +1462,8 @@ These are parsed as plain symbols but recognized specially in the analyzer:
 | Variance annotations | Done | `^:covar`, `^:contravar` for type params |
 | `handle` form | Codegen done | Works via runtime primitives |
 | Pattern bindings | Done | Variable extraction in match patterns |
-| As patterns | Done | `[pattern as name]` syntax |
-| Guards | Done | `:when` in match clauses |
+| As patterns | Done | `pattern as name` syntax |
+| Guards | Done | `&` in match clauses: `pattern & guard result` |
 | Rest patterns | Done | `[x y .. rest]` syntax |
 | Type constraints | Done | `^:where [T {Number}]` in define |
 | Format strings | Done | `#fmt"Hello $name"` with `$var` and `${expr}` interpolation |
@@ -1263,11 +1494,12 @@ These are parsed as plain symbols but recognized specially in the analyzer:
 (define add [x] [y] (+ x y))           ; function (slot syntax)
 (define add [x {Int}] {Int} (* x x))   ; typed function
 
-;; Pattern Matching
+;; Pattern Matching (flat pairs, & for guards, or for alternatives)
 (match value
-  [pattern result]
-  [pattern :when guard result]
-  [[x y] as pair (use pair)])
+  pattern          result
+  pattern & guard  result
+  [x y] as pair    (use pair)
+  (or a b)         result)
 
 ;; Algebraic Effects (NOT try/catch)
 (handle

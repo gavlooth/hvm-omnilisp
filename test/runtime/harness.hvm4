@@ -1,0 +1,243 @@
+// OmniLisp Runtime Test Harness
+// Provides assertion functions and test runners for HVM4-native tests
+
+// =============================================================================
+// TERMINOLOGY NOTE
+// =============================================================================
+//
+// OmniLisp does NOT have "nil". The internal tag #NIL represents "empty list".
+//
+// CORRECT terminology in tests:
+//   - "empty list" or "empty" — for #NIL (the empty list value)
+//   - "nothing" — for #Noth (absence of value, like Option::None)
+//
+// WRONG terminology (do not use):
+//   - "nil" — OmniLisp separates empty list from the traditional nil concept
+//   - "null" — use "nothing" instead
+//
+// See lib/runtime.hvm4 header and CLAUDE.md for full documentation.
+//
+// =============================================================================
+
+// =============================================================================
+// Test Result Types
+// =============================================================================
+
+// #Pass{name} - test passed
+// #Fail{name, expected, actual} - test failed
+// #Err{name, error} - test threw unexpected error
+
+// =============================================================================
+// Assertion Functions
+// =============================================================================
+
+// Assert two values are equal (structural equality)
+@assert_eq = λ&name. λ&expected. λ&actual.
+  !!&eq = @values_equal(expected)(actual);
+  λ{
+    1: #Pass{name}
+    _: λ&u_. #Fail{name, expected, actual}
+  }(eq)
+
+// Assert two numeric values are equal
+@assert_num_eq = λ&name. λ&expected. λ&actual.
+  λ{
+    #Cst: λ&e.
+      λ{
+        #Cst: λ&a.
+          λ{
+            1: #Pass{name}
+            _: λ&u_. #Fail{name, expected, actual}
+          }((e == a))
+        _: λ&u_. #Fail{name, expected, actual}
+      }(actual)
+    _: λ&u_. #Fail{name, expected, actual}
+  }(expected)
+
+// Assert a value is truthy
+@assert_true = λ&name. λ&actual.
+  λ{
+    #True: #Pass{name}
+    #Cst: λ&n. λ{
+      0: #Fail{name, #True{}, actual}
+      _: λ&u_. #Pass{name}
+    }(n)
+    _: λ&u_. #Fail{name, #True{}, actual}
+  }(actual)
+
+// Assert a value is falsy
+@assert_false = λ&name. λ&actual.
+  λ{
+    #Fals: #Pass{name}
+    #Cst: λ&n. λ{
+      0: #Pass{name}
+      _: λ&u_. #Fail{name, #Fals{}, actual}
+    }(n)
+    _: λ&u_. #Fail{name, #Fals{}, actual}
+  }(actual)
+
+// Assert a value is an error with specific tag
+@assert_err = λ&name. λ&expected_tag. λ&actual.
+  λ{
+    #Err: λ&tag.
+      λ{
+        1: #Pass{name}
+        _: λ&u_. #Fail{name, #Err{expected_tag}, actual}
+      }((tag == expected_tag))
+    _: λ&u_. #Fail{name, #Err{expected_tag}, actual}
+  }(actual)
+
+// Assert a value is an error (any error)
+@assert_is_err = λ&name. λ&actual.
+  λ{
+    #Err: λ&tag. #Pass{name}
+    _: λ&u_. #Fail{name, #Err{#any}, actual}
+  }(actual)
+
+// Assert a value is an empty list
+@assert_empty_list = λ&name. λ&actual.
+  λ{
+    #NIL: #Pass{name}
+    _: λ&u_. #Fail{name, #NIL, actual}
+  }(actual)
+
+// Assert a value is nothing
+@assert_nothing = λ&name. λ&actual.
+  λ{
+    #Noth: #Pass{name}
+    _: λ&u_. #Fail{name, #Noth{}, actual}
+  }(actual)
+
+// =============================================================================
+// Structural Equality
+// =============================================================================
+
+@values_equal = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn. (an == bn)
+        _: λ&u_. 0
+      }(b)
+    #CHR: λ&ac.
+      λ{
+        #CHR: λ&bc. (ac == bc)
+        _: λ&u_. 0
+      }(b)
+    #Sym: λ&as.
+      λ{
+        #Sym: λ&bs. (as == bs)
+        _: λ&u_. 0
+      }(b)
+    #NIL:
+      λ{
+        #NIL: 1
+        _: λ&u_. 0
+      }(b)
+    #True:
+      λ{
+        #True: 1
+        _: λ&u_. 0
+      }(b)
+    #Fals:
+      λ{
+        #Fals: 1
+        _: λ&u_. 0
+      }(b)
+    #Noth:
+      λ{
+        #Noth: 1
+        _: λ&u_. 0
+      }(b)
+    #CON: λ&ah. λ&at.
+      λ{
+        #CON: λ&bh. λ&bt.
+          !!&h_eq = @values_equal(ah)(bh);
+          !!&t_eq = @values_equal(at)(bt);
+          (h_eq * t_eq)
+        _: λ&u_. 0
+      }(b)
+    #Err: λ&atag.
+      λ{
+        #Err: λ&btag. (atag == btag)
+        _: λ&u_. 0
+      }(b)
+    _: λ&u_. 0
+  }(a)
+
+// =============================================================================
+// Test Runner
+// =============================================================================
+
+// Run a list of tests, returning first failure or #AllPass{}
+@run_tests = λ&tests.
+  λ{
+    #NIL: #AllPass{}
+    #CON: λ&test. λ&rest.
+      !!&result = test;
+      λ{
+        #Pass: λ&n. @run_tests(rest)
+        #Fail: λ&n. λ&e. λ&a. #TestFailed{n, e, a}
+        _: λ&u_. #TestError{result}
+      }(result)
+  }(tests)
+
+// Run tests and return count of passes/failures
+@run_tests_count = λ&tests.
+  @run_tests_acc(tests)(0)(0)
+
+@run_tests_acc = λ&tests. λ&passes. λ&fails.
+  λ{
+    #NIL: #Results{passes, fails}
+    #CON: λ&test. λ&rest.
+      !!&result = test;
+      λ{
+        #Pass: λ&n. @run_tests_acc(rest)((passes + 1))(fails)
+        #Fail: λ&n. λ&e. λ&a. @run_tests_acc(rest)(passes)((fails + 1))
+        _: λ&u_. @run_tests_acc(rest)(passes)((fails + 1))
+      }(result)
+  }(tests)
+
+// =============================================================================
+// Test Utilities
+// =============================================================================
+
+// Create a test that checks if a thunk returns expected value
+@test_returns = λ&name. λ&expected. λ&thunk.
+  @assert_eq(name)(expected)(thunk)
+
+// Create a test that checks if a thunk throws expected error
+@test_throws = λ&name. λ&expected_tag. λ&thunk.
+  @assert_err(name)(expected_tag)(thunk)
+
+// =============================================================================
+// Property Test Helpers
+// =============================================================================
+
+// Generate a range of integers for property testing
+@range = λ&start. λ&end.
+  λ{
+    1: #NIL
+    _: λ&u_. #CON{#Cst{start}, @range((start + 1))(end)}
+  }((start > end))
+
+// Apply predicate to all elements, return 1 if all pass
+@for_all = λ&xs. λ&pred.
+  λ{
+    #NIL: 1
+    #CON: λ&h. λ&t.
+      !!&result = (pred(h));
+      λ{
+        1: @for_all(t)(pred)
+        _: λ&u_. 0
+      }(result)
+  }(xs)
+
+// Check a property holds for a range of values
+@check_property = λ&name. λ&start. λ&end. λ&pred.
+  !!&vals = @range(start)(end);
+  !!&all_pass = @for_all(vals)(pred);
+  λ{
+    1: #Pass{name}
+    _: λ&u_. #Fail{name, #property_failed, vals}
+  }(all_pass)

@@ -1,0 +1,65 @@
+;; test_type_parametric.lisp - Tests for parametric types
+
+;; List of specific type
+;; TEST: list of int
+;; EXPECT: 6
+(define sum-ints [lst {(List Int)}] {Int}
+  (foldl (lambda [acc] [x] (+ acc x)) 0 lst))
+(sum-ints '(1 2 3))
+
+;; TEST: list of string
+;; EXPECT: "abc"
+(define concat-all [lst {(List String)}] {String}
+  (foldl str-concat "" lst))
+(concat-all '("a" "b" "c"))
+
+;; Maybe type (Option)
+;; TEST: maybe some
+;; EXPECT: 42
+(define unwrap [m {(Maybe Int)}] [default {Int}] {Int}
+  (if (nil? m) default m))
+(unwrap 42 0)
+
+;; TEST: maybe none
+;; EXPECT: 0
+(unwrap nil 0)
+
+;; Pair type
+;; TEST: pair type
+;; EXPECT: 1
+(define fst [p {(Pair a b)}] {a}
+  (head p))
+(fst '(1 2))
+
+;; TEST: pair second
+;; EXPECT: 2
+(define snd [p {(Pair a b)}] {b}
+  (head (tail p)))
+(snd '(1 2))
+
+;; Dict with type params
+;; TEST: dict with typed values
+;; EXPECT: 42
+(define get-int [d {(Dict String Int)}] [k {String}] {(Maybe Int)}
+  (dict-get d k nil))
+(get-int #{"answer" 42} "answer")
+
+;; Function type
+;; TEST: higher order typed
+;; EXPECT: (2 4 6)
+(define map-ints [f {(-> Int Int)}] [lst {(List Int)}] {(List Int)}
+  (map f lst))
+(map-ints (lambda [x] (* x 2)) '(1 2 3))
+
+;; Nested parametric types
+;; TEST: list of maybe
+;; EXPECT: (1 0 3)
+(define unwrap-all [lst {(List (Maybe Int))}] {(List Int)}
+  (map (lambda [m] (if (nil? m) 0 m)) lst))
+(unwrap-all '(1 nil 3))
+
+;; TEST: dict of lists
+;; EXPECT: (1 2 3)
+(define get-list [d {(Dict String (List Int))}] [k {String}] {(List Int)}
+  (dict-get d k '()))
+(get-list #{"nums" (1 2 3)} "nums")

@@ -1,0 +1,7 @@
+        -:    0:Source:../hvm4/clang/heap/peek.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+  7057729:    1:fn Term heap_peek(u32 loc) {
+  7057729:    2:  return heap_read(loc);
+        -:    3:}

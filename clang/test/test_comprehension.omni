@@ -1,0 +1,38 @@
+;; test_comprehension.lisp - I8: Parallel Comprehensions
+;; Tests for list comprehension syntax and execution
+
+;; TEST: Simple map comprehension
+;; EXPECT: [2,4,6,8,10]
+[for x <- '(1 2 3 4 5) yield (* x 2)]
+
+;; TEST: Comprehension with filter
+;; EXPECT: [2,4,6]
+[for x <- '(1 2 3 4 5 6) when (= 0 (mod x 2)) yield x]
+
+;; TEST: Comprehension with transformation and filter
+;; EXPECT: [4,16,36]
+[for x <- '(1 2 3 4 5 6) when (= 0 (mod x 2)) yield (* x x)]
+
+;; TEST: Comprehension over computed list
+;; EXPECT: [1,4,9]
+[for x <- (cons 1 (cons 2 (cons 3 '()))) yield (* x x)]
+
+;; TEST: Empty input yields empty result
+;; EXPECT: []
+[for x <- '() yield x]
+
+;; TEST: Filter rejects all
+;; EXPECT: []
+[for x <- '(1 3 5 7) when (= 0 (mod x 2)) yield x]
+
+;; TEST: Multiple when clauses
+;; EXPECT: [6,12]
+[for x <- '(1 2 3 4 5 6 7 8 9 10 11 12) when (= 0 (mod x 2)) when (= 0 (mod x 3)) yield x]
+
+;; TEST: Nested for-loops (cartesian product)
+;; EXPECT: [[1,3],[1,4],[2,3],[2,4]]
+[for x <- '(1 2) for y <- '(3 4) yield (cons x (cons y '()))]
+
+;; TEST: Nested for with computed inner collection
+;; EXPECT: [[1,10],[1,20],[2,10],[2,20],[3,10],[3,20]]
+[for x <- '(1 2 3) for y <- '(10 20) yield (cons x (cons y '()))]

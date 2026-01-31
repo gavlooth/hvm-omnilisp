@@ -1,0 +1,29 @@
+;; test_yield.omni - Tests for yield (fiber/coroutine yield)
+
+;; TEST: basic yield in fiber context
+;; EXPECT: 1
+(reset
+  (do
+    (yield 1)
+    (yield 2)
+    (yield 3)))
+
+;; TEST: yield captures current value
+;; EXPECT: 42
+(reset
+  (yield 42))
+
+;; TEST: yield with computation
+;; EXPECT: 10
+(reset
+  (yield (+ 5 5)))
+
+;; TEST: yield from nested expression
+;; EXPECT: 15
+(reset
+  (let [x 10]
+    (yield (+ x 5))))
+
+;; EXPECT: 7
+(reset
+  (yield (- 10 3)))

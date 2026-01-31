@@ -1,0 +1,174 @@
+// OmniLisp Runtime Tests: Arithmetic Operations
+// Tests @omni_add, @omni_sub, @omni_mul, @omni_div, @omni_mod
+// Tests @omni_eql, @omni_lt, @omni_gt
+
+// Include harness and runtime
+// Note: In actual test run, these are concatenated with runtime.hvm4
+
+// =============================================================================
+// Addition Tests
+// =============================================================================
+
+@test_add_basic = @assert_num_eq(#add_basic)(#Cst{5})(@omni_add(#Cst{2})(#Cst{3}))
+@test_add_zero_left = @assert_num_eq(#add_zero_left)(#Cst{7})(@omni_add(#Cst{0})(#Cst{7}))
+@test_add_zero_right = @assert_num_eq(#add_zero_right)(#Cst{7})(@omni_add(#Cst{7})(#Cst{0}))
+// NOTE: Negative number tests removed - HVM4 uses unsigned 32-bit integers
+
+// Addition type errors
+@test_add_type_err_left = @assert_is_err(#add_type_left)(@omni_add(#NIL)(#Cst{1}))
+@test_add_type_err_right = @assert_is_err(#add_type_right)(@omni_add(#Cst{1})(#NIL))
+
+// =============================================================================
+// Subtraction Tests
+// =============================================================================
+
+@test_sub_basic = @assert_num_eq(#sub_basic)(#Cst{4})(@omni_sub(#Cst{7})(#Cst{3}))
+@test_sub_zero = @assert_num_eq(#sub_zero)(#Cst{5})(@omni_sub(#Cst{5})(#Cst{0}))
+// NOTE: Negative result/operand tests removed - HVM4 uses unsigned 32-bit integers
+
+// Subtraction type errors
+@test_sub_type_err = @assert_is_err(#sub_type_err)(@omni_sub(#Cst{1})(#True{}))
+
+// =============================================================================
+// Multiplication Tests
+// =============================================================================
+
+@test_mul_basic = @assert_num_eq(#mul_basic)(#Cst{12})(@omni_mul(#Cst{3})(#Cst{4}))
+@test_mul_zero = @assert_num_eq(#mul_zero)(#Cst{0})(@omni_mul(#Cst{5})(#Cst{0}))
+@test_mul_one = @assert_num_eq(#mul_one)(#Cst{7})(@omni_mul(#Cst{7})(#Cst{1}))
+// NOTE: Negative number tests removed - HVM4 uses unsigned 32-bit integers
+
+// Multiplication type errors
+@test_mul_type_err = @assert_is_err(#mul_type_err)(@omni_mul(#Cst{1})(#NIL))
+
+// =============================================================================
+// Division Tests
+// =============================================================================
+
+@test_div_basic = @assert_num_eq(#div_basic)(#Cst{4})(@omni_div(#Cst{12})(#Cst{3}))
+@test_div_one = @assert_num_eq(#div_one)(#Cst{7})(@omni_div(#Cst{7})(#Cst{1}))
+@test_div_truncate = @assert_num_eq(#div_truncate)(#Cst{3})(@omni_div(#Cst{10})(#Cst{3}))
+// NOTE: Negative number tests removed - HVM4 uses unsigned 32-bit integers
+
+// Division by zero
+@test_div_by_zero = @assert_err(#div_by_zero)(#sym_divz)(@omni_div(#Cst{5})(#Cst{0}))
+
+// Division type errors
+@test_div_type_err = @assert_is_err(#div_type_err)(@omni_div(#Cst{1})(#NIL))
+
+// =============================================================================
+// Modulo Tests
+// =============================================================================
+
+@test_mod_basic = @assert_num_eq(#mod_basic)(#Cst{1})(@omni_mod(#Cst{10})(#Cst{3}))
+@test_mod_zero_result = @assert_num_eq(#mod_zero_result)(#Cst{0})(@omni_mod(#Cst{9})(#Cst{3}))
+@test_mod_larger_divisor = @assert_num_eq(#mod_larger)(#Cst{3})(@omni_mod(#Cst{3})(#Cst{5}))
+
+// Modulo by zero
+@test_mod_by_zero = @assert_err(#mod_by_zero)(#sym_divz)(@omni_mod(#Cst{5})(#Cst{0}))
+
+// Modulo type errors
+@test_mod_type_err = @assert_is_err(#mod_type_err)(@omni_mod(#NIL)(#Cst{2}))
+
+// =============================================================================
+// Equality Tests
+// =============================================================================
+
+@test_eql_true = @assert_true(#eql_true)(@omni_eql(#Cst{5})(#Cst{5}))
+@test_eql_false = @assert_false(#eql_false)(@omni_eql(#Cst{5})(#Cst{6}))
+@test_eql_zero = @assert_true(#eql_zero)(@omni_eql(#Cst{0})(#Cst{0}))
+// NOTE: Negative number tests removed - HVM4 uses unsigned 32-bit integers
+
+// Equality type mismatch returns false (not error)
+@test_eql_type_mismatch = @assert_false(#eql_type_mismatch)(@omni_eql(#Cst{1})(#NIL))
+
+// =============================================================================
+// Less Than Tests
+// =============================================================================
+
+@test_lt_true = @assert_true(#lt_true)(@omni_lt(#Cst{3})(#Cst{5}))
+@test_lt_false_eq = @assert_false(#lt_false_eq)(@omni_lt(#Cst{5})(#Cst{5}))
+@test_lt_false_gt = @assert_false(#lt_false_gt)(@omni_lt(#Cst{7})(#Cst{5}))
+// NOTE: Negative number tests removed - HVM4 uses unsigned 32-bit integers
+
+// Less than type mismatch returns false
+@test_lt_type_mismatch = @assert_false(#lt_type_mismatch)(@omni_lt(#Cst{1})(#NIL))
+
+// =============================================================================
+// Greater Than Tests
+// =============================================================================
+
+@test_gt_true = @assert_true(#gt_true)(@omni_gt(#Cst{7})(#Cst{3}))
+@test_gt_false_eq = @assert_false(#gt_false_eq)(@omni_gt(#Cst{5})(#Cst{5}))
+@test_gt_false_lt = @assert_false(#gt_false_lt)(@omni_gt(#Cst{3})(#Cst{5}))
+// NOTE: Negative number tests removed - HVM4 uses unsigned 32-bit integers
+
+// Greater than type mismatch returns false
+@test_gt_type_mismatch = @assert_false(#gt_type_mismatch)(@omni_gt(#Cst{1})(#NIL))
+
+// =============================================================================
+// Property Tests
+// =============================================================================
+// NOTE: Using 0-20 range instead of -10 to 10 (HVM4 uses unsigned 32-bit integers)
+
+// Property: a + 0 = a (additive identity)
+@test_prop_add_identity = @check_property(#prop_add_identity)(0)(20)(
+  λ&n. λ{#Cst: λ&x. λ{#Cst: λ&y. (x == y); _: λ&u_. 0}(@omni_add(#Cst{x})(#Cst{0})); _: λ&u_. 0}(n))
+
+// Property: a - a = 0 (additive inverse)
+@test_prop_sub_self = @check_property(#prop_sub_self)(0)(20)(
+  λ&n. λ{#Cst: λ&x. λ{#Cst: λ&y. (y == 0); _: λ&u_. 0}(@omni_sub(#Cst{x})(#Cst{x})); _: λ&u_. 0}(n))
+
+// Property: a * 1 = a (multiplicative identity)
+@test_prop_mul_identity = @check_property(#prop_mul_identity)(0)(20)(
+  λ&n. λ{#Cst: λ&x. λ{#Cst: λ&y. (x == y); _: λ&u_. 0}(@omni_mul(#Cst{x})(#Cst{1})); _: λ&u_. 0}(n))
+
+// Property: a * 0 = 0
+@test_prop_mul_zero = @check_property(#prop_mul_zero)(0)(20)(
+  λ&n. λ{#Cst: λ&x. λ{#Cst: λ&y. (y == 0); _: λ&u_. 0}(@omni_mul(#Cst{x})(#Cst{0})); _: λ&u_. 0}(n))
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@arithmetic_tests = #CON{@test_add_basic,
+  #CON{@test_add_zero_left,
+  #CON{@test_add_zero_right,
+  #CON{@test_add_type_err_left,
+  #CON{@test_add_type_err_right,
+  #CON{@test_sub_basic,
+  #CON{@test_sub_zero,
+  #CON{@test_sub_type_err,
+  #CON{@test_mul_basic,
+  #CON{@test_mul_zero,
+  #CON{@test_mul_one,
+  #CON{@test_mul_type_err,
+  #CON{@test_div_basic,
+  #CON{@test_div_one,
+  #CON{@test_div_truncate,
+  #CON{@test_div_by_zero,
+  #CON{@test_div_type_err,
+  #CON{@test_mod_basic,
+  #CON{@test_mod_zero_result,
+  #CON{@test_mod_larger_divisor,
+  #CON{@test_mod_by_zero,
+  #CON{@test_mod_type_err,
+  #CON{@test_eql_true,
+  #CON{@test_eql_false,
+  #CON{@test_eql_zero,
+  #CON{@test_eql_type_mismatch,
+  #CON{@test_lt_true,
+  #CON{@test_lt_false_eq,
+  #CON{@test_lt_false_gt,
+  #CON{@test_lt_type_mismatch,
+  #CON{@test_gt_true,
+  #CON{@test_gt_false_eq,
+  #CON{@test_gt_false_lt,
+  #CON{@test_gt_type_mismatch,
+  #CON{@test_prop_add_identity,
+  #CON{@test_prop_sub_self,
+  #CON{@test_prop_mul_identity,
+  #CON{@test_prop_mul_zero,
+  #NIL}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@arithmetic_tests)

@@ -1,0 +1,27 @@
+;; test_parallel_filter.lisp - Tests for filter operations
+;; Note: Limited to small lists due to interpreter environment limits
+
+;; Define filter
+(define filter [pred] [lst]
+  (match lst
+    ()       nil
+    (h .. t) (if (pred h)
+               (cons h (filter pred t))
+               (filter pred t))))
+
+(define even? [x] (= (% x 2) 0))
+
+;; TEST: filter empty list
+;; EXPECT: ()
+(filter even? nil)
+
+;; TEST: filter evens from short list
+;; EXPECT: (2 4)
+(filter even? '(1 2 3 4 5))
+
+;; TEST: filter none match
+;; EXPECT: ()
+(filter even? '(1 3 5))
+
+;; EXPECT: (2 4)
+(filter even? '(2 4))

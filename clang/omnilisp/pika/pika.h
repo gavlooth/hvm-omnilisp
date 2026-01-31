@@ -10,7 +10,8 @@
 #ifndef PIKA_PARSER_H
 #define PIKA_PARSER_H
 
-#include "../../hvm4/clang/hvm4.c"
+// hvm4.c is already included by main.c before this file
+// #include "../../../hvm4/clang/hvm4.c"
 #include <stddef.h>
 #include <stdbool.h>
 

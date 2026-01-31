@@ -1,22 +1,32 @@
 // OmniLisp Standard Library (Prelude)
 // Common functions for list manipulation, I/O, and utilities
 //
-// Design principle: Functions dispatch on input type.
-// - List (#CON/#NIL) → eager, returns List
-// - Iterator (#Iter/#Rang) → lazy, returns Iterator
+// Design principles:
+// 1. PARALLEL BY DEFAULT: @map, @filter use HVM4's parallel evaluation
+//    - For effectful functions, use @map_seq, @filter_seq (sequential)
+//    - Use @smart_map, @smart_filter for auto-detection via (effect-free? fn)
+// 2. Type dispatch: Functions dispatch on input type
+//    - List (#CON/#NIL) → eager, returns List
+//    - Iterator (#Iter/#Rang) → lazy, returns Iterator
+//    - Array (#Arr) → eager, returns Array
+//    - Dict (#Dict) → eager, returns Dict
 // This enables gradual/flowing laziness through pipelines.
 
 // =============================================================================
 // Polymorphic Sequence Operations (dispatch on List vs Iterator)
 // =============================================================================
 
-// Map a function over a sequence
+// Map a function over a sequence (PARALLEL by default)
 // List → List, Array → Array, Dict → Dict (values), Iterator → Iterator
+// NOTE: For effectful functions (IO, state), use @map_seq instead!
 @map = λ&f. λ&xs.
   λ{
-    // Eager: list
+    // Eager: list - PARALLEL: head and tail computed simultaneously
     #NIL: #NIL
-    #CON: λ&h. λ&t. #CON{f(h), @map(f)(t)}
+    #CON: λ&h. λ&t.
+      (λ&mapped_h. (λ&mapped_t.
+        #CON{mapped_h, mapped_t}
+      )(@map(f)(t)))(f(h))
     // Eager: array
     #Arr: λ&len. λ&data.
       #Arr{len, @map(f)(data)}
@@ -46,17 +56,20 @@
       }
   }(xs)
 
-// Filter a sequence by predicate
+// Filter a sequence by predicate (PARALLEL by default)
 // List → List, Array → Array, Dict → Dict (by value), Iterator → Iterator
+// NOTE: For effectful predicates (IO, state), use @filter_seq instead!
 @filter = λ&p. λ&xs.
   λ{
-    // Eager: list
+    // Eager: list - PARALLEL: predicate and recursive filter run simultaneously
     #NIL: #NIL
     #CON: λ&h. λ&t.
-      λ{
-        #True: #CON{h, @filter(p)(t)}
-        _: λ&u_. @filter(p)(t)
-      }(p(h))
+      (λ&pred_result. (λ&filtered_t.
+        λ{
+          #True: #CON{h, filtered_t}
+          _: λ&u_. filtered_t
+        }(pred_result)
+      )(@filter(p)(t)))(p(h))
     // Eager: array (filter then rebuild)
     #Arr: λ&len. λ&data.
       @list_to_arr(@filter(p)(data))
@@ -108,6 +121,137 @@
     #Some: λ&v. λ&rest. @foldl_iter(f)(f(acc)(v))(rest)
     #None: acc
   }(@iter_next(i))
+
+// =============================================================================
+// Sequential Versions (for effectful functions)
+// These use lazy evaluation (λ instead of λ&) to ensure sequential execution
+// Use these when f has side effects (IO, mutation, effects)
+// =============================================================================
+
+// Sequential map - forces left-to-right evaluation
+// Use when f has side effects
+@map_seq = λ&f. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λh. λt.
+      // Force h evaluation before t (sequential)
+      (λ&hres. #CON{hres, @map_seq(f)(t)})(f(h))
+    #Arr: λlen. λdata.
+      #Arr{len, @map_seq(f)(data)}
+    #Dict: λentries.
+      #Dict{@map_seq(λpair.
+        λ{#CON: λk. λrest.
+          λ{#CON: λv. λu.
+            #CON{k, #CON{f(v), #NIL}}
+          }(rest)
+        }(pair)
+      )(entries)}
+    // For iterators, we consume sequentially
+    #Iter: λstate. λnext_fn.
+      @map_seq_iter(f)(xs)
+    #Rang: λs. λe. λst.
+      @map_seq_iter(f)(xs)
+  }(xs)
+
+@map_seq_iter = λ&f. λi.
+  λ{
+    #Some: λv. λrest.
+      (λ&hres. #CON{hres, @map_seq_iter(f)(rest)})(f(v))
+    #None: #NIL
+  }(@iter_next(i))
+
+// Sequential filter - forces left-to-right predicate evaluation
+// Use when p has side effects
+@filter_seq = λ&p. λ&xs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      // Force predicate evaluation before proceeding
+      (λ&pres.
+        λ{
+          #True: #CON{h, @filter_seq(p)(t)}
+          _: λu_. @filter_seq(p)(t)
+        }(pres)
+      )(p(h))
+    #Arr: λlen. λdata.
+      @list_to_arr(@filter_seq(p)(data))
+    #Dict: λentries.
+      #Dict{@filter_seq(λpair.
+        λ{#CON: λu. λrest.
+          λ{#CON: λv. λu. p(v)}(rest)
+        }(pair)
+      )(entries)}
+    #Iter: λstate. λnext_fn.
+      @filter_seq_iter(p)(xs)
+    #Rang: λs. λe. λst.
+      @filter_seq_iter(p)(xs)
+  }(xs)
+
+@filter_seq_iter = λ&p. λi.
+  λ{
+    #Some: λ&v. λ&rest.
+      (λ&pres.
+        λ{
+          #True: #CON{v, @filter_seq_iter(p)(rest)}
+          _: λu_. @filter_seq_iter(p)(rest)
+        }(pres)
+      )(p(v))
+    #None: #NIL
+  }(@iter_next(i))
+
+// Sequential foldl (note: foldl is inherently sequential by design,
+// but this version ensures strict ordering of f applications)
+@foldl_seq = λ&f. λ&acc. λ&xs.
+  λ{
+    #NIL: acc
+    #CON: λh. λt.
+      // Force accumulator update before recursion
+      (λ&new_acc. @foldl_seq(f)(new_acc)(t))(f(acc)(h))
+    #Arr: λlen. λdata. @foldl_seq(f)(acc)(data)
+    #Dict: λentries.
+      @foldl_seq(λa. λpair.
+        λ{#CON: λu. λrest.
+          λ{#CON: λv. λu. f(a)(v)}(rest)
+        }(pair)
+      )(acc)(entries)
+    #Iter: λstate. λnext_fn.
+      @foldl_seq_iter(f)(acc)(xs)
+    #Rang: λs. λe. λst.
+      @foldl_seq_iter(f)(acc)(xs)
+  }(xs)
+
+@foldl_seq_iter = λ&f. λ&acc. λi.
+  λ{
+    #Some: λv. λrest.
+      (λ&new_acc. @foldl_seq_iter(f)(new_acc)(rest))(f(acc)(v))
+    #None: acc
+  }(@iter_next(i))
+
+// =============================================================================
+// Smart Dispatch Versions (auto-detect effect-free-ness)
+// These check if the function has effects and dispatch accordingly
+// =============================================================================
+
+// Smart map - checks effect-free? and dispatches to parallel or sequential
+@smart_map = λ&f. λ&xs.
+  λ{
+    #True: @map(f)(xs)       // effect-free → parallel
+    _:     λu. @map_seq(f)(xs)   // effectful → sequential
+  }(#Effr{f})
+
+// Smart filter - checks effect-free? and dispatches to parallel or sequential
+@smart_filter = λ&p. λ&xs.
+  λ{
+    #True: @filter(p)(xs)       // effect-free → parallel
+    _:     λu. @filter_seq(p)(xs)   // effectful → sequential
+  }(#Effr{p})
+
+// Smart foldl - checks effect-free? and dispatches to parallel or sequential
+@smart_foldl = λ&f. λ&acc. λ&xs.
+  λ{
+    #True: @foldl(f)(acc)(xs)       // effect-free → parallel
+    _:     λu. @foldl_seq(f)(acc)(xs)   // effectful → sequential
+  }(#Effr{f})
 
 // Right fold - works on List, Array, Dict (values)
 @foldr = λ&f. λ&acc. λ&xs.
@@ -1056,14 +1200,15 @@
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
-      !!&spanned = @span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(x)(h)))(t);
-      λ{
-        #CON: λ&same. λ&rest.
-          λ{
-            #CON: λ&remaining. λ&u.
-              #CON{#CON{h, same}, @group(remaining)}
-          }(rest)
-      }(spanned)
+      (λ&spanned.
+        λ{
+          #CON: λ&same. λ&rest.
+            λ{
+              #CON: λ&remaining. λ&u.
+                #CON{#CON{h, same}, @group(remaining)}
+            }(rest)
+        }(spanned)
+      )(@span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(x)(h)))(t))
   }(xs)
 
 // Group by key function
@@ -1071,15 +1216,15 @@
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
-      !!&key = f(h);
-      !!&spanned = @span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(f(x))(key)))(t);
-      λ{
-        #CON: λ&same. λ&rest.
-          λ{
-            #CON: λ&remaining. λ&u.
-              #CON{#CON{h, same}, @group_by(f)(remaining)}
-          }(rest)
-      }(spanned)
+      (λ&key. (λ&spanned.
+        λ{
+          #CON: λ&same. λ&rest.
+            λ{
+              #CON: λ&remaining. λ&u.
+                #CON{#CON{h, same}, @group_by(f)(remaining)}
+            }(rest)
+        }(spanned)
+      )(@span(λ&x. λ{1: #True{}; _: λ&u_. #Fals{}}(@omni_values_equal(f(x))(key)))(t)))(f(h))
   }(xs)
 
 // Intersperse element between list elements
@@ -1119,11 +1264,12 @@
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
-      !!&key = f(h);
-      λ{
-        #True: @nub_by_helper(f)(t)(seen)
-        _: λ&u_. #CON{h, @nub_by_helper(f)(t)(#CON{key, seen})}
-      }(@elem_p(key)(seen))
+      (λ&key.
+        λ{
+          #True: @nub_by_helper(f)(t)(seen)
+          _: λ&u_. #CON{h, @nub_by_helper(f)(t)(#CON{key, seen})}
+        }(@elem_p(key)(seen))
+      )(f(h))
   }(xs)
 
 // Merge sort (stable sort)
@@ -1147,14 +1293,15 @@
       λ{
         #NIL: xs
         #CON: λ&yh. λ&yt.
-          !!&c = cmp(xh)(yh);
-          λ{
-            #Cst: λ&n.
-              λ{
-                1: #CON{yh, @merge_sorted(cmp)(xs)(yt)}
-                _: λ&u_. #CON{xh, @merge_sorted(cmp)(xt)(ys)}
-              }(n)
-          }(c)
+          (λ&c.
+            λ{
+              #Cst: λ&n.
+                λ{
+                  1: #CON{yh, @merge_sorted(cmp)(xs)(yt)}
+                  _: λ&u_. #CON{xh, @merge_sorted(cmp)(xt)(ys)}
+                }(n)
+            }(c)
+          )(cmp(xh)(yh))
       }(ys)
   }(xs)
 
@@ -1176,14 +1323,15 @@
     #NIL: #Noth{}
     #CON: λ&h. λ&t.
       @foldl(λ&acc. λ&x.
-        !!&c = cmp(x)(acc);
-        λ{
-          #Cst: λ&n.
-            λ{
-              1: acc
-              _: λ&u_. x
-            }(n)
-        }(c)
+        (λ&c.
+          λ{
+            #Cst: λ&n.
+              λ{
+                1: acc
+                _: λ&u_. x
+              }(n)
+          }(c)
+        )(cmp(x)(acc))
       )(h)(t)
   }(xs)
 
@@ -1237,8 +1385,7 @@
     // Eager: list
     #NIL: #Noth{}
     #CON: λ&h. λ&t.
-      !!&u = f(h);
-      @for_each(f)(t)
+      (λ&u. @for_each(f)(t))(f(h))
     // Lazy: iterator
     _: λ&u_. @for_each_iter(f)(xs)
   }(xs)
@@ -1246,8 +1393,7 @@
 @for_each_iter = λ&f. λ&iter.
   λ{
     #Some: λ&v. λ&rest.
-      !!&u = f(v);
-      @for_each_iter(f)(rest)
+      (λ&u. @for_each_iter(f)(rest))(f(v))
     #None: #Noth{}
   }(@iter_next(iter))
 
@@ -1540,13 +1686,14 @@
     0: #Err{#NoElements}
     1: @head(xs)
     _: λ&u_. // Split, reduce halves in parallel, combine
-      !!&mid = (len / 2);
-      !!&left = @take(mid)(xs);
-      !!&right = @drop(mid)(xs);
-      // These two reductions can happen in parallel (independent bindings)
-      !!&left_result = @reduce_tree_helper(op)(left);
-      !!&right_result = @reduce_tree_helper(op)(right);
-      op(left_result)(right_result)
+      (λ&mid.
+        (λ&left. (λ&right.
+          // These two reductions can happen in parallel (independent bindings)
+          (λ&left_result. (λ&right_result.
+            op(left_result)(right_result)
+          )(@reduce_tree_helper(op)(right)))(@reduce_tree_helper(op)(left))
+        )(@drop(mid)(xs)))(@take(mid)(xs))
+      )((len / 2))
   }(len)
 
 // Reduce with default value (monoid-style)

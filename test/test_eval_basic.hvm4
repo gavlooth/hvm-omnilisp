@@ -1,0 +1,34 @@
+// Tests for basic evaluation
+// Run: ./hvm4/clang/main test/test_eval_basic.hvm4
+
+#include "../lib/runtime.hvm4"
+
+// Helper to extract number from #Cst
+@unwrap = λ&v. (λ{#Cst: λ&n. n; _: 0})(v)
+
+// Test evaluating a literal
+@test_eval_lit = 
+  !!&result = @omni_eval(@omni_menv_empty)(#Lit{42});
+  @unwrap(result)
+// Expected: 42
+
+// Test evaluating addition
+@test_eval_add = 
+  !!&result = @omni_eval(@omni_menv_empty)(#Add{#Lit{10}, #Lit{20}});
+  @unwrap(result)
+// Expected: 30
+
+// Test evaluating subtraction
+@test_eval_sub = 
+  !!&result = @omni_eval(@omni_menv_empty)(#Sub{#Lit{50}, #Lit{8}});
+  @unwrap(result)
+// Expected: 42
+
+// Test evaluating multiplication
+@test_eval_mul = 
+  !!&result = @omni_eval(@omni_menv_empty)(#Mul{#Lit{7}, #Lit{6}});
+  @unwrap(result)
+// Expected: 42
+
+// Run all tests - should be 42 + 30 + 42 + 42 = 156
+@main = (@test_eval_lit + @test_eval_add + @test_eval_sub + @test_eval_mul)

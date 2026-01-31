@@ -1,0 +1,50 @@
+;; test_tower_reflect.lisp - Tests for reflect (to higher level)
+
+;; Reflect moves computation to a higher meta-level
+;; TEST: reflect value
+;; EXPECT: '42
+(reflect 42)
+
+;; TEST: reflect expression
+;; EXPECT: '(+ 1 2)
+(reflect (+ 1 2))
+
+;; TEST: reflect string
+;; EXPECT: '"hello"
+(reflect "hello")
+
+;; Reflect captures the code, not the value
+;; TEST: reflect unevaluated
+;; EXPECT: '(* 3 4)
+(reflect (* 3 4))
+
+;; TEST: reflect list
+;; EXPECT: ''(1 2 3)
+(reflect '(1 2 3))
+
+;; Reflect in staged context
+;; TEST: reflect in quote
+;; EXPECT: (reflect x)
+'(reflect x)
+
+;; Reflect at different levels
+;; TEST: double reflect
+;; EXPECT: ''42
+(reflect (reflect 42))
+
+;; TEST: reflect function
+;; EXPECT: '(lambda [x] x)
+(reflect (lambda [x] x))
+
+;; Reflect for introspection
+;; TEST: reflect preserves structure
+;; EXPECT: '(if true 1 2)
+(reflect (if true 1 2))
+
+;; TEST: reflect match
+;; EXPECT: '(match x 1 "one" _ "other")
+(reflect (match x 1 "one" _ "other"))
+
+;; TEST: reflect complex
+;; EXPECT: '(let [x 5] (* x x))
+(reflect (let [x 5] (* x x)))

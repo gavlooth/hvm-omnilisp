@@ -1,0 +1,23 @@
+        -:    0:Source:../hvm4/clang/wnf/dup_red.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// ! X &L = f ~> g
+        -:    2:// --------------- DUP-RED
+        -:    3:// ! F &L = f
+        -:    4:// ! G &L = g
+        -:    5:// X₀ ← F₀ ~> G₀
+        -:    6:// X₁ ← F₁ ~> G₁
+    #####:    7:fn Term wnf_dup_red(u32 lab, u32 loc, u8 side, Term red) {
+    #####:    8:  ITRS++;
+    #####:    9:  u32  r_loc = term_val(red);
+    #####:   10:  u64  base  = heap_alloc(6);
+    #####:   11:  u32  at    = (u32)base;
+    #####:   12:  heap_write(at + 0, heap_read(r_loc + 0));
+    #####:   13:  heap_write(at + 1, heap_read(r_loc + 1));
+    #####:   14:  Copy F     = term_clone_at(at + 0, lab);
+    #####:   15:  Copy G     = term_clone_at(at + 1, lab);
+    #####:   16:  Term r0    = term_new_red_at(at + 2, F.k0, G.k0);
+    #####:   17:  Term r1    = term_new_red_at(at + 4, F.k1, G.k1);
+    #####:   18:  return heap_subst_cop(side, loc, r0, r1);
+        -:   19:}

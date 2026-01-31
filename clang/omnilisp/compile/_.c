@@ -42,6 +42,27 @@ fn const char *omni_env_push(OmniEmit *e) {
   return e->env_names[e->env_len - 1];
 }
 
+// Generate a fresh variable name without pushing it to the environment
+fn const char *omni_env_gen_name(OmniEmit *e) {
+  static char buf[64];
+  snprintf(buf, sizeof(buf), "v%u", e->fresh++);
+  return buf;
+}
+
+// Push a given name to the environment
+fn void omni_env_push_name(OmniEmit *e, const char *name) {
+  if (e->env_len >= 256) {
+    fprintf(stderr, "OMNI_ERROR: too many bindings in emit\n");
+    exit(1);
+  }
+  char *dup = strdup(name);
+  if (!dup) {
+    fprintf(stderr, "OMNI_ERROR: out of memory in env_push_name\n");
+    exit(1);
+  }
+  e->env_names[e->env_len++] = dup;
+}
+
 fn void omni_env_pop(OmniEmit *e, u32 count) {
   while (count > 0 && e->env_len > 0) {
     free(e->env_names[--e->env_len]);
@@ -95,6 +116,144 @@ fn const char *omni_nick_to_name(u32 nick) {
 fn void omni_emit_term(OmniEmit *e, Term t);
 
 // =============================================================================
+// Free Variable Analysis (for Let Parallelization)
+// =============================================================================
+
+// Bitmap for tracking free variables (supports up to 64 bindings)
+typedef u64 FreeVarSet;
+
+#define FV_EMPTY 0ULL
+#define FV_SET(set, idx) ((set) | (1ULL << (idx)))
+#define FV_HAS(set, idx) (((set) >> (idx)) & 1)
+
+// Collect free variables in a term, relative to depth
+// depth = number of lambdas/lets between this point and the binding site
+fn FreeVarSet omni_collect_free_vars(Term t, u32 depth) {
+  u8 tag = term_tag(t);
+
+  // Variable reference
+  if (tag == VAR) {
+    u32 idx = term_val(t);
+    if (idx >= depth) {
+      // Free variable relative to current scope
+      u32 free_idx = idx - depth;
+      if (free_idx < 64) {
+        return FV_SET(FV_EMPTY, free_idx);
+      }
+    }
+    return FV_EMPTY;
+  }
+
+  // Number - no free variables
+  if (tag == NUM) return FV_EMPTY;
+
+  // Reference - no local free variables
+  if (tag == REF) return FV_EMPTY;
+
+  // Zero-arity constructor (nil, true, false, nothing) - no free variables
+  if (tag == C00) return FV_EMPTY;
+
+  // Constructor - recurse into arguments
+  if (tag >= C00 && tag <= C16) {
+    u32 ari = tag - C00;
+    u32 nam = term_ext(t);
+    u32 val = term_val(t);
+
+    // Lambda/LamR - increases depth by 1
+    if ((nam == OMNI_NAM_LAM || nam == OMNI_NAM_LAMR) && ari == 1) {
+      return omni_collect_free_vars(HEAP[val], depth + 1);
+    }
+
+    // Let/LetS - value doesn't see binding, body sees binding
+    if ((nam == OMNI_NAM_LET || nam == OMNI_NAM_LETS) && ari == 2) {
+      FreeVarSet val_fv = omni_collect_free_vars(HEAP[val], depth);
+      FreeVarSet body_fv = omni_collect_free_vars(HEAP[val + 1], depth + 1);
+      return val_fv | body_fv;
+    }
+
+    // Other constructors - recurse into all arguments
+    FreeVarSet result = FV_EMPTY;
+    for (u32 i = 0; i < ari; i++) {
+      result |= omni_collect_free_vars(HEAP[val + i], depth);
+    }
+    return result;
+  }
+
+  return FV_EMPTY;
+}
+
+// Structure to hold a let binding for parallelization analysis
+typedef struct {
+  Term value;       // The value expression
+  int is_strict;    // Whether this is a strict binding (^:strict or LetS)
+  int is_parallel;  // Whether this is a forced parallel binding (^:parallel or LetP)
+  FreeVarSet deps;  // Which bindings this depends on (bitmap)
+} LetBinding;
+
+// Collect consecutive let bindings, returns the final body
+// bindings array should be pre-allocated, max_bindings is its size
+// Returns number of bindings collected
+fn u32 omni_collect_lets(Term t, LetBinding *bindings, u32 max_bindings, Term *final_body) {
+  u32 count = 0;
+
+  while (count < max_bindings) {
+    u8 tag = term_tag(t);
+    if (tag < C00 || tag > C16) break;
+
+    u32 nam = term_ext(t);
+    u32 ari = omni_ctr_arity(t);
+
+    // Check if it's a Let, LetS, or LetP
+    if ((nam == OMNI_NAM_LET || nam == OMNI_NAM_LETS || nam == OMNI_NAM_LETP) && ari == 2) {
+      Term value = omni_ctr_arg(t, 0);
+      Term body = omni_ctr_arg(t, 1);
+
+      bindings[count].value = value;
+      bindings[count].is_strict = (nam == OMNI_NAM_LETS);
+      bindings[count].is_parallel = (nam == OMNI_NAM_LETP);
+      // Dependencies will be computed after collection
+      bindings[count].deps = FV_EMPTY;
+      count++;
+
+      t = body;
+    } else {
+      break;
+    }
+  }
+
+  *final_body = t;
+  return count;
+}
+
+// Analyze dependencies between let bindings
+// binding[i] depends on binding[j] (j < i) if binding[i].value references variable (i-1-j)
+// This is because bindings[0] is outermost, so in binding[i]'s value:
+//   VAR0 refers to binding[i-1]
+//   VAR1 refers to binding[i-2]
+//   VAR(i-1) refers to binding[0]
+fn void omni_analyze_let_deps(LetBinding *bindings, u32 count) {
+  for (u32 i = 0; i < count; i++) {
+    // Collect free variables in this binding's value
+    // depth=0: we want vars relative to this binding's position
+    FreeVarSet fv = omni_collect_free_vars(bindings[i].value, 0);
+
+    // Convert free variable indices to dependency bitmap
+    // In binding[i]'s value, VAR j refers to the binding at index (i-1-j)
+    bindings[i].deps = FV_EMPTY;
+    for (u32 j = 0; j < 64; j++) {
+      if (FV_HAS(fv, j)) {
+        // VAR j in binding[i]'s value refers to binding[i-1-j]
+        if (j < i) {
+          u32 dep_idx = i - 1 - j;
+          bindings[i].deps = FV_SET(bindings[i].deps, dep_idx);
+        }
+        // If j >= i, it refers to a binding outside this let chain (external)
+      }
+    }
+  }
+}
+
+// =============================================================================
 // Lambda Emission
 // =============================================================================
 
@@ -141,8 +300,10 @@ fn int omni_pattern_is_simple(Term pattern) {
   // Variable is simple (binds value)
   if (nam == OMNI_NAM_PVAR) return 1;
 
-  // Literal is simple
-  if (nam == OMNI_NAM_PLIT) return 1;
+  // Literal patterns REQUIRE runtime - HVM4 switch matches on constructor TAGS,
+  // not constructed values. Matching #Cst{1} against #Cst{1} doesn't work natively
+  // because HVM4 sees #Cst and binds its argument, it doesn't compare the value.
+  if (nam == OMNI_NAM_PLIT) return 0;
 
   // Constructor pattern is simple if all args are simple variables
   if (nam == OMNI_NAM_PCTR) {
@@ -543,28 +704,69 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       return;
     }
 
-    // Let (lazy binding - allows parallel evaluation)
-    if (nam == OMNI_NAM_LET && ari == 2) {
-      // Lazy binding: &var = expr; (no !! prefix)
-      const char *var_name = omni_env_push(e);
-      fprintf(e->out, "&%s = ", var_name);
-      omni_emit_term(e, omni_ctr_arg(t, 0));
-      fputs("; ", e->out);
-      omni_emit_term(e, omni_ctr_arg(t, 1));
-      omni_env_pop(e, 1);
-      return;
-    }
+    // Let/LetS/LetP with automatic parallelization
+    // Collects consecutive let bindings, analyzes dependencies, and emits parallel groups
+    if ((nam == OMNI_NAM_LET || nam == OMNI_NAM_LETS || nam == OMNI_NAM_LETP) && ari == 2) {
+      // Collect consecutive let bindings
+      LetBinding bindings[64];
+      Term final_body;
+      u32 count = omni_collect_lets(t, bindings, 64, &final_body);
 
-    // LetS (strict binding - forces eager evaluation with ^:strict)
-    if (nam == OMNI_NAM_LETS && ari == 2) {
-      // Strict binding: !!&var = expr; (with !! prefix)
-      fputs("!!", e->out);
-      const char *var_name = omni_env_push(e);
-      fprintf(e->out, "&%s = ", var_name);
-      omni_emit_term(e, omni_ctr_arg(t, 0));
-      fputs("; ", e->out);
-      omni_emit_term(e, omni_ctr_arg(t, 1));
-      omni_env_pop(e, 1);
+      if (count <= 1) {
+        // Single binding - use simple emission
+        // Strict bindings and parallel bindings both use !!
+        int is_strict = (nam == OMNI_NAM_LETS);
+        int is_parallel = (nam == OMNI_NAM_LETP);
+        if (is_strict || is_parallel) fputs("!!", e->out);
+        const char *var_name = omni_env_push(e);
+        fprintf(e->out, "&%s = ", var_name);
+        omni_emit_term(e, omni_ctr_arg(t, 0));
+        fputs("; ", e->out);
+        omni_emit_term(e, omni_ctr_arg(t, 1));
+        omni_env_pop(e, 1);
+        return;
+      }
+
+      // Multiple bindings - analyze dependencies and emit parallel groups
+      omni_analyze_let_deps(bindings, count);
+
+      // Emit bindings in original order (required for correct de Bruijn scoping)
+      // but mark independent ones with !! for parallel execution
+      // IMPORTANT: Emit value BEFORE pushing to env (de Bruijn indices are
+      // relative to the scope BEFORE this binding is introduced)
+      for (u32 i = 0; i < count; i++) {
+        // A binding is independent if it has no dependencies on earlier bindings
+        // Or if it's explicitly marked as parallel (^:parallel metadata)
+        int is_independent = (bindings[i].deps == FV_EMPTY);
+        int force_parallel = bindings[i].is_parallel;  // LetP sets is_parallel=1 during collect
+
+        // Use !! prefix for independent or explicitly parallel bindings
+        if (is_independent || force_parallel) {
+          fputs("!!", e->out);
+        }
+
+        // Generate variable name first
+        const char *var_name = omni_env_gen_name(e);
+        // Store a copy since static buffer will be overwritten
+        char var_name_copy[64];
+        strncpy(var_name_copy, var_name, 63);
+        var_name_copy[63] = '\0';
+
+        // Emit binding header
+        fprintf(e->out, "&%s = ", var_name_copy);
+        // Emit value with current environment (BEFORE this binding is pushed)
+        omni_emit_term(e, bindings[i].value);
+        fputs("; ", e->out);
+
+        // NOW push the binding to the environment
+        omni_env_push_name(e, var_name_copy);
+      }
+
+      // Emit final body
+      omni_emit_term(e, final_body);
+
+      // Pop all bindings
+      omni_env_pop(e, count);
       return;
     }
 
@@ -572,6 +774,15 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
     // Emits #Pure{fn} - can be used for static analysis and optimization
     if (nam == OMNI_NAM_PURE && ari == 1) {
       fputs("#Pure{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputc('}', e->out);
+      return;
+    }
+
+    // Associative (associativity marker from ^:associative metadata)
+    // Emits #Assc{fn} - indicates function can use tree reduction for parallelism
+    if (nam == OMNI_NAM_ASSC && ari == 1) {
+      fputs("#Assc{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));
       fputc('}', e->out);
       return;
@@ -812,6 +1023,26 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       return;
     }
 
+    // Fork (HVM4 superposition for parallel execution)
+    // Emits &C{a, b} which creates HVM4 superposition
+    if (nam == OMNI_NAM_FORK && ari == 2) {
+      fputs("&C{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
+      return;
+    }
+
+    // Choice (nested superposition from list)
+    // Emits call to @omni_choice runtime function
+    if (nam == OMNI_NAM_CHOI && ari == 1) {
+      fputs("@omni_choice(", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputc(')', e->out);
+      return;
+    }
+
     // Quasiquote
     if (nam == OMNI_NAM_QQ && ari == 1) {
       fputs("#QQ{", e->out);
@@ -970,6 +1201,144 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));
       fputc('}', e->out);
+      return;
+    }
+
+    // List comprehension: #Cmpr{clauses, yield_expr}
+    // Compiles to nested map/filter/flat_map calls for parallel execution
+    if (nam == OMNI_NAM_CMPR && ari == 2) {
+      Term clauses = omni_ctr_arg(t, 0);
+      Term yield_expr = omni_ctr_arg(t, 1);
+
+      // Collect for-clauses and when-clauses
+      Term for_clauses[16];   // (var_sym, collection) pairs
+      Term when_clauses[16];  // predicate expressions
+      int for_count = 0;
+      int when_count = 0;
+
+      Term c = clauses;
+      while (term_tag(c) == C02 && (term_ext(c) == OMNI_NAM_CON || term_ext(c) == NAM_CON)) {
+        u32 c_loc = term_val(c);
+        Term head = HEAP[c_loc];
+        Term tail = HEAP[c_loc + 1];
+
+        if (term_tag(head) == C02 && term_ext(head) == OMNI_NAM_CFOR) {
+          // #CFor{var_sym, collection}
+          for_clauses[for_count++] = head;
+        } else if (term_tag(head) == C01 && term_ext(head) == OMNI_NAM_CWHN) {
+          // #CWhn{predicate}
+          when_clauses[when_count++] = HEAP[term_val(head)];
+        }
+        c = tail;
+      }
+
+      // Emit comprehension as nested map/filter/flat_map
+      // Strategy:
+      //   - Single for: (@map (\x. yield) coll)
+      //   - With filters: (@map (\x. yield) (@filter (\x. pred) coll))
+      //   - Multiple fors: (@flat_map (\x. [inner]) outer)
+
+      if (for_count == 1) {
+        // Single for-loop case
+        Term coll = HEAP[term_val(for_clauses[0]) + 1];
+
+        // If we have when-clauses, wrap collection in filter first
+        if (when_count > 0) {
+          // (@map (\x. yield) (@filter (\x. pred) coll))
+          fputs("((@map)(λ&", e->out);
+          // Push variable binding for yield
+          const char *var_name = omni_env_gen_name(e);
+          char var_buf[64];
+          strncpy(var_buf, var_name, 63);
+          var_buf[63] = '\0';
+          fprintf(e->out, "%s. ", var_buf);
+          omni_env_push_name(e, var_buf);
+          omni_emit_term(e, yield_expr);
+          omni_env_pop(e, 1);
+          fputs(")((@filter)(λ&", e->out);
+          // Re-generate var name for filter lambda
+          var_name = omni_env_gen_name(e);
+          strncpy(var_buf, var_name, 63);
+          var_buf[63] = '\0';
+          fprintf(e->out, "%s. ", var_buf);
+          omni_env_push_name(e, var_buf);
+          // Emit combined predicate
+          if (when_count == 1) {
+            omni_emit_term(e, when_clauses[0]);
+          } else {
+            // Multiple predicates: combine with #And
+            for (int i = 0; i < when_count; i++) {
+              if (i > 0) fputs(")(", e->out);
+              fputs("((@and)(", e->out);
+              omni_emit_term(e, when_clauses[i]);
+            }
+            // Close all the nested ands (the last one uses true)
+            fputs(")(#True)", e->out);
+            for (int i = 1; i < when_count; i++) {
+              fputc(')', e->out);
+            }
+          }
+          omni_env_pop(e, 1);
+          fputs(")(", e->out);
+          omni_emit_term(e, coll);
+          fputs(")))", e->out);
+        } else {
+          // No filter, just map
+          // (@map (\x. yield) coll)
+          fputs("((@map)(λ&", e->out);
+          const char *var_name = omni_env_gen_name(e);
+          char var_buf[64];
+          strncpy(var_buf, var_name, 63);
+          var_buf[63] = '\0';
+          fprintf(e->out, "%s. ", var_buf);
+          omni_env_push_name(e, var_buf);
+          omni_emit_term(e, yield_expr);
+          omni_env_pop(e, 1);
+          fputs(")(", e->out);
+          omni_emit_term(e, coll);
+          fputs("))", e->out);
+        }
+      } else if (for_count == 2) {
+        // Two nested for-loops: flat_map + map
+        // (@flat_map (\x. (@map (\y. yield) ys)) xs)
+        Term coll1 = HEAP[term_val(for_clauses[0]) + 1];
+        Term coll2 = HEAP[term_val(for_clauses[1]) + 1];
+
+        fputs("((@flat_map)(λ&", e->out);
+        const char *v1_name = omni_env_gen_name(e);
+        char v1_buf[64];
+        strncpy(v1_buf, v1_name, 63);
+        v1_buf[63] = '\0';
+        fprintf(e->out, "%s. ", v1_buf);
+        omni_env_push_name(e, v1_buf);
+
+        // Inner map
+        fputs("((@map)(λ&", e->out);
+        const char *v2_name = omni_env_gen_name(e);
+        char v2_buf[64];
+        strncpy(v2_buf, v2_name, 63);
+        v2_buf[63] = '\0';
+        fprintf(e->out, "%s. ", v2_buf);
+        omni_env_push_name(e, v2_buf);
+        omni_emit_term(e, yield_expr);
+        omni_env_pop(e, 1);  // v2
+
+        fputs(")(", e->out);
+        omni_emit_term(e, coll2);
+        fputs("))", e->out);
+
+        omni_env_pop(e, 1);  // v1
+        fputs(")(", e->out);
+        omni_emit_term(e, coll1);
+        fputs("))", e->out);
+      } else {
+        // Fallback: emit as runtime-interpreted comprehension
+        fputs("#Cmpr{", e->out);
+        omni_emit_term(e, clauses);
+        fputs(", ", e->out);
+        omni_emit_term(e, yield_expr);
+        fputc('}', e->out);
+      }
       return;
     }
 

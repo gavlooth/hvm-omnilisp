@@ -1,0 +1,7 @@
+        -:    0:Source:../hvm4/clang/term/new/num.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+   582653:    1:fn Term term_new_num(u32 n) {
+   582653:    2:  return term_new(0, NUM, 0, n);
+        -:    3:}

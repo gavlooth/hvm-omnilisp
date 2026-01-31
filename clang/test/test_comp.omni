@@ -1,0 +1,52 @@
+;; test_comp.omni - Tests for comp (function composition)
+
+;; comp composes functions right-to-left
+;; ((comp f g) x) = (f (g x))
+
+;; TEST: compose increment and square
+(define inc [x] (+ x 1))
+(define square [x] (* x x))
+
+;; ((comp square inc) 5) = (square (inc 5)) = (square 6) = 36
+;; EXPECT: 36
+((comp square inc) 5)
+
+;; TEST: reverse order
+;; ((comp inc square) 5) = (inc (square 5)) = (inc 25) = 26
+;; EXPECT: 26
+((comp inc square) 5)
+
+;; TEST: compose double
+(define double [x] (* x 2))
+
+;; EXPECT: 32
+((comp double double double double double) 1)
+
+;; TEST: identity composition
+;; (comp f id) = f
+(define id [x] x)
+
+;; EXPECT: 49
+((comp square id) 7)
+
+;; TEST: compose string operations
+(define add-bang [s] (str-concat s "!"))
+(define wrap-parens [s] (str-concat "(" (str-concat s ")")))
+
+;; EXPECT: "(hello!)"
+((comp wrap-parens add-bang) "hello")
+
+;; TEST: three-way composition
+(define negate [x] (- 0 x))
+
+;; ((comp negate square inc) 3) = (negate (square (inc 3))) = (negate 16) = -16
+;; EXPECT: -16
+((comp negate square inc) 3)
+
+;; TEST: compose with let
+;; EXPECT: 100
+(let [f (comp square double)]
+  (f 5))
+
+;; EXPECT: 12
+((comp inc inc inc inc inc inc inc inc inc inc inc inc) 0)

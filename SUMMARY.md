@@ -14,7 +14,7 @@ See also:
 *   **Special forms:** `define`, `lambda`, `let`, `if`, `match`, `handle`/`perform`.
 *   **Primitives:** `+ - * / %`, `< > <= >= =`, `cons car cdr empty?`, `print println`, `str`, `map filter reduce`.
 *   **Data types:** lists, arrays, dicts, enums.
-*   **Control:** algebraic effects for error handling, fibers & channels.
+*   **Control:** algebraic effects for error handling and fibers.
 
 ## Planned Design (Not Yet Implemented)
 ### Syntax & Aesthetics (planned)
@@ -39,7 +39,7 @@ See also:
 *   **Let modifiers:** `^:seq`/`^:rec` metadata.
 *   **Continuations:** native `prompt`/`control` plus TCO via trampolining.
 *   **Errors:** `error` + single `restart-case` in phase 1; full condition system deferred.
-*   **Concurrency:** cooperative green threads and channels.
+*   **Concurrency:** cooperative green threads (fibers) with effect-based communication.
 
 ### Power Tools (planned)
 *   **Hygienic macros:** Racket-style `syntax-case`.

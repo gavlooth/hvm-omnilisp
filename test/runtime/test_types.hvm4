@@ -1,0 +1,193 @@
+// OmniLisp Runtime Tests: Type System
+// Tests @omni_type_of, @omni_is_type, @omni_infer_type_runtime
+// Tests @omni_subtype, type descriptors
+
+// =============================================================================
+// Type-Of Tests
+// =============================================================================
+
+// Test: type of integer
+@test_type_of_int =
+  !!&result = @omni_type_of(#Cst{42});
+  @assert_eq(#type_of_int)(#sym_Int)(result)
+
+// Test: type of character
+@test_type_of_char =
+  !!&result = @omni_type_of(#CHR{65});
+  @assert_eq(#type_of_char)(#sym_Char)(result)
+
+// Test: type of symbol
+@test_type_of_sym =
+  !!&result = @omni_type_of(#Sym{12345});
+  @assert_eq(#type_of_sym)(#sym_Symbol)(result)
+
+// Test: type of list
+@test_type_of_list =
+  !!&result = @omni_type_of(#CON{#Cst{1}, #NIL});
+  @assert_eq(#type_of_list)(#sym_List)(result)
+
+// Test: type of empty list
+@test_type_of_empty_list =
+  !!&result = @omni_type_of(#NIL);
+  @assert_eq(#type_of_empty_list)(#sym_List)(result)
+
+// Test: type of closure
+@test_type_of_clo =
+  !!&result = @omni_type_of(#Clo{#NIL, #Var{0}});
+  @assert_eq(#type_of_clo)(#sym_Function)(result)
+
+// Test: type of recursive closure
+@test_type_of_clor =
+  !!&result = @omni_type_of(#CloR{#NIL, #Var{0}});
+  @assert_eq(#type_of_clor)(#sym_Function)(result)
+
+// Test: type of true
+@test_type_of_true =
+  !!&result = @omni_type_of(#True{});
+  @assert_eq(#type_of_true)(#sym_Bool)(result)
+
+// Test: type of false
+@test_type_of_false =
+  !!&result = @omni_type_of(#Fals{});
+  @assert_eq(#type_of_false)(#sym_Bool)(result)
+
+// Test: type of nothing
+@test_type_of_noth =
+  !!&result = @omni_type_of(#Noth{});
+  @assert_eq(#type_of_noth)(#sym_Nothing)(result)
+
+// Test: type of handle
+@test_type_of_handle =
+  !!&result = @omni_type_of(#Hndl{1, 2});
+  @assert_eq(#type_of_handle)(#sym_Handle)(result)
+
+// =============================================================================
+// Is-Type Tests
+// =============================================================================
+
+// Test: is int
+@test_is_type_int =
+  !!&result = @omni_is_type(#Cst{42})(#sym_Int);
+  @assert_true(#is_type_int)(result)
+
+// Test: is int (negative)
+@test_is_type_int_neg =
+  !!&result = @omni_is_type(#Cst{42})(#sym_Bool);
+  @assert_false(#is_type_int_neg)(result)
+
+// Test: is list
+@test_is_type_list =
+  !!&result = @omni_is_type(#CON{#Cst{1}, #NIL})(#sym_List);
+  @assert_true(#is_type_list)(result)
+
+// Test: is bool (true)
+@test_is_type_bool_true =
+  !!&result = @omni_is_type(#True{})(#sym_Bool);
+  @assert_true(#is_type_bool_true)(result)
+
+// Test: is bool (false)
+@test_is_type_bool_false =
+  !!&result = @omni_is_type(#Fals{})(#sym_Bool);
+  @assert_true(#is_type_bool_false)(result)
+
+// =============================================================================
+// Runtime Type Inference Tests
+// =============================================================================
+
+// Test: infer type of int
+@test_infer_int =
+  !!&result = @omni_infer_type_runtime(#Cst{42});
+  // Should be @type_Int (a type descriptor)
+  !!&is_tdsc = (λ{#TDsc: λ&n. λ&p. λ&f. 1; _: λ&u_. 0})(result);
+  @assert_eq(#infer_int)(#Cst{1})(#Cst{is_tdsc})
+
+// Test: infer type of list
+@test_infer_list =
+  !!&result = @omni_infer_type_runtime(#CON{#Cst{1}, #NIL});
+  !!&is_tdsc = (λ{#TDsc: λ&n. λ&p. λ&f. 1; _: λ&u_. 0})(result);
+  @assert_eq(#infer_list)(#Cst{1})(#Cst{is_tdsc})
+
+// Test: infer arg types of list of values
+@test_infer_arg_types =
+  !!&args = #CON{#Cst{1}, #CON{#True{}, #CON{#NIL, #NIL}}};
+  !!&types = @omni_infer_arg_types_runtime(args);
+  // Should have 3 types
+  !!&len = @omni_list_length(types);
+  @assert_eq(#infer_arg_types)(#Cst{3})(#Cst{len})
+
+// =============================================================================
+// Subtype Tests
+// =============================================================================
+
+// Test: type is subtype of itself
+@test_subtype_self =
+  !!&result = @omni_subtype(@type_Int)(@type_Int);
+  @assert_true(#subtype_self)(result)
+
+// Test: Int is subtype of Any
+@test_subtype_int_any =
+  !!&result = @omni_subtype(@type_Int)(@type_Any);
+  @assert_true(#subtype_int_any)(result)
+
+// Test: Int is not subtype of Bool
+@test_subtype_int_bool =
+  !!&result = @omni_subtype(@type_Int)(@type_Bool);
+  @assert_false(#subtype_int_bool)(result)
+
+// Test: Nothing is subtype of Any
+@test_subtype_nothing_any =
+  !!&result = @omni_subtype(@type_Nothing)(@type_Any);
+  @assert_true(#subtype_nothing_any)(result)
+
+// =============================================================================
+// Type Descriptor Tests
+// =============================================================================
+
+// Test: type_Int has correct structure
+@test_type_int_struct =
+  !!&is_tdsc = (λ{#TDsc: λ&n. λ&p. λ&f. 1; _: λ&u_. 0})(@type_Int);
+  @assert_eq(#type_int_struct)(#Cst{1})(#Cst{is_tdsc})
+
+// Test: type_Any has correct structure
+@test_type_any_struct =
+  !!&is_tdsc = (λ{#TDsc: λ&n. λ&p. λ&f. 1; _: λ&u_. 0})(@type_Any);
+  @assert_eq(#type_any_struct)(#Cst{1})(#Cst{is_tdsc})
+
+// Test: type_List has correct structure
+@test_type_list_struct =
+  !!&is_tdsc = (λ{#TDsc: λ&n. λ&p. λ&f. 1; _: λ&u_. 0})(@type_List);
+  @assert_eq(#type_list_struct)(#Cst{1})(#Cst{is_tdsc})
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@type_tests = #CON{@test_type_of_int,
+  #CON{@test_type_of_char,
+  #CON{@test_type_of_sym,
+  #CON{@test_type_of_list,
+  #CON{@test_type_of_empty_list,
+  #CON{@test_type_of_clo,
+  #CON{@test_type_of_clor,
+  #CON{@test_type_of_true,
+  #CON{@test_type_of_false,
+  #CON{@test_type_of_noth,
+  #CON{@test_type_of_handle,
+  #CON{@test_is_type_int,
+  #CON{@test_is_type_int_neg,
+  #CON{@test_is_type_list,
+  #CON{@test_is_type_bool_true,
+  #CON{@test_is_type_bool_false,
+  #CON{@test_infer_int,
+  #CON{@test_infer_list,
+  #CON{@test_infer_arg_types,
+  #CON{@test_subtype_self,
+  #CON{@test_subtype_int_any,
+  #CON{@test_subtype_int_bool,
+  #CON{@test_subtype_nothing_any,
+  #CON{@test_type_int_struct,
+  #CON{@test_type_any_struct,
+  #CON{@test_type_list_struct,
+  #NIL}}}}}}}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@type_tests)

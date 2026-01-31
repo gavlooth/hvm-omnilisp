@@ -1,0 +1,44 @@
+;; test_datetime_format.omni - Tests for string formatting functions
+
+;; TEST: format int to string
+;; EXPECT: "42"
+(str 42)
+
+;; TEST: string concat
+;; EXPECT: "hello world"
+(str-concat "hello " "world")
+
+;; TEST: format multiple values
+;; EXPECT: "value: 10"
+(str-concat "value: " (str 10))
+
+;; Number formatting function
+(define format-pair [label] [val]
+  (str-concat (str-concat label ": ") (str val)))
+
+;; TEST: format pair
+;; EXPECT: "count: 5"
+(format-pair "count" 5)
+
+;; TEST: format with padding pattern
+;; EXPECT: "00010"
+(let [n 10]
+  (let [s (str n)]
+    (str-concat "000" s)))
+
+;; TEST: format-date placeholder
+;; EXPECT: "2024-01-15"
+(str-concat (str-concat (str-concat (str-concat (str 2024) "-") "01") "-") "15")
+
+;; Parse string to int
+;; TEST: parse int
+;; EXPECT: 42
+(str-to-int "42")
+
+;; TEST: string length
+;; EXPECT: 10
+(length "2024-01-15")
+
+;; EXPECT: true
+(let [s (str 123)]
+  (= (length s) 3))

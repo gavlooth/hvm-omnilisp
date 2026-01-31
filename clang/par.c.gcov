@@ -1,0 +1,11 @@
+        -:    0:Source:../hvm4/clang/parse/term/par.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:fn Term parse_term(PState *s, u32 depth);
+        -:    2:
+   116896:    3:fn Term parse_term_par(PState *s, u32 depth) {
+   116896:    4:  Term term = parse_term(s, depth);
+   116896:    5:  parse_consume(s, ")");
+   116896:    6:  return term;
+        -:    7:}

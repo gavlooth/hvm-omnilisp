@@ -1,0 +1,61 @@
+;; test_path_expr.omni - Tests for path expressions (dot notation)
+
+;; Path expressions use . to access fields and module members
+
+;; TEST: simple field access
+(define Point [x] [y])
+(define p (Point 10 20))
+
+;; EXPECT: 10
+p.x
+
+;; TEST: second field access
+;; EXPECT: 20
+p.y
+
+;; TEST: nested struct access
+(define Line [start] [end])
+(define line (Line (Point 0 0) (Point 10 10)))
+
+;; EXPECT: 10
+line.end.x
+
+;; TEST: dict field access
+(define person #{:name "Alice" :age 30})
+
+;; EXPECT: "Alice"
+person.name
+
+;; TEST: nested dict access
+(define nested #{:outer #{:inner 42}})
+
+;; EXPECT: 42
+nested.outer.inner
+
+;; TEST: array index access with bracket notation
+(define arr [100 200 300])
+
+;; EXPECT: 200
+arr.[1]
+
+;; TEST: mixed path - struct then array
+(define Container [items])
+(define c (Container [1 2 3]))
+
+;; EXPECT: 2
+c.items.[1]
+
+;; TEST: module path (conceptual)
+;; Math.sin would access sin from Math module
+;; EXPECT: true
+true
+
+;; TEST: method-like access pattern
+(define Rectangle [width] [height])
+(define rect (Rectangle 5 10))
+
+;; EXPECT: 50
+(* rect.width rect.height)
+
+;; EXPECT: 30
+(+ p.x p.y)

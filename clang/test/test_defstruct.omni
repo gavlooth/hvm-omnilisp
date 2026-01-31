@@ -1,0 +1,57 @@
+;; test_defstruct.omni - Tests for struct-like records using dicts
+;; OmniLisp uses dict literals #{"key" value} for records
+
+;; Person as dict
+;; TEST: create person dict
+;; EXPECT: "Alice"
+(let [p #{"name" "Alice" "age" 30}]
+  (get p "name"))
+
+;; TEST: get age field
+;; EXPECT: 30
+(let [p #{"name" "Alice" "age" 30}]
+  (get p "age"))
+
+;; Constructor function pattern
+(define make-person [name] [age]
+  #{"name" name "age" age})
+
+;; TEST: use constructor
+;; EXPECT: "Bob"
+(let [p (make-person "Bob" 25)]
+  (get p "name"))
+
+;; User with optional field (using nothing)
+(define make-user [id] [name]
+  #{"id" id "name" name "email" nothing})
+
+(define make-user-email [id] [name] [email]
+  #{"id" id "name" name "email" email})
+
+;; TEST: user without email
+;; EXPECT: nothing
+(let [u (make-user 1 "Bob")]
+  (get u "email"))
+
+;; TEST: user with email
+;; EXPECT: "bob@example.com"
+(let [u (make-user-email 1 "Bob" "bob@example.com")]
+  (get u "email"))
+
+;; Update via merge
+(define with-age [person] [new-age]
+  (merge person #{"age" new-age}))
+
+;; TEST: struct update
+;; EXPECT: 31
+(let [p (make-person "Alice" 30)]
+  (let [p2 (with-age p 31)]
+    (get p2 "age")))
+
+;; Dict equality
+;; TEST: dict equality same
+;; EXPECT: true
+(= #{"a" 1 "b" 2} #{"a" 1 "b" 2})
+
+;; EXPECT: false
+(= #{"a" 1} #{"a" 2})

@@ -1,0 +1,59 @@
+;; test_clambda.omni - Tests for staged/quoted lambdas
+;; OmniLisp uses lift and splice for staging
+
+;; Basic lifted value
+;; TEST: lift integer
+;; EXPECT: 5
+(run (lift 5))
+
+;; TEST: lift arithmetic
+;; EXPECT: 8
+(run (lift (+ 3 5)))
+
+;; Staged function via quasiquote
+(define staged-double [x]
+  `(* ,x 2))
+
+;; TEST: staged double
+;; EXPECT: (* 5 2)
+(staged-double 5)
+
+;; Run staged code
+;; TEST: eval staged
+;; EXPECT: 10
+(eval (staged-double 5))
+
+;; Staged composition
+(define staged-inc [x]
+  `(+ ,x 1))
+
+(define staged-double-inc [x]
+  `(* ,(staged-inc x) 2))
+
+;; TEST: nested staging
+;; EXPECT: (* (+ 3 1) 2)
+(staged-double-inc 3)
+
+;; Higher-order staging
+(define make-adder [n]
+  (lambda [x] (+ x n)))
+
+;; TEST: closure captures value
+;; EXPECT: 15
+((make-adder 10) 5)
+
+;; TEST: multiple applications
+;; EXPECT: 8
+(let [add3 (make-adder 3)]
+  (add3 (add3 2)))
+
+;; Staged with free variable
+;; TEST: staged with env
+;; EXPECT: 25
+(let [n 10]
+  (let [f (lambda [x] (+ x n))]
+    (+ (f 5) (f 10))))
+
+;; EXPECT: 30
+(let [f (make-adder 20)]
+  (f 10))

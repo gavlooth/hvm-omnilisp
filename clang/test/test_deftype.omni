@@ -1,0 +1,50 @@
+;; test_deftype.omni - Tests for struct-like data using dicts
+;; OmniLisp uses dict literals for product-like data
+
+;; TEST: create point as dict
+;; EXPECT: 3
+(let [p #{"x" 3 "y" 4}]
+  (get p "x"))
+
+;; TEST: access y field
+;; EXPECT: 4
+(let [p #{"x" 3 "y" 4}]
+  (get p "y"))
+
+;; TEST: compute with point fields
+;; EXPECT: 7
+(let [p #{"x" 3 "y" 4}]
+  (+ (get p "x") (get p "y")))
+
+;; TEST: nested dict (circle with center)
+;; EXPECT: 0
+(let [c #{"center" #{"x" 0 "y" 0} "radius" 5}]
+  (get (get c "center") "x"))
+
+;; TEST: get radius from nested
+;; EXPECT: 5
+(let [c #{"center" #{"x" 0 "y" 0} "radius" 5}]
+  (get c "radius"))
+
+;; TEST: dict with string values
+;; EXPECT: "localhost"
+(let [cfg #{"host" "localhost" "port" 8080}]
+  (get cfg "host"))
+
+;; TEST: override default pattern
+;; EXPECT: "example.com"
+(let [cfg #{"host" "example.com" "port" 443}]
+  (get cfg "host"))
+
+;; Constructor function pattern
+(define make-point [x] [y]
+  #{"x" x "y" y})
+
+;; TEST: constructor function
+;; EXPECT: 10
+(let [p (make-point 4 6)]
+  (+ (get p "x") (get p "y")))
+
+;; EXPECT: 25
+(let [p (make-point 10 15)]
+  (+ (get p "x") (get p "y")))

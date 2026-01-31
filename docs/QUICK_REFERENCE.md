@@ -223,6 +223,91 @@ OmniLisp uses **Gradual Multiple Dispatch** - method selection based on all argu
 
 **Gradual spectrum:** Add type annotations incrementally to gain more compile-time guarantees.
 
+### 2.7 Dispatch Resolution Algorithm
+
+The dispatch algorithm follows this exact sequence:
+
+#### Step 1: Arity Filtering
+Only methods with matching arity (number of parameters) are considered.
+
+```lisp
+(defgfun area [shape])           ; 1-arity methods only
+(defmethod area [c {Circle}] (* PI (* c.radius c.radius)))
+(defmethod area [r {Rect}] (* r.width r.height))
+
+(area my-circle)  ; Only 1-arity methods considered
+```
+
+#### Step 2: Type Matching
+For each candidate method, check if argument types are subtypes of parameter types.
+
+```lisp
+;; Type hierarchy: Dog <: Animal <: Any
+(defgfun speak [x])
+(defmethod speak [x {Animal}] "generic sound")
+(defmethod speak [x {Dog}] "woof")
+
+(speak (Dog))  ; Both methods match! Dog <: Animal and Dog <: Dog
+```
+
+#### Step 3: Specificity Comparison
+When multiple methods match, compare specificity **position by position**:
+
+| Comparison Result | Meaning |
+|-------------------|---------|
+| `#ASpec{}` | Method A is strictly more specific |
+| `#BSpec{}` | Method B is strictly more specific |
+| `#Equal{}` | Same specificity (first defined wins) |
+| `#Ambig{}` | Neither is more specific → **Error** |
+
+**Specificity Rule:** A type is more specific if it's a proper subtype.
+
+```lisp
+;; Example: Dog <: Animal
+;; Method 1: [x {Animal}] - specificity score: 0
+;; Method 2: [x {Dog}]    - specificity score: 1 (Dog <: Animal)
+;; → Method 2 wins
+```
+
+#### Step 4: Ambiguity Detection
+Ambiguity occurs when two methods each win on different argument positions:
+
+```lisp
+(defgfun collide [a] [b])
+(defmethod collide [a {Circle}] [b {Shape}] "circle-shape")
+(defmethod collide [a {Shape}] [b {Circle}] "shape-circle")
+
+(collide (Circle) (Circle))
+;; Method 1: wins on arg 1 (Circle <: Shape)
+;; Method 2: wins on arg 2 (Circle <: Shape)
+;; → #Err{AmbiguousMethod} - neither is strictly more specific!
+```
+
+**Resolution:** Add a more specific method that resolves the ambiguity:
+```lisp
+(defmethod collide [a {Circle}] [b {Circle}] "circle-circle")
+;; Now this method wins for (Circle, Circle) args
+```
+
+#### Step 5: Curried Partial Application
+Multi-arity methods support partial application via `#GPrt`:
+
+```lisp
+(defgfun add [x] [y])
+(defmethod add [x {Int}] [y {Int}] (+ x y))
+
+(define add5 (add 5))  ; Returns #GPrt{add, methods, [5], 1}
+(add5 10)              ; → 15 (completes dispatch)
+```
+
+#### Error Conditions
+
+| Error | Cause |
+|-------|-------|
+| `#Err{NoMethod}` | No method matches argument types |
+| `#Err{AmbiguousMethod}` | Multiple methods equally specific |
+| `#Err{DispatchFailed}` | Internal dispatch error |
+
 ---
 
 ## 3. The Type System (Kind Domain)
@@ -494,30 +579,30 @@ The dot `.` operator is used for nested data access.
 **`match` is the single source of truth for all conditional logic.** All other conditionals (`if`, `when`, `unless`) are syntactic sugar that desugar to `match` at parse time.
 
 ```lisp
-;; Basic match
+;; Basic match (flat pattern-result pairs)
 (match value
-  [1]       "one"
-  [2]       "two"
-  [x :when (> x 10)] "large"
-  [_]       "other")
+  1             "one"
+  2             "two"
+  x & (> x 10)  "large"
+  _             "other")
 
 ;; Destructuring patterns
 (match point
-  [(Point x y)] (+ x y)
-  [_]           0)
+  (Point x y)  (+ x y)
+  _            0)
 
 ;; Rest patterns
 (match items
-  [[first second .. rest]] (list first (length rest))
-  [_]                      nothing)
+  [first second .. rest]  (list first (length rest))
+  _                       nothing)
 ```
 
 **Conditionals are syntactic sugar:**
 | Form | Desugars To |
 |------|-------------|
-| `(if c t e)` | `(match c [true] t [_] e)` |
-| `(when c b)` | `(match c [true] b [_] nothing)` |
-| `(unless c b)` | `(match c [true] nothing [_] b)` |
+| `(if c t e)` | `(match c true t _ e)` |
+| `(when c b)` | `(match c true b _ nothing)` |
+| `(unless c b)` | `(match c true nothing _ b)` |
 
 ### 6.1 Algebraic Effects
 OmniLisp uses **Algebraic Effects** as its primary mechanism for non-local control flow and error handling. Traditional `try/catch` is replaced by `handle/perform`.
@@ -535,11 +620,8 @@ OmniLisp uses **Algebraic Effects** as its primary mechanism for non-local contr
 ;; => 43
 ```
 
-### 6.2 Fibers & Channels (Two-Tier Concurrency)
-OmniLisp implements a **Two-Tier Concurrency** model that separates physical parallelism from massive logical concurrency.
-
-*   **Tier 1 (Parallel):** OS Threads (pthreads) for multi-core utilization.
-*   **Tier 2 (Concurrent):** Lightweight **Fibers** (continuations) for massive concurrency (1M+ fibers).
+### 6.2 Fibers (Lightweight Concurrency)
+OmniLisp implements lightweight **Fibers** (continuations) for massive concurrency (1M+ fibers).
 
 #### Fiber Management
 *   **`fiber`**: Creates a paused fiber from a thunk.
@@ -550,20 +632,8 @@ OmniLisp implements a **Two-Tier Concurrency** model that separates physical par
 *   **`join`**: Blocks the current fiber until the target fiber completes, returning its result.
 *   **`run-fibers`**: Explicitly runs the scheduler loop until all pending fibers are done.
 
-#### Channels (CSP)
-Fibers communicate via **Channels**, enabling ownership transfer without shared-memory locks.
-*   **`chan`**: Creates an unbuffered (rendezvous) channel.
-*   **`(chan n)`**: Creates a buffered channel with capacity `n`.
-*   **`send` / `recv`**: Synchronous or buffered communication. If a channel is full (on send) or empty (on recv), the fiber **Parks** (Tier 2 suspension) to let others run.
-
-```lisp
-(with-fibers
-  (define c (chan 3))
-  (spawn (fiber (lambda [] (send c "ping"))))
-```
-
-#### Ownership Transfer
-Sending a value through a channel performs an **Ownership Transfer**. The sending fiber/thread yields control of the object's lifetime to the receiver, preventing data races by ensuring only one owner exists at any time. Immutable objects (frozen) can be shared safely across Tier 1 threads.
+#### Communication via Effects
+Fibers communicate using **algebraic effects** rather than Go-style channels. Since HVM4 has no shared mutable state, effects provide a natural way for fibers to interact with the scheduler and each other without requiring channel synchronization primitives.
 
 ---
 
@@ -876,14 +946,14 @@ true            ; true
 
 ; Pattern matching (PRIMARY control flow)
 (match value                         ; Pattern match expression
-  [pattern1] result1
-  [pattern2 :when guard] result2
-  [_] default)
+  pattern1        result1
+  pattern2 & guard  result2
+  _               default)
 
 ; Conditionals (syntactic sugar for match)
-(if cond then else)                  ; → (match cond [true] then [_] else)
-(when cond body...)                  ; → (match cond [true] body [_] nothing)
-(unless cond body...)                ; → (match cond [true] nothing [_] body)
+(if cond then else)                  ; → (match cond true then _ else)
+(when cond body...)                  ; → (match cond true body _ nothing)
+(unless cond body...)                ; → (match cond true nothing _ body)
 
 ; Boolean & sequencing
 (and e1 e2 ...)                      ; Short-circuit and

@@ -1,0 +1,73 @@
+;; test_explore.lisp - A3: Explore/Reject Effects (Non-Deterministic Search)
+;; Tests for exploration primitives: explore, reject, require
+
+;; TEST: explore returns first element from list (C interpreter)
+;; EXPECT: 1
+(explore '(1 2 3))
+
+;; TEST: choice returns first element (alias for explore)
+;; EXPECT: a
+(choice '(a b c))
+
+;; TEST: reject returns nothing
+;; EXPECT: nothing
+(reject)
+
+;; TEST: require with true condition returns true
+;; EXPECT: true
+(require true)
+
+;; TEST: require with false condition returns nothing
+;; EXPECT: nothing
+(require false)
+
+;; TEST: require with non-zero number returns true
+;; EXPECT: true
+(require 42)
+
+;; TEST: require with zero returns nothing
+;; EXPECT: nothing
+(require 0)
+
+;; TEST: require with equality check - true case
+;; EXPECT: true
+(require (= 2 2))
+
+;; TEST: require with equality check - false case
+;; EXPECT: nothing
+(require (= 2 3))
+
+;; TEST: require with comparison - true case
+;; EXPECT: true
+(require (< 1 5))
+
+;; TEST: require with comparison - false case
+;; EXPECT: nothing
+(require (> 1 5))
+
+;; TEST: Simple exploration - first choice
+;; EXPECT: 1
+(let [x (explore '(1 2 3))]
+  x)
+
+;; TEST: Nested explore - first of first
+;; EXPECT: 1
+(let [x (explore '(1 2))]
+  (let [y (explore '(a b))]
+    x))
+
+;; TEST: explore-first finds first match
+;; EXPECT: 4
+(explore-first '(1 2 3 4 5) (lambda [x] (> x 3)))
+
+;; TEST: explore-first returns nothing when no match
+;; EXPECT: nothing
+(explore-first '(1 2 3) (lambda [x] (> x 10)))
+
+;; TEST: explore-all collects all valid results
+;; EXPECT: (2 4 6)
+(explore-all '(1 2 3 4 5 6) (lambda [x] (if (= 0 (% x 2)) x nothing)))
+
+;; TEST: explore-range generates choices from range
+;; EXPECT: 0
+(explore-range 0 5)

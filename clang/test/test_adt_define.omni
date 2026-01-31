@@ -1,0 +1,50 @@
+;; test_adt_define.omni - Tests for data structures and pattern matching
+
+;; OmniLisp uses dict literals for product-like data
+
+;; TEST: simple dict as record
+;; EXPECT: 10
+(let [point #{"x" 10 "y" 20}]
+  (get point "x"))
+
+;; TEST: access y field
+;; EXPECT: 20
+(let [point #{"x" 10 "y" 20}]
+  (get point "y"))
+
+;; TEST: pattern match on values
+;; EXPECT: 30
+(let [point #{"x" 10 "y" 20}]
+  (+ (get point "x") (get point "y")))
+
+;; TEST: nested dicts
+;; EXPECT: 0
+(let [circle #{"center" #{"x" 0 "y" 0} "radius" 5}]
+  (get (get circle "center") "x"))
+
+;; TEST: maybe pattern using match
+;; EXPECT: 42
+(match 42
+  nil  0
+  x    x)
+
+;; TEST: maybe none case
+;; EXPECT: 0
+(match nil
+  nil  0
+  x    x)
+
+;; TEST: result pattern with dict
+;; EXPECT: 21
+(let [result #{"ok" 21}]
+  (match (get result "ok")
+    nil  0
+    v    v))
+
+;; TEST: multi-field data
+;; EXPECT: "Alice"
+(let [person #{"name" "Alice" "age" 30}]
+  (get person "name"))
+
+;; EXPECT: true
+(= (get #{"a" 100} "a") 100)

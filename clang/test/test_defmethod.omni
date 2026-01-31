@@ -1,0 +1,67 @@
+;; test_defmethod.omni - Tests for method-like dispatch via dict type tags
+;; OmniLisp uses pattern matching on dict type fields for dispatch
+
+;; Animal constructors
+(define make-dog [name]
+  #{"type" "dog" "name" name})
+
+(define make-cat [name]
+  #{"type" "cat" "name" name})
+
+;; Dispatch function using type tag
+(define speak [animal]
+  (let [t (get animal "type")]
+    (match t
+      "dog" "woof"
+      "cat" "meow"
+      _ "<unknown>")))
+
+;; TEST: dog speaks
+;; EXPECT: "woof"
+(speak (make-dog "Fido"))
+
+;; TEST: cat speaks
+;; EXPECT: "meow"
+(speak (make-cat "Whiskers"))
+
+;; TEST: method dispatch on variable
+;; EXPECT: "woof"
+(let [pet (make-dog "Rex")]
+  (speak pet))
+
+;; Shape constructors
+(define make-circle [r]
+  #{"type" "circle" "radius" r})
+
+(define make-rect [w] [h]
+  #{"type" "rect" "width" w "height" h})
+
+;; Area dispatch
+(define area [shape]
+  (let [t (get shape "type")]
+    (match t
+      "circle" (* 3 (* (get shape "radius") (get shape "radius")))
+      "rect" (* (get shape "width") (get shape "height"))
+      _ 0)))
+
+;; TEST: area circle (3 * r^2)
+;; EXPECT: 75
+(area (make-circle 5))
+
+;; TEST: area rectangle
+;; EXPECT: 20
+(area (make-rect 4 5))
+
+;; toString-like dispatch
+(define to-str [x]
+  (match x
+    0 "zero"
+    1 "one"
+    _ "number"))
+
+;; TEST: to-str zero
+;; EXPECT: "zero"
+(to-str 0)
+
+;; EXPECT: "number"
+(to-str 42)

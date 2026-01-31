@@ -1,0 +1,138 @@
+        -:    0:Source:../hvm4/clang/parse/auto_dup.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// Auto-dup: rewrites a cloned binder with N uses into N-1 nested DUP nodes.
+        -:    2:// Example: [x,x,x] becomes !d0&=x; !d1&=d0₁; [d0₀,d1₀,d1₁]
+        -:    3://
+        -:    4:// The transformation is purely structural and does not evaluate anything.
+        -:    5:// It must preserve binding structure and linearity:
+        -:    6:// - Every occurrence of the target ref is replaced by exactly one occurrence
+        -:    7://   of either a BJ0 or BJ1 that belongs to the newly created DUP chain.
+        -:    8:// - The chain ensures that the two sides of each DUP are consumed exactly once.
+        -:    9://
+        -:   10:// The key correctness invariant is that the chain length matches the number
+        -:   11:// of target occurrences in the (already desugared) body. We compute that
+        -:   12:// count by traversing the term.
+        -:   13://
+        -:   14:// We traverse all children and sum uses. This keeps every occurrence unique
+        -:   15:// across the whole term, which is required because SNF will traverse every
+        -:   16:// branch (including matcher chains).
+        -:   17://
+        -:   18:// Works for both BJV refs (let/lambda bindings) and BJ refs (dup bindings).
+        -:   19:// - Target is identified by tag + level (and ext for BJ mode).
+        -:   20:// - Outer refs (level > base depth) are shifted by n to account for new dup terms.
+        -:   21:
+        -:   22:fn u32 auto_dup_count_go(u64 loc, u32 lvl, u8 tgt, u32 ext);
+        -:   23:
+ 16491047:   24:fn u32 auto_dup_count_term(Term t, u32 lvl, u8 tgt, u32 ext) {
+ 16491047:   25:  u8  tg = term_tag(t);
+ 16491047:   26:  u32 vl = term_val(t);
+        -:   27:
+16491047*:   28:  if (tg == tgt && vl == lvl && (tgt == BJV || term_ext(t) == ext)) {
+   800569:   29:    return 1;
+        -:   30:  }
+        -:   31:
+ 15690478:   32:  u32 ari = term_arity(t);
+ 15690478:   33:  if (ari == 0) {
+  6562755:   34:    return 0;
+        -:   35:  }
+        -:   36:
+  9127723:   37:  u32 sum = 0;
+ 24941841:   38:  for (u32 i = 0; i < ari; i++) {
+ 15814118:   39:    sum += auto_dup_count_go(vl + i, lvl, tgt, ext);
+        -:   40:  }
+  9127723:   41:  return sum;
+        -:   42:}
+        -:   43:
+ 15814118:   44:fn u32 auto_dup_count_go(u64 loc, u32 lvl, u8 tgt, u32 ext) {
+ 15814118:   45:  return auto_dup_count_term(HEAP[loc], lvl, tgt, ext);
+        -:   46:}
+        -:   47:
+  7730029:   48:fn void auto_dup_go(u64 loc, u32 lvl, u32 base, u32 *use, u32 n, u32 lab, u8 tgt, u32 ext) {
+  7730029:   49:  Term t = HEAP[loc];
+  7730029:   50:  u8  tg = term_tag(t);
+  7730029:   51:  u32 vl = term_val(t);
+        -:   52:
+        -:   53:  // Replace target ref with BJ0/BJ1 chain
+ 7730029*:   54:  if (tg == tgt && vl == lvl && (tgt == BJV || term_ext(t) == ext)) {
+   430773:   55:    u32 i = (*use)++;
+   430773:   56:    if (i < n) {
+   299546:   57:      HEAP[loc] = term_new(0, BJ0, lab + i, base + 1 + i);
+        -:   58:    } else {
+   131227:   59:      HEAP[loc] = term_new(0, BJ1, lab + n - 1, base + n);
+        -:   60:    }
+   430773:   61:    return;
+        -:   62:  }
+        -:   63:
+        -:   64:  // Shift outer refs
+  7299256:   65:  if ((tg == BJV || tg == BJ0 || tg == BJ1 || tg == BJM) && vl > base) {
+  1562641:   66:    HEAP[loc] = term_new(0, tg, term_ext(t), vl + n);
+  1562641:   67:    return;
+        -:   68:  }
+        -:   69:
+        -:   70:  // Recurse into children
+  5736615:   71:  switch (tg) {
+  1156315:   72:    case LAM: {
+  1156315:   73:      auto_dup_go(vl, lvl, base, use, n, lab, tgt, ext);
+  1156315:   74:      return;
+        -:   75:    }
+   364457:   76:    case DUP: {
+   364457:   77:      auto_dup_go(vl + 0, lvl, base, use, n, lab, tgt, ext);
+   364457:   78:      auto_dup_go(vl + 1, lvl, base, use, n, lab, tgt, ext);
+   364457:   79:      return;
+        -:   80:    }
+  4215843:   81:    default: {
+  4215843:   82:      u32 ari = term_arity(t);
+  9856356:   83:      for (u32 i = 0; i < ari; i++) {
+  5640513:   84:        auto_dup_go(vl + i, lvl, base, use, n, lab, tgt, ext);
+        -:   85:      }
+        -:   86:    }
+        -:   87:  }
+        -:   88:}
+        -:   89:
+   676929:   90:fn Term parse_auto_dup(Term body, u32 lvl, u32 base, u8 tgt, u32 ext) {
+   676929:   91:  u32 uses = auto_dup_count_term(body, lvl, tgt, ext);
+   676929:   92:  if (uses <= 1) {
+   545702:   93:    return body;
+        -:   94:  }
+        -:   95:
+   131227:   96:  u32 n   = uses - 1;
+   131227:   97:  u32 lab = PARSE_FRESH_LAB;
+   131227:   98:  PARSE_FRESH_LAB += n;
+        -:   99:
+        -:  100:  // Walk body's children
+   131227:  101:  u8  tg  = term_tag(body);
+   131227:  102:  u32 vl  = term_val(body);
+   131227:  103:  u32 use = 0;
+        -:  104:
+   131227:  105:  switch (tg) {
+    58167:  106:    case LAM: {
+    58167:  107:      auto_dup_go(vl, lvl, base, &use, n, lab, tgt, ext);
+    58167:  108:      break;
+        -:  109:    }
+    #####:  110:    case DUP: {
+    #####:  111:      auto_dup_go(vl + 0, lvl, base, &use, n, lab, tgt, ext);
+    #####:  112:      auto_dup_go(vl + 1, lvl, base, &use, n, lab, tgt, ext);
+    #####:  113:      break;
+        -:  114:    }
+    73060:  115:    default: {
+    73060:  116:      u32 ari = term_arity(body);
+   219180:  117:      for (u32 i = 0; i < ari; i++) {
+   146120:  118:        auto_dup_go(vl + i, lvl, base, &use, n, lab, tgt, ext);
+        -:  119:      }
+        -:  120:    }
+        -:  121:  }
+        -:  122:
+        -:  123:  // Build dup chain: !d0&=x; !d1&=d0₁; ... body
+   131227:  124:  Term result = body;
+   430773:  125:  for (int i = n - 1; i >= 0; i--) {
+   299546:  126:    Term v   = (i == 0) ? term_new(0, tgt, ext, lvl) : term_new(0, BJ1, lab + i - 1, base + i);
+   299546:  127:    u64  loc = heap_alloc(2);
+   299546:  128:    HEAP[loc + 0] = v;
+   299546:  129:    HEAP[loc + 1] = result;
+   299546:  130:    result = term_new(0, DUP, lab + i, loc);
+        -:  131:  }
+        -:  132:
+   131227:  133:  return result;
+        -:  134:}

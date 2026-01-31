@@ -1,0 +1,214 @@
+;; test_resource_effects.omni - Tests for effect-based resource management
+;;
+;; Resource management via effects provides safe acquire/release patterns
+;; Effects: Acquire (get resource), Release (free resource), Use (scoped access)
+
+;; ============================================================
+;; BASIC RESOURCE PATTERN
+;; ============================================================
+
+;; TEST: acquire resource
+;; EXPECT: 'handle-123
+(handle
+  (perform Acquire 'file)
+  (Acquire [resource-type resume] (resume 'handle-123)))
+
+;; TEST: release resource
+;; EXPECT: 'released
+(handle
+  (do
+    (let [h (perform Acquire 'file)]
+      (perform Release h))
+    'released)
+  (Acquire [resource-type resume] (resume 'handle-1))
+  (Release [handle resume] (resume nil)))
+
+;; ============================================================
+;; WITH-RESOURCE BRACKET PATTERN
+;; ============================================================
+
+;; Safe resource usage: acquire, use, release (even on error)
+;; The handler ensures cleanup happens
+
+(define with-resource [resource-type body]
+  (let [handle (perform Acquire resource-type)]
+    (let [result (body handle)]
+      (do
+        (perform Release handle)
+        result))))
+
+;; TEST: with-resource pattern
+;; EXPECT: "data from handle-42"
+(handle
+  (with-resource 'database
+    (lambda [db] (str-concat "data from " (symbol->string db))))
+  (Acquire [type resume] (resume 'handle-42))
+  (Release [h resume] (resume nil)))
+
+;; ============================================================
+;; RESOURCE POOL
+;; ============================================================
+
+;; Pool provides limited number of resources
+;; Effects: PoolAcquire, PoolRelease, PoolAvailable
+
+;; TEST: pool acquire
+;; EXPECT: 'conn-1
+(handle
+  (perform PoolAcquire 'connection)
+  (PoolAcquire [type resume] (resume 'conn-1)))
+
+;; TEST: pool available check
+;; EXPECT: 3
+(handle
+  (perform PoolAvailable nil)
+  (PoolAvailable [_ resume] (resume 3)))
+
+;; TEST: pool exhaustion returns nothing
+;; EXPECT: nothing
+(handle
+  (perform PoolAcquire 'connection)
+  (PoolAcquire [type resume] (resume nothing)))
+
+;; ============================================================
+;; NESTED RESOURCES
+;; ============================================================
+
+;; Multiple resources with proper cleanup order (LIFO)
+
+;; TEST: nested acquire/release order
+;; EXPECT: '(released-b released-a)
+(handle
+  (let [log '()]
+    (let [a (perform Acquire 'resource-a)]
+      (let [b (perform Acquire 'resource-b)]
+        (do
+          (perform Release b)
+          (perform Release a)
+          '(released-b released-a)))))
+  (Acquire [type resume] (resume type))
+  (Release [h resume] (resume nil)))
+
+;; ============================================================
+;; TRANSACTIONAL RESOURCES
+;; ============================================================
+
+;; Resources with commit/rollback semantics
+
+;; TEST: transaction commit
+;; EXPECT: 'committed
+(handle
+  (let [tx (perform BeginTx nil)]
+    (do
+      (perform TxWrite '(key value))
+      (perform CommitTx tx)
+      'committed))
+  (BeginTx [_ resume] (resume 'tx-1))
+  (TxWrite [kv resume] (resume nil))
+  (CommitTx [tx resume] (resume nil)))
+
+;; TEST: transaction rollback
+;; EXPECT: 'rolled-back
+(handle
+  (let [tx (perform BeginTx nil)]
+    (do
+      (perform TxWrite '(key value))
+      (perform RollbackTx tx)
+      'rolled-back))
+  (BeginTx [_ resume] (resume 'tx-1))
+  (TxWrite [kv resume] (resume nil))
+  (RollbackTx [tx resume] (resume nil)))
+
+;; ============================================================
+;; FILE RESOURCE PATTERN
+;; ============================================================
+
+;; File operations as effects
+
+;; TEST: open and read file
+;; EXPECT: "file contents"
+(handle
+  (let [f (perform FileOpen "test.txt")]
+    (let [data (perform FileRead f)]
+      (do
+        (perform FileClose f)
+        data)))
+  (FileOpen [path resume] (resume 'file-handle))
+  (FileRead [handle resume] (resume "file contents"))
+  (FileClose [handle resume] (resume nil)))
+
+;; TEST: with-file helper
+;; EXPECT: 5
+(define with-file [path mode body]
+  (let [f (perform FileOpen path)]
+    (let [result (body f)]
+      (do
+        (perform FileClose f)
+        result))))
+
+(handle
+  (with-file "data.txt" 'read
+    (lambda [f] (string-length (perform FileRead f))))
+  (FileOpen [path resume] (resume 'fh))
+  (FileRead [handle resume] (resume "hello"))
+  (FileClose [handle resume] (resume nil)))
+
+;; ============================================================
+;; RESOURCE LEAK DETECTION
+;; ============================================================
+
+;; Track acquired but not released resources
+
+;; TEST: detect unreleased resource
+;; EXPECT: 1
+(handle
+  (do
+    (perform Acquire 'leak-test)
+    ;; Forgot to release!
+    (perform GetLeakCount nil))
+  (Acquire [type resume] (resume 'leaky-handle))
+  (Release [h resume] (resume nil))
+  (GetLeakCount [_ resume] (resume 1)))
+
+;; ============================================================
+;; CLEANUP ON ERROR
+;; ============================================================
+
+;; Resources should be cleaned up even when errors occur
+;; Using handle + Finally effect pattern
+
+;; TEST: finally runs on success
+;; EXPECT: 'cleanup-ran
+(handle
+  (do
+    (let [result "success"]
+      (do
+        (perform Finally 'cleanup-ran)
+        result)))
+  (Finally [action resume] (resume action)))
+
+;; TEST: resource with timeout
+;; EXPECT: 'timed-out
+(handle
+  (perform AcquireWithTimeout '(resource 1000))
+  (AcquireWithTimeout [args resume]
+    (resume 'timed-out)))  ;; Simulate timeout
+
+;; ============================================================
+;; SCOPED RESOURCES (RAII-STYLE)
+;; ============================================================
+
+;; Resource lifetime tied to lexical scope
+
+;; TEST: scoped resource auto-cleanup
+;; EXPECT: "done"
+(handle
+  (handle
+    (let [r (perform ScopedAcquire 'temp-resource)]
+      "inner-done")
+    (ScopedAcquire [type resume]
+      (let [result (resume 'scoped-handle)]
+        (do
+          (perform Release 'scoped-handle)  ;; Auto-release on scope exit
+          result))))
+  (Release [h resume] (resume nil)))

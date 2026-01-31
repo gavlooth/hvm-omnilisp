@@ -1,0 +1,74 @@
+;; test_character_calculus.omni - Tests for OmniLisp's Character Calculus
+
+;; The Character Calculus assigns fixed semantic meaning to each bracket type:
+;; () = Flow (execution)
+;; [] = Slot (data, parameters)
+;; {} = Kind (types)
+;; ^  = Tag (metadata)
+
+;; === FLOW DOMAIN () ===
+
+;; TEST: () for function application
+;; EXPECT: 6
+(+ 1 (+ 2 3))
+
+;; TEST: () for value construction
+;; EXPECT: (1 2 3)
+'(1 2 3)
+
+;; TEST: () empty list
+;; EXPECT: true
+(empty? '())
+
+;; === SLOT DOMAIN [] ===
+
+;; TEST: [] for array literal
+;; EXPECT: 3
+(length [1 2 3])
+
+;; TEST: [] for function parameters
+(define add-slot [x] [y] (+ x y))
+
+;; EXPECT: 7
+(add-slot 3 4)
+
+;; TEST: [] for let bindings
+;; EXPECT: 30
+(let [x 10] [y 20] (+ x y))
+
+;; === KIND DOMAIN {} ===
+
+;; TEST: {} for parameter types
+(define typed-fn [x {Int}] (* x 2))
+
+;; EXPECT: 10
+(typed-fn 5)
+
+;; === TAG DOMAIN ^ ===
+
+;; TEST: ^:pure metadata (goes after params, before body)
+(define pure-add [x] [y] ^:pure (+ x y))
+
+;; EXPECT: 9
+(pure-add 4 5)
+
+;; TEST: ^:strict metadata in let
+;; EXPECT: 25
+(let [^:strict x 25] x)
+
+;; TEST: ^:seq metadata in let
+;; EXPECT: 3
+(let ^:seq [a 1] [b (+ a 1)] [c (+ b 1)] c)
+
+;; === COMBINED ===
+
+;; TEST: all domains in one definition
+;; Flow: (define ...) execution
+;; Slot: [x] [y] parameters
+;; Kind: {Int} type
+;; Tag:  ^:pure metadata
+(define all-domains [x {Int}] [y {Int}] ^:pure
+  (+ x y))
+
+;; EXPECT: 100
+(all-domains 40 60)

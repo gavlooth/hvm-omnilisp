@@ -1,0 +1,51 @@
+;; test_effects_reader.omni - Tests for Reader effect pattern
+;; Reader effect provides access to an environment
+
+;; TEST: ask for environment value
+;; EXPECT: "production"
+(handle
+  (perform ask-env)
+  (ask-env [resume] (resume "production")))
+
+;; TEST: multiple asks return same value
+;; EXPECT: (42 42 42)
+(handle
+  (cons (perform ask-config)
+        (cons (perform ask-config)
+              (cons (perform ask-config) '())))
+  (ask-config [resume] (resume 42)))
+
+;; TEST: ask for specific key via different effects
+;; EXPECT: ("localhost" 8080)
+(handle
+  (cons (perform ask-host)
+        (cons (perform ask-port) '()))
+  (ask-host [resume] (resume "localhost"))
+  (ask-port [resume] (resume 8080)))
+
+;; TEST: local override
+;; EXPECT: "testing"
+(handle
+  (perform get-env)
+  (get-env [resume] (resume "testing")))
+
+;; Build URL from parts
+(define build-url [host] [port]
+  (str-concat (str-concat (str-concat "http://" host) ":") (str port)))
+
+;; TEST: build url from config
+;; EXPECT: "http://example.com:443"
+(handle
+  (build-url (perform get-host) (perform get-port))
+  (get-host [resume] (resume "example.com"))
+  (get-port [resume] (resume 443)))
+
+;; TEST: ask with default
+;; EXPECT: "default"
+(handle
+  (let [val (perform ask-maybe)]
+    (if (nothing? val) "default" val))
+  (ask-maybe [resume] (resume nothing)))
+
+;; EXPECT: true
+(= (handle (perform val) (val [resume] (resume 42))) 42)

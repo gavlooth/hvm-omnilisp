@@ -1,0 +1,25 @@
+;; test_parallel_sizes.lisp - Tests for parallel ops on various sizes
+;; Note: Limited sizes due to interpreter environment limits
+
+;; Core operations
+(define map [f] [lst]
+  (match lst
+    ()       nil
+    (h .. t) (cons (f h) (map f t))))
+
+(define double [x] (* x 2))
+
+;; TEST: map empty
+;; EXPECT: ()
+(map double nil)
+
+;; TEST: map single
+;; EXPECT: (2)
+(map double '(1))
+
+;; TEST: map small
+;; EXPECT: (2 4 6 8)
+(map double '(1 2 3 4))
+
+;; EXPECT: (2 4 6 8 10)
+(map double '(1 2 3 4 5))

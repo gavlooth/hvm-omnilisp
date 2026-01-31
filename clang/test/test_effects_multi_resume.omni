@@ -1,0 +1,60 @@
+;; test_effects_multi_resume.omni - Tests for multiple effect handlers
+
+;; TEST: simple flip effect
+;; EXPECT: 1
+(handle
+  (perform flip)
+  (flip [resume] (resume 1)))
+
+;; TEST: flip with boolean
+;; EXPECT: "heads"
+(handle
+  (if (perform flip-coin) "heads" "tails")
+  (flip-coin [resume] (resume true)))
+
+;; TEST: choose first from options
+;; EXPECT: 2
+(handle
+  (perform choose-first '(2 4 6))
+  (choose-first [options resume]
+    (match options
+      (h .. t) (resume h)
+      _ (resume 0))))
+
+;; TEST: handle with list pattern
+;; EXPECT: 1
+(handle
+  (perform get-head '(1 2 3))
+  (get-head [lst resume]
+    (match lst
+      (h .. t) (resume h)
+      _ (resume 0))))
+
+;; TEST: countdown effect
+;; EXPECT: 5
+(handle
+  (perform countdown 5)
+  (countdown [n resume]
+    (if (= n 0)
+      (resume 0)
+      (resume n))))
+
+;; TEST: yield and resume pattern
+;; EXPECT: 42
+(handle
+  (do
+    (perform yield-val 10)
+    (perform yield-val 20)
+    42)
+  (yield-val [v resume] (resume v)))
+
+;; TEST: accumulate via nested perform
+;; EXPECT: 15
+(handle
+  (+ (perform get-a) (+ (perform get-b) (perform get-c)))
+  (get-a [resume] (resume 5))
+  (get-b [resume] (resume 5))
+  (get-c [resume] (resume 5)))
+
+;; EXPECT: true
+(= (handle (perform val) (val [resume] (resume 100))) 100)

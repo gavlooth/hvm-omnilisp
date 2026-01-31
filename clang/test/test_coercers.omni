@@ -1,0 +1,30 @@
+;; test_coercers.lisp - Tests for type coercer operations
+
+;; Helper: list length
+(define len [lst]
+  (match lst
+    ()       0
+    (_ .. t) (+ 1 (len t))))
+
+;; TEST: list literal
+;; EXPECT: (1 2 3)
+'(1 2 3)
+
+;; TEST: empty list
+;; EXPECT: ()
+nil
+
+;; TEST: array literal
+;; EXPECT: [1 2 3]
+[1 2 3]
+
+;; TEST: empty array
+;; EXPECT: []
+[]
+
+;; TEST: list length
+;; EXPECT: 3
+(len '(1 2 3))
+
+;; EXPECT: 3
+(len '(a b c))

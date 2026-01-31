@@ -1,0 +1,60 @@
+;; test_define_multiarity.omni - Tests for multi-arity via match
+;; OmniLisp uses match for multi-case functions
+
+;; Multi-arity via wrapper and match
+(define greet-impl [args]
+  (match args
+    ()       "Hello, World!"
+    (name .. _) (str-concat "Hello, " name)))
+
+(define greet [name]
+  (greet-impl (list name)))
+
+;; TEST: one-arity greeting
+;; EXPECT: "Hello, Alice"
+(greet "Alice")
+
+;; Factorial via recursive match
+(define fact [n]
+  (match n
+    0 1
+    _ (* n (fact (- n 1)))))
+
+;; TEST: factorial of 5
+;; EXPECT: 120
+(fact 5)
+
+;; Fibonacci via match
+(define fib [n]
+  (match n
+    0 0
+    1 1
+    _ (+ (fib (- n 1)) (fib (- n 2)))))
+
+;; TEST: fibonacci of 10
+;; EXPECT: 55
+(fib 10)
+
+;; Multi-case via cond
+(define classify [n]
+  (cond
+    (< n 0)   "negative"
+    (= n 0)   "zero"
+    (< n 10)  "small"
+    (< n 100) "medium"
+    true      "large"))
+
+;; TEST: classify negative
+;; EXPECT: "negative"
+(classify -5)
+
+;; TEST: classify zero
+;; EXPECT: "zero"
+(classify 0)
+
+;; TEST: classify small
+;; EXPECT: "small"
+(classify 5)
+
+;; EXPECT: 55
+(fib 10)

@@ -1,0 +1,175 @@
+// OmniLisp Runtime Tests: Pattern Matching
+// Tests @omni_pattern_match, @omni_match, @omni_try_case
+// Tests @omni_values_equal
+
+// =============================================================================
+// Pattern Match: Wildcard Tests
+// =============================================================================
+
+// Test: wildcard matches any value
+@test_pat_wildcard_int =
+  !!&bindings = @omni_pattern_match(#Cst{42})(#PWld);
+  @assert_empty_list(#pat_wildcard_int)(bindings)
+
+@test_pat_wildcard_list =
+  !!&bindings = @omni_pattern_match(#CON{#Cst{1}, #NIL})(#PWld);
+  @assert_empty_list(#pat_wildcard_list)(bindings)
+
+@test_pat_wildcard_empty_list =
+  !!&bindings = @omni_pattern_match(#NIL)(#PWld);
+  @assert_empty_list(#pat_wildcard_empty)(bindings)
+
+// =============================================================================
+// Pattern Match: Variable Tests
+// =============================================================================
+
+// Test: variable captures value
+@test_pat_var_capture =
+  !!&bindings = @omni_pattern_match(#Cst{42})(#PVar{0});
+  !!&captured = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(bindings);
+  @assert_num_eq(#pat_var_capture)(#Cst{42})(captured)
+
+@test_pat_var_captures_list =
+  !!&val = #CON{#Cst{1}, #CON{#Cst{2}, #NIL}};
+  !!&bindings = @omni_pattern_match(val)(#PVar{0});
+  !!&captured = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(bindings);
+  // captured should be the list itself
+  !!&is_list = (λ{#CON: λ&h. λ&t. 1; _: λ&u_. 0})(captured);
+  @assert_eq(#pat_var_captures_list)(#Cst{1})(#Cst{is_list})
+
+// =============================================================================
+// Pattern Match: Literal Tests
+// =============================================================================
+
+// Test: literal matches same value
+@test_pat_lit_match =
+  !!&bindings = @omni_pattern_match(#Cst{42})(#PLit{#Cst{42}});
+  @assert_empty_list(#pat_lit_match)(bindings)
+
+// Test: literal doesn't match different value
+@test_pat_lit_no_match =
+  !!&bindings = @omni_pattern_match(#Cst{42})(#PLit{#Cst{99}});
+  @assert_nothing(#pat_lit_no_match)(bindings)
+
+// Test: literal empty list matches empty list
+@test_pat_lit_empty_list =
+  !!&bindings = @omni_pattern_match(#NIL)(#PLit{#NIL});
+  @assert_empty_list(#pat_lit_empty)(bindings)
+
+// Test: literal char matches char
+@test_pat_lit_char =
+  !!&bindings = @omni_pattern_match(#CHR{65})(#PLit{#CHR{65}});
+  @assert_empty_list(#pat_lit_char)(bindings)
+
+// Test: literal char doesn't match different char
+@test_pat_lit_char_no_match =
+  !!&bindings = @omni_pattern_match(#CHR{65})(#PLit{#CHR{66}});
+  @assert_nothing(#pat_lit_char_no_match)(bindings)
+
+// =============================================================================
+// Pattern Match: As-Pattern Tests
+// =============================================================================
+
+// Test: as-pattern captures and matches inner
+@test_pat_as_capture =
+  !!&bindings = @omni_pattern_match(#Cst{42})(#PAs{#PWld});
+  // Should have one binding: the scrutinee
+  !!&captured = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(bindings);
+  @assert_num_eq(#pat_as_capture)(#Cst{42})(captured)
+
+// Test: as-pattern fails if inner fails
+@test_pat_as_inner_fail =
+  !!&bindings = @omni_pattern_match(#Cst{42})(#PAs{#PLit{#Cst{99}}});
+  @assert_nothing(#pat_as_inner_fail)(bindings)
+
+// =============================================================================
+// Values Equal Tests
+// =============================================================================
+
+@test_values_eq_int =
+  !!&result = @omni_values_equal(#Cst{42})(#Cst{42});
+  @assert_eq(#values_eq_int)(#Cst{1})(#Cst{result})
+
+@test_values_eq_int_diff =
+  !!&result = @omni_values_equal(#Cst{42})(#Cst{99});
+  @assert_eq(#values_eq_int_diff)(#Cst{0})(#Cst{result})
+
+@test_values_eq_char =
+  !!&result = @omni_values_equal(#CHR{65})(#CHR{65});
+  @assert_eq(#values_eq_char)(#Cst{1})(#Cst{result})
+
+@test_values_eq_empty_list =
+  !!&result = @omni_values_equal(#NIL)(#NIL);
+  @assert_eq(#values_eq_empty)(#Cst{1})(#Cst{result})
+
+@test_values_eq_type_mismatch =
+  !!&result = @omni_values_equal(#Cst{1})(#NIL);
+  @assert_eq(#values_eq_type_mismatch)(#Cst{0})(#Cst{result})
+
+// =============================================================================
+// Match Full Cases Tests (using @omni_match)
+// =============================================================================
+
+// Test: match finds first matching case
+@test_match_first =
+  !!&scrut = #Cst{5};
+  !!&cases = #CON{
+    #Case{#PLit{#Cst{5}}, #NIL, #Cst{100}},
+    #CON{
+      #Case{#PWld, #NIL, #Cst{999}},
+      #NIL}};
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_match(menv)(scrut)(cases);
+  @assert_num_eq(#match_first)(#Cst{100})(result)
+
+// Test: match falls through to wildcard
+@test_match_fallthrough =
+  !!&scrut = #Cst{42};
+  !!&cases = #CON{
+    #Case{#PLit{#Cst{5}}, #NIL, #Cst{100}},
+    #CON{
+      #Case{#PWld, #NIL, #Cst{999}},
+      #NIL}};
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_match(menv)(scrut)(cases);
+  @assert_num_eq(#match_fallthrough)(#Cst{999})(result)
+
+// Test: match returns error when no case matches
+@test_match_no_match =
+  !!&scrut = #Cst{42};
+  !!&cases = #CON{
+    #Case{#PLit{#Cst{5}}, #NIL, #Cst{100}},
+    #CON{
+      #Case{#PLit{#Cst{10}}, #NIL, #Cst{200}},
+      #NIL}};
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_match(menv)(scrut)(cases);
+  @assert_err(#match_no_match)(#sym_nomatch)(result)
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@pattern_tests = #CON{@test_pat_wildcard_int,
+  #CON{@test_pat_wildcard_list,
+  #CON{@test_pat_wildcard_empty_list,
+  #CON{@test_pat_var_capture,
+  #CON{@test_pat_var_captures_list,
+  #CON{@test_pat_lit_match,
+  #CON{@test_pat_lit_no_match,
+  #CON{@test_pat_lit_empty_list,
+  #CON{@test_pat_lit_char,
+  #CON{@test_pat_lit_char_no_match,
+  #CON{@test_pat_as_capture,
+  #CON{@test_pat_as_inner_fail,
+  #CON{@test_values_eq_int,
+  #CON{@test_values_eq_int_diff,
+  #CON{@test_values_eq_char,
+  #CON{@test_values_eq_empty_list,
+  #CON{@test_values_eq_type_mismatch,
+  #CON{@test_match_first,
+  #CON{@test_match_fallthrough,
+  #CON{@test_match_no_match,
+  #NIL}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@pattern_tests)

@@ -1,0 +1,351 @@
+        -:    0:Source:omnilisp/ffi/handle.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// OmniLisp Handle Table
+        -:    2:// Safe handle-based memory management for FFI pointers
+        -:    3:// Uses generation counters for ABA protection
+        -:    4:
+        -:    5:// hvm4.c is already included by main.c before this file
+        -:    6:// #include "../../../hvm4/clang/hvm4.c"
+        -:    7:
+        -:    8:// =============================================================================
+        -:    9:// Ownership Kinds
+        -:   10:// =============================================================================
+        -:   11:
+        -:   12:typedef enum {
+        -:   13:  OMNI_OWNED     = 0,  // Runtime owns, will free on drop
+        -:   14:  OMNI_BORROWED  = 1,  // Borrowed reference, must not free
+        -:   15:  OMNI_CONSUMED  = 2,  // Ownership transferred to C, handle invalidated
+        -:   16:  OMNI_ESCAPES   = 3,  // Pointer escapes to unknown scope
+        -:   17:} OmniOwnership;
+        -:   18:
+        -:   19:// =============================================================================
+        -:   20:// Handle Slot
+        -:   21:// =============================================================================
+        -:   22:
+        -:   23:typedef struct {
+        -:   24:  u32  generation;     // Generation counter for ABA protection
+        -:   25:  void *pointer;       // The actual C pointer
+        -:   26:  OmniOwnership ownership;
+        -:   27:  u32  type_id;        // Type identifier for runtime checks
+        -:   28:  u32  next_free;      // Index of next free slot (when in free list)
+        -:   29:} OmniHandleSlot;
+        -:   30:
+        -:   31:// =============================================================================
+        -:   32:// Handle Table
+        -:   33:// =============================================================================
+        -:   34:
+        -:   35:#define OMNI_HANDLE_INITIAL_CAP 1024
+        -:   36:#define OMNI_HANDLE_MAX_CAP     (1 << 20)  // 1M handles max
+        -:   37:
+        -:   38:typedef struct {
+        -:   39:  OmniHandleSlot *slots;
+        -:   40:  u32  capacity;
+        -:   41:  u32  free_head;      // Head of free list (UINT32_MAX = none free)
+        -:   42:  u32  count;          // Number of allocated handles
+        -:   43:} OmniHandleTable;
+        -:   44:
+        -:   45:// Global handle table
+        -:   46:static OmniHandleTable OMNI_HANDLES = {0};
+        -:   47:static int OMNI_HANDLES_READY = 0;
+        -:   48:
+        -:   49:// =============================================================================
+        -:   50:// Handle Table Initialization
+        -:   51:// =============================================================================
+        -:   52:
+      417:   53:fn void omni_ffi_handle_init(void) {
+     417*:   54:  if (OMNI_HANDLES_READY) return;
+        -:   55:
+      417:   56:  OMNI_HANDLES.capacity = OMNI_HANDLE_INITIAL_CAP;
+      417:   57:  OMNI_HANDLES.slots = (OmniHandleSlot*)calloc(
+        -:   58:    OMNI_HANDLE_INITIAL_CAP, sizeof(OmniHandleSlot)
+        -:   59:  );
+        -:   60:
+        -:   61:  // Build initial free list
+   427008:   62:  for (u32 i = 0; i < OMNI_HANDLE_INITIAL_CAP - 1; i++) {
+   426591:   63:    OMNI_HANDLES.slots[i].next_free = i + 1;
+   426591:   64:    OMNI_HANDLES.slots[i].generation = 0;
+   426591:   65:    OMNI_HANDLES.slots[i].pointer = NULL;
+        -:   66:  }
+      417:   67:  OMNI_HANDLES.slots[OMNI_HANDLE_INITIAL_CAP - 1].next_free = UINT32_MAX;
+      417:   68:  OMNI_HANDLES.free_head = 0;
+      417:   69:  OMNI_HANDLES.count = 0;
+        -:   70:
+      417:   71:  OMNI_HANDLES_READY = 1;
+        -:   72:}
+        -:   73:
+        -:   74:// =============================================================================
+        -:   75:// Handle Table Growth
+        -:   76:// =============================================================================
+        -:   77:
+        -:   78:fn int omni_ffi_handle_grow(void) {
+        -:   79:  u32 new_cap = OMNI_HANDLES.capacity * 2;
+        -:   80:  if (new_cap > OMNI_HANDLE_MAX_CAP) {
+        -:   81:    return 0;  // Cannot grow further
+        -:   82:  }
+        -:   83:
+        -:   84:  OmniHandleSlot *new_slots = (OmniHandleSlot*)realloc(
+        -:   85:    OMNI_HANDLES.slots,
+        -:   86:    new_cap * sizeof(OmniHandleSlot)
+        -:   87:  );
+        -:   88:  if (!new_slots) return 0;
+        -:   89:
+        -:   90:  // Initialize new slots and add to free list
+        -:   91:  for (u32 i = OMNI_HANDLES.capacity; i < new_cap - 1; i++) {
+        -:   92:    new_slots[i].next_free = i + 1;
+        -:   93:    new_slots[i].generation = 0;
+        -:   94:    new_slots[i].pointer = NULL;
+        -:   95:  }
+        -:   96:  new_slots[new_cap - 1].next_free = OMNI_HANDLES.free_head;
+        -:   97:  OMNI_HANDLES.free_head = OMNI_HANDLES.capacity;
+        -:   98:
+        -:   99:  OMNI_HANDLES.slots = new_slots;
+        -:  100:  OMNI_HANDLES.capacity = new_cap;
+        -:  101:
+        -:  102:  return 1;
+        -:  103:}
+        -:  104:
+        -:  105:// =============================================================================
+        -:  106:// Handle Allocation
+        -:  107:// =============================================================================
+        -:  108:
+        -:  109:// Allocate a handle for a pointer
+        -:  110:// Returns handle as Term: #Hndl{idx, gen}
+        -:  111:fn Term omni_ffi_handle_alloc(void *ptr, OmniOwnership ownership, u32 type_id) {
+        -:  112:  if (!OMNI_HANDLES_READY) omni_ffi_handle_init();
+        -:  113:
+        -:  114:  // Grow table if needed
+        -:  115:  if (OMNI_HANDLES.free_head == UINT32_MAX) {
+        -:  116:    if (!omni_ffi_handle_grow()) {
+        -:  117:      // Out of handles - return error
+        -:  118:      Term args[1] = {term_new_num(0)};
+        -:  119:      return term_new_ctr(OMNI_NAM_ERR, 1, args);
+        -:  120:    }
+        -:  121:  }
+        -:  122:
+        -:  123:  // Pop from free list
+        -:  124:  u32 idx = OMNI_HANDLES.free_head;
+        -:  125:  OmniHandleSlot *slot = &OMNI_HANDLES.slots[idx];
+        -:  126:  OMNI_HANDLES.free_head = slot->next_free;
+        -:  127:  OMNI_HANDLES.count++;
+        -:  128:
+        -:  129:  // Initialize slot
+        -:  130:  slot->pointer = ptr;
+        -:  131:  slot->ownership = ownership;
+        -:  132:  slot->type_id = type_id;
+        -:  133:  // generation already set (preserved across reuse)
+        -:  134:
+        -:  135:  // Return #Hndl{packed} as a CTR node
+        -:  136:  // Pack idx (20 bits) and gen (12 bits) into val
+        -:  137:  u32 packed = (idx & 0xFFFFF) | ((slot->generation & 0xFFF) << 20);
+        -:  138:  Term args[1] = {term_new_num(packed)};
+        -:  139:  return term_new_ctr(OMNI_NAM_HNDL, 1, args);
+        -:  140:}
+        -:  141:
+        -:  142:// =============================================================================
+        -:  143:// Handle Deallocation
+        -:  144:// =============================================================================
+        -:  145:
+        -:  146:// Free a handle and optionally the underlying pointer
+        -:  147:fn int omni_ffi_handle_free(Term handle) {
+        -:  148:  // Check if it's a constructor with 1 arg (C01)
+        -:  149:  if (term_tag(handle) != C01) return 0;
+        -:  150:  if (term_ext(handle) != OMNI_NAM_HNDL) return 0;
+        -:  151:
+        -:  152:  // Get packed value from the constructor's argument
+        -:  153:  Term arg = HEAP[term_val(handle)];
+        -:  154:  u32 packed = term_val(arg);
+        -:  155:  u32 idx = packed & 0xFFFFF;
+        -:  156:  u32 gen = (packed >> 20) & 0xFFF;
+        -:  157:
+        -:  158:  if (idx >= OMNI_HANDLES.capacity) return 0;
+        -:  159:
+        -:  160:  OmniHandleSlot *slot = &OMNI_HANDLES.slots[idx];
+        -:  161:
+        -:  162:  // Validate generation
+        -:  163:  if (slot->generation != gen) {
+        -:  164:    return 0;  // Stale handle
+        -:  165:  }
+        -:  166:
+        -:  167:  // Free the underlying pointer if owned
+        -:  168:  if (slot->ownership == OMNI_OWNED && slot->pointer) {
+        -:  169:    free(slot->pointer);
+        -:  170:  }
+        -:  171:
+        -:  172:  // Increment generation to invalidate any remaining references
+        -:  173:  slot->generation = (slot->generation + 1) & 0xFFF;
+        -:  174:  slot->pointer = NULL;
+        -:  175:  slot->ownership = OMNI_BORROWED;
+        -:  176:  slot->type_id = 0;
+        -:  177:
+        -:  178:  // Push to free list
+        -:  179:  slot->next_free = OMNI_HANDLES.free_head;
+        -:  180:  OMNI_HANDLES.free_head = idx;
+        -:  181:  OMNI_HANDLES.count--;
+        -:  182:
+        -:  183:  return 1;
+        -:  184:}
+        -:  185:
+        -:  186:// =============================================================================
+        -:  187:// Handle Dereferencing
+        -:  188:// =============================================================================
+        -:  189:
+        -:  190:// Get the pointer from a handle (with validation)
+        -:  191:fn void* omni_ffi_handle_deref(Term handle) {
+        -:  192:  if (term_tag(handle) != C01) return NULL;
+        -:  193:  if (term_ext(handle) != OMNI_NAM_HNDL) return NULL;
+        -:  194:
+        -:  195:  Term arg = HEAP[term_val(handle)];
+        -:  196:  u32 packed = term_val(arg);
+        -:  197:  u32 idx = packed & 0xFFFFF;
+        -:  198:  u32 gen = (packed >> 20) & 0xFFF;
+        -:  199:
+        -:  200:  if (idx >= OMNI_HANDLES.capacity) return NULL;
+        -:  201:
+        -:  202:  OmniHandleSlot *slot = &OMNI_HANDLES.slots[idx];
+        -:  203:
+        -:  204:  // Validate generation
+        -:  205:  if (slot->generation != gen) {
+        -:  206:    return NULL;  // Stale handle
+        -:  207:  }
+        -:  208:
+        -:  209:  return slot->pointer;
+        -:  210:}
+        -:  211:
+        -:  212:// Get handle slot info (for ownership checking)
+        -:  213:fn OmniHandleSlot* omni_ffi_handle_slot(Term handle) {
+        -:  214:  if (term_tag(handle) != C01) return NULL;
+        -:  215:  if (term_ext(handle) != OMNI_NAM_HNDL) return NULL;
+        -:  216:
+        -:  217:  Term arg = HEAP[term_val(handle)];
+        -:  218:  u32 packed = term_val(arg);
+        -:  219:  u32 idx = packed & 0xFFFFF;
+        -:  220:  u32 gen = (packed >> 20) & 0xFFF;
+        -:  221:
+        -:  222:  if (idx >= OMNI_HANDLES.capacity) return NULL;
+        -:  223:
+        -:  224:  OmniHandleSlot *slot = &OMNI_HANDLES.slots[idx];
+        -:  225:
+        -:  226:  if (slot->generation != gen) {
+        -:  227:    return NULL;
+        -:  228:  }
+        -:  229:
+        -:  230:  return slot;
+        -:  231:}
+        -:  232:
+        -:  233:// =============================================================================
+        -:  234:// Handle Validation
+        -:  235:// =============================================================================
+        -:  236:
+        -:  237:fn int omni_ffi_handle_valid(Term handle) {
+        -:  238:  return omni_ffi_handle_deref(handle) != NULL;
+        -:  239:}
+        -:  240:
+        -:  241:// Check if handle has expected type
+        -:  242:fn int omni_ffi_handle_type_check(Term handle, u32 expected_type) {
+        -:  243:  OmniHandleSlot *slot = omni_ffi_handle_slot(handle);
+        -:  244:  if (!slot) return 0;
+        -:  245:  return slot->type_id == expected_type;
+        -:  246:}
+        -:  247:
+        -:  248:// =============================================================================
+        -:  249:// Ownership Transfer
+        -:  250:// =============================================================================
+        -:  251:
+        -:  252:// Mark handle as consumed (ownership transferred to C)
+        -:  253:fn int omni_ffi_handle_consume(Term handle) {
+        -:  254:  OmniHandleSlot *slot = omni_ffi_handle_slot(handle);
+        -:  255:  if (!slot) return 0;
+        -:  256:
+        -:  257:  if (slot->ownership != OMNI_OWNED) {
+        -:  258:    return 0;  // Can only consume owned handles
+        -:  259:  }
+        -:  260:
+        -:  261:  slot->ownership = OMNI_CONSUMED;
+        -:  262:
+        -:  263:  // Invalidate handle
+        -:  264:  slot->generation = (slot->generation + 1) & 0xFFF;
+        -:  265:  slot->pointer = NULL;  // C now owns this
+        -:  266:
+        -:  267:  // Return to free list
+        -:  268:  slot->next_free = OMNI_HANDLES.free_head;
+        -:  269:  OMNI_HANDLES.free_head = (u32)(slot - OMNI_HANDLES.slots);
+        -:  270:  OMNI_HANDLES.count--;
+        -:  271:
+        -:  272:  return 1;
+        -:  273:}
+        -:  274:
+        -:  275:// Borrow a handle (for FFI call that doesn't take ownership)
+        -:  276:fn void* omni_ffi_handle_borrow(Term handle) {
+        -:  277:  OmniHandleSlot *slot = omni_ffi_handle_slot(handle);
+        -:  278:  if (!slot) return NULL;
+        -:  279:
+        -:  280:  // Borrowed access is always allowed
+        -:  281:  return slot->pointer;
+        -:  282:}
+        -:  283:
+        -:  284:// =============================================================================
+        -:  285:// Handle Table Cleanup
+        -:  286:// =============================================================================
+        -:  287:
+      200:  288:fn void omni_ffi_handle_cleanup(void) {
+     200*:  289:  if (!OMNI_HANDLES_READY) return;
+        -:  290:
+        -:  291:  // Free all owned pointers
+   205000:  292:  for (u32 i = 0; i < OMNI_HANDLES.capacity; i++) {
+   204800:  293:    OmniHandleSlot *slot = &OMNI_HANDLES.slots[i];
+  204800*:  294:    if (slot->pointer && slot->ownership == OMNI_OWNED) {
+    #####:  295:      free(slot->pointer);
+    #####:  296:      slot->pointer = NULL;
+        -:  297:    }
+        -:  298:  }
+        -:  299:
+      200:  300:  free(OMNI_HANDLES.slots);
+      200:  301:  OMNI_HANDLES.slots = NULL;
+      200:  302:  OMNI_HANDLES.capacity = 0;
+      200:  303:  OMNI_HANDLES.free_head = UINT32_MAX;
+      200:  304:  OMNI_HANDLES.count = 0;
+      200:  305:  OMNI_HANDLES_READY = 0;
+        -:  306:}
+        -:  307:
+        -:  308:// =============================================================================
+        -:  309:// Pointer Wrapping Utilities
+        -:  310:// =============================================================================
+        -:  311:
+        -:  312:// Wrap a raw pointer as a Term (for 64-bit pointers)
+        -:  313:// Returns #Ptr{hi, lo} where hi and lo are 32-bit halves
+        -:  314:fn Term omni_ffi_ptr_wrap(void *ptr) {
+        -:  315:  uintptr_t p = (uintptr_t)ptr;
+        -:  316:  u32 lo = (u32)(p & 0xFFFFFFFF);
+        -:  317:  u32 hi = (u32)(p >> 32);
+        -:  318:
+        -:  319:  Term args[2] = {term_new_num(hi), term_new_num(lo)};
+        -:  320:  return term_new_ctr(OMNI_NAM_PTR, 2, args);
+        -:  321:}
+        -:  322:
+        -:  323:// Unwrap a #Ptr{hi, lo} to a raw pointer
+        -:  324:fn void* omni_ffi_ptr_unwrap(Term ptr_term) {
+        -:  325:  if (term_tag(ptr_term) != C02) return NULL;
+        -:  326:  if (term_ext(ptr_term) != OMNI_NAM_PTR) return NULL;
+        -:  327:
+        -:  328:  u32 loc = term_val(ptr_term);
+        -:  329:  u32 hi = term_val(HEAP[loc]);
+        -:  330:  u32 lo = term_val(HEAP[loc + 1]);
+        -:  331:
+        -:  332:  uintptr_t p = ((uintptr_t)hi << 32) | (uintptr_t)lo;
+        -:  333:  return (void*)p;
+        -:  334:}
+        -:  335:
+        -:  336:// =============================================================================
+        -:  337:// Handle Statistics
+        -:  338:// =============================================================================
+        -:  339:
+        1:  340:fn u32 omni_ffi_handle_count(void) {
+        1:  341:  return OMNI_HANDLES.count;
+        -:  342:}
+        -:  343:
+        -:  344:fn u32 omni_ffi_handle_capacity(void) {
+        -:  345:  return OMNI_HANDLES.capacity;
+        -:  346:}
+        -:  347:

@@ -1,0 +1,1041 @@
+        -:    0:Source:main.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// OmniLisp Main Entry Point
+        -:    2:// Command-line interface for parsing, compiling, and running OmniLisp code
+        -:    3:
+        -:    4:#include <stdio.h>
+        -:    5:#include <stdlib.h>
+        -:    6:#include <string.h>
+        -:    7:#include <getopt.h>
+        -:    8:#include <signal.h>
+        -:    9:#include <errno.h>
+        -:   10:
+        -:   11:// Socket support
+        -:   12:#include <sys/socket.h>
+        -:   13:#include <sys/un.h>
+        -:   14:#include <netinet/in.h>
+        -:   15:#include <arpa/inet.h>
+        -:   16:#include <unistd.h>
+        -:   17:#include <poll.h>
+        -:   18:
+        -:   19:// Include HVM4 runtime first
+        -:   20:#include "../hvm4/clang/hvm4.c"
+        -:   21:
+        -:   22:// Include OmniLisp components
+        -:   23:#include "omnilisp/nick/omnilisp.c"
+        -:   24:#include "omnilisp/ffi/handle.c"
+        -:   25:#include "omnilisp/ffi/thread_pool.c"
+        -:   26:#include "omnilisp/parse/_.c"
+        -:   27:#include "omnilisp/compile/_.c"
+        -:   28:
+        -:   29:// =============================================================================
+        -:   30:// Command Line Options
+        -:   31:// =============================================================================
+        -:   32:
+        -:   33:typedef struct {
+        -:   34:  int help;
+        -:   35:  int version;
+        -:   36:  int parse_only;      // -p: Just parse and print AST
+        -:   37:  int compile_only;    // -c: Compile but don't run
+        -:   38:  int debug;           // -d: Debug mode
+        -:   39:  int stats;           // -s: Show statistics
+        -:   40:  int collapse;        // -C: Collapse limit
+        -:   41:  int eval_mode;       // -e: Evaluate expression directly
+        -:   42:  int interactive;     // -i: Interactive REPL
+        -:   43:  int server_port;     // -S: Socket server port (0 = disabled)
+        -:   44:  const char *file;    // Input file
+        -:   45:  const char *expr;    // Expression to evaluate
+        -:   46:  const char *output;  // -o: Output file
+        -:   47:} OmniOptions;
+        -:   48:
+        -:   49:// Global flag for graceful shutdown
+        -:   50:static volatile int g_running = 1;
+        -:   51:
+        3:   52:fn void signal_handler(int sig) {
+        -:   53:  (void)sig;
+        3:   54:  g_running = 0;
+        3:   55:}
+        -:   56:
+        3:   57:fn void print_usage(const char *prog) {
+        3:   58:  printf("OmniLisp - A Lisp dialect for HVM4\n");
+        3:   59:  printf("\n");
+        3:   60:  printf("Usage: %s [options] [file.ol]\n", prog);
+        3:   61:  printf("       %s -e \"(+ 1 2)\"\n", prog);
+        3:   62:  printf("       %s -i                    (interactive REPL)\n", prog);
+        3:   63:  printf("       %s -S 5555               (socket server)\n", prog);
+        3:   64:  printf("\n");
+        3:   65:  printf("Options:\n");
+        3:   66:  printf("  -h, --help        Show this help message\n");
+        3:   67:  printf("  -v, --version     Show version information\n");
+        3:   68:  printf("  -p, --parse       Parse only (print AST)\n");
+        3:   69:  printf("  -c, --compile     Compile only (emit HVM4)\n");
+        3:   70:  printf("  -e, --eval EXPR   Evaluate expression\n");
+        3:   71:  printf("  -i, --interactive Interactive REPL\n");
+        3:   72:  printf("  -S, --server PORT Start socket server on PORT\n");
+        3:   73:  printf("  -o, --output FILE Output file for compilation\n");
+        3:   74:  printf("  -d, --debug       Enable debug output\n");
+        3:   75:  printf("  -s, --stats       Show execution statistics\n");
+        3:   76:  printf("  -C, --collapse N  Set collapse limit (default: 10)\n");
+        3:   77:  printf("\n");
+        3:   78:  printf("Examples:\n");
+        3:   79:  printf("  %s program.ol           Run OmniLisp program\n", prog);
+        3:   80:  printf("  %s -e \"(+ 1 2)\"         Evaluate expression\n", prog);
+        3:   81:  printf("  %s -i                   Start interactive REPL\n", prog);
+        3:   82:  printf("  %s -S 5555              Start server on port 5555\n", prog);
+        3:   83:  printf("  %s -c -o out.hvm4 in.ol Compile to HVM4\n", prog);
+        3:   84:  printf("  %s -p program.ol        Show parse tree\n", prog);
+        3:   85:  printf("\n");
+        3:   86:  printf("Socket Protocol (for editor integration):\n");
+        3:   87:  printf("  Send: expression followed by newline\n");
+        3:   88:  printf("  Recv: result followed by \\x00\\n (null + newline)\n");
+        3:   89:  printf("  Test: echo '(+ 1 2)' | nc localhost 5555\n");
+        3:   90:  printf("\n");
+        3:   91:}
+        -:   92:
+        2:   93:fn void print_version(void) {
+        2:   94:  printf("OmniLisp version 0.1.0\n");
+        2:   95:  printf("Built on HVM4 runtime\n");
+        2:   96:}
+        -:   97:
+      422:   98:fn OmniOptions parse_options(int argc, char *argv[]) {
+      422:   99:  OmniOptions opts = {0};
+      422:  100:  opts.collapse = 10;
+        -:  101:
+        -:  102:  static struct option long_options[] = {
+        -:  103:    {"help",        no_argument,       0, 'h'},
+        -:  104:    {"version",     no_argument,       0, 'v'},
+        -:  105:    {"parse",       no_argument,       0, 'p'},
+        -:  106:    {"compile",     no_argument,       0, 'c'},
+        -:  107:    {"eval",        required_argument, 0, 'e'},
+        -:  108:    {"interactive", no_argument,       0, 'i'},
+        -:  109:    {"server",      required_argument, 0, 'S'},
+        -:  110:    {"output",      required_argument, 0, 'o'},
+        -:  111:    {"debug",       no_argument,       0, 'd'},
+        -:  112:    {"stats",       no_argument,       0, 's'},
+        -:  113:    {"collapse",    required_argument, 0, 'C'},
+        -:  114:    {0, 0, 0, 0}
+        -:  115:  };
+        -:  116:
+        -:  117:  int opt;
+      422:  118:  int opt_index = 0;
+        -:  119:
+      639:  120:  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:", long_options, &opt_index)) != -1) {
+      217:  121:    switch (opt) {
+        2:  122:      case 'h': opts.help = 1; break;
+        2:  123:      case 'v': opts.version = 1; break;
+        2:  124:      case 'p': opts.parse_only = 1; break;
+       57:  125:      case 'c': opts.compile_only = 1; break;
+      138:  126:      case 'e': opts.eval_mode = 1; opts.expr = optarg; break;
+        3:  127:      case 'i': opts.interactive = 1; break;
+        4:  128:      case 'S': opts.server_port = atoi(optarg); break;
+        3:  129:      case 'o': opts.output = optarg; break;
+        3:  130:      case 'd': opts.debug = 1; break;
+        1:  131:      case 's': opts.stats = 1; break;
+        1:  132:      case 'C': opts.collapse = atoi(optarg); break;
+        1:  133:      default: opts.help = 1; break;
+        -:  134:    }
+        -:  135:  }
+        -:  136:
+      422:  137:  if (optind < argc) {
+      272:  138:    opts.file = argv[optind];
+        -:  139:  }
+        -:  140:
+      422:  141:  return opts;
+        -:  142:}
+        -:  143:
+        -:  144:// =============================================================================
+        -:  145:// File Reading
+        -:  146:// =============================================================================
+        -:  147:
+      272:  148:fn char* read_file(const char *path) {
+      272:  149:  FILE *f = fopen(path, "r");
+      272:  150:  if (!f) {
+        1:  151:    fprintf(stderr, "Error: Cannot open file '%s'\n", path);
+        1:  152:    return NULL;
+        -:  153:  }
+        -:  154:
+      271:  155:  fseek(f, 0, SEEK_END);
+      271:  156:  long size = ftell(f);
+      271:  157:  fseek(f, 0, SEEK_SET);
+        -:  158:
+      271:  159:  char *buf = (char*)malloc(size + 1);
+      271:  160:  if (!buf) {
+    #####:  161:    fclose(f);
+    #####:  162:    return NULL;
+        -:  163:  }
+        -:  164:
+      271:  165:  size_t read = fread(buf, 1, size, f);
+      271:  166:  buf[read] = '\0';
+      271:  167:  fclose(f);
+        -:  168:
+      271:  169:  return buf;
+        -:  170:}
+        -:  171:
+        -:  172:// =============================================================================
+        -:  173:// AST Printing
+        -:  174:// =============================================================================
+        -:  175:
+        -:  176:fn void print_term_indent(Term t, int indent);
+        -:  177:
+       38:  178:fn void print_indent(int n) {
+       79:  179:  for (int i = 0; i < n; i++) printf("  ");
+       38:  180:}
+        -:  181:
+       23:  182:fn void print_term_indent(Term t, int indent) {
+       23:  183:  u32 tag = term_tag(t);
+       23:  184:  u32 ext = term_ext(t);
+       23:  185:  u32 val = term_val(t);
+        -:  186:
+       23:  187:  print_indent(indent);
+        -:  188:
+       23:  189:  switch (tag) {
+       15:  190:    case C00: case C01: case C02: case C03: case C04:
+        -:  191:    case C05: case C06: case C07: case C08: case C09:
+        -:  192:    case C10: case C11: case C12: case C13: case C14:
+        -:  193:    case C15: case C16: {
+        -:  194:      // Print constructor name
+        -:  195:      char name[16];
+       15:  196:      nick_to_str(ext, name, sizeof(name));
+       15:  197:      printf("#%s{\n", name);
+        -:  198:
+        -:  199:      // Print children based on arity (tag - C00)
+       15:  200:      u32 arity = tag - C00;
+       33:  201:      for (u32 i = 0; i < arity; i++) {
+       18:  202:        print_term_indent(HEAP[val + i], indent + 1);
+       18:  203:        if (i < arity - 1) printf(",");
+       18:  204:        printf("\n");
+        -:  205:      }
+        -:  206:
+       15:  207:      print_indent(indent);
+       15:  208:      printf("}");
+       15:  209:      break;
+        -:  210:    }
+        -:  211:
+        7:  212:    case NUM:
+        7:  213:      printf("%u", val);
+        7:  214:      break;
+        -:  215:
+    #####:  216:    case LAM:
+    #####:  217:      printf("λ. ...");
+    #####:  218:      break;
+        -:  219:
+    #####:  220:    case VAR:
+    #####:  221:      printf("v%u", val);
+    #####:  222:      break;
+        -:  223:
+        1:  224:    case REF:
+        1:  225:      printf("@%u", ext);
+        1:  226:      break;
+        -:  227:
+    #####:  228:    default:
+    #####:  229:      printf("<%u:%u:%u>", tag, ext, val);
+    #####:  230:      break;
+        -:  231:  }
+       23:  232:}
+        -:  233:
+        5:  234:fn void print_ast(Term t) {
+        5:  235:  print_term_indent(t, 0);
+        5:  236:  printf("\n");
+        5:  237:}
+        -:  238:
+        -:  239:// =============================================================================
+        -:  240:// User-Friendly Value Printing for REPL
+        -:  241:// =============================================================================
+        -:  242:
+        -:  243:fn void omni_print_value_to(FILE *out, Term t);
+        -:  244:
+      441:  245:fn void omni_print_list_to(FILE *out, Term t) {
+      441:  246:  fprintf(out, "(");
+      441:  247:  int first = 1;
+     2287:  248:  while (term_tag(t) == C02 && term_ext(t) == OMNI_NAM_CON) {
+     1846:  249:    u32 loc = term_val(t);
+     1846:  250:    if (!first) fprintf(out, " ");
+     1846:  251:    first = 0;
+     1846:  252:    omni_print_value_to(out, HEAP[loc]);
+     1846:  253:    t = HEAP[loc + 1];
+        -:  254:  }
+        -:  255:  // Check for improper list
+      441:  256:  if (!(term_tag(t) == C00 && term_ext(t) == OMNI_NAM_NIL)) {
+       50:  257:    fprintf(out, " . ");
+       50:  258:    omni_print_value_to(out, t);
+        -:  259:  }
+      441:  260:  fprintf(out, ")");
+      441:  261:}
+        -:  262:
+     3861:  263:fn void omni_print_value_to(FILE *out, Term t) {
+     3861:  264:  u32 tag = term_tag(t);
+     3861:  265:  u32 ext = term_ext(t);
+     3861:  266:  u32 val = term_val(t);
+        -:  267:
+        -:  268:  // Raw number
+     3861:  269:  if (tag == NUM) {
+      789:  270:    fprintf(out, "%u", val);
+      789:  271:    return;
+        -:  272:  }
+        -:  273:
+        -:  274:  // Constructors
+     3072:  275:  if (tag >= C00 && tag <= C16) {
+        -:  276:    // #Cst{n} or #Lit{n} - integer literal
+     3067:  277:    if (ext == OMNI_NAM_CST || ext == OMNI_NAM_LIT) {
+      625:  278:      Term inner = HEAP[val];
+      625:  279:      if (term_tag(inner) == NUM) {
+      624:  280:        fprintf(out, "%u", term_val(inner));
+        -:  281:      } else {
+        1:  282:        omni_print_value_to(out, inner);
+        -:  283:      }
+      625:  284:      return;
+        -:  285:    }
+        -:  286:
+        -:  287:    // #True{} - boolean true
+     2442:  288:    if (ext == OMNI_NAM_TRUE) {
+       48:  289:      fprintf(out, "true");
+       48:  290:      return;
+        -:  291:    }
+        -:  292:
+        -:  293:    // #Fals{} - boolean false
+     2394:  294:    if (ext == OMNI_NAM_FALS) {
+       41:  295:      fprintf(out, "false");
+       41:  296:      return;
+        -:  297:    }
+        -:  298:
+        -:  299:    // #Noth{} - nothing
+     2353:  300:    if (ext == OMNI_NAM_NOTH) {
+       20:  301:      fprintf(out, "nothing");
+       20:  302:      return;
+        -:  303:    }
+        -:  304:
+        -:  305:    // #NIL{} - empty list
+     2333:  306:    if (ext == OMNI_NAM_NIL) {
+       66:  307:      fprintf(out, "()");
+       66:  308:      return;
+        -:  309:    }
+        -:  310:
+        -:  311:    // #CON{h, t} - cons cell (list)
+     2267:  312:    if (ext == OMNI_NAM_CON) {
+      441:  313:      omni_print_list_to(out, t);
+      441:  314:      return;
+        -:  315:    }
+        -:  316:
+        -:  317:    // #Sym{nick} - symbol
+     1826:  318:    if (ext == OMNI_NAM_SYM) {
+        -:  319:      char name[64];
+      104:  320:      Term nick_term = HEAP[val];
+     104*:  321:      u32 nick = term_tag(nick_term) == NUM ? term_val(nick_term) : term_ext(nick_term);
+      104:  322:      nick_to_str(nick, name, sizeof(name));
+      104:  323:      fprintf(out, "%s", name);
+      104:  324:      return;
+        -:  325:    }
+        -:  326:
+        -:  327:    // #Str{...} - string (nick-encoded)
+     1722:  328:    if (ext == OMNI_NAM_STR) {
+    #####:  329:      Term str_nick = HEAP[val];
+    #####:  330:      if (term_tag(str_nick) == NUM) {
+        -:  331:        char str[256];
+    #####:  332:        nick_to_str(term_val(str_nick), str, sizeof(str));
+    #####:  333:        fprintf(out, "\"%s\"", str);
+        -:  334:      } else {
+    #####:  335:        fprintf(out, "\"...\"");
+        -:  336:      }
+    #####:  337:      return;
+        -:  338:    }
+        -:  339:
+        -:  340:    // #Lam{body} - lambda
+     1722:  341:    if (ext == OMNI_NAM_LAM) {
+       26:  342:      fprintf(out, "<lambda>");
+       26:  343:      return;
+        -:  344:    }
+        -:  345:
+        -:  346:    // #Clo{env, body} - closure
+     1696:  347:    if (ext == OMNI_NAM_CLO) {
+      134:  348:      fprintf(out, "<closure>");
+      134:  349:      return;
+        -:  350:    }
+        -:  351:
+        -:  352:    // #CloR{marker, body} - recursive closure
+     1562:  353:    if (ext == OMNI_NAM_CLOR) {
+    #####:  354:      fprintf(out, "<function>");
+    #####:  355:      return;
+        -:  356:    }
+        -:  357:
+        -:  358:    // #Meth{...} - method
+     1562:  359:    if (ext == OMNI_NAM_METH) {
+    #####:  360:      fprintf(out, "<method>");
+    #####:  361:      return;
+        -:  362:    }
+        -:  363:
+        -:  364:    // #GFun{name, methods} - generic function
+     1562:  365:    if (ext == OMNI_NAM_GFUN) {
+        7:  366:      fprintf(out, "<function>");
+        7:  367:      return;
+        -:  368:    }
+        -:  369:
+        -:  370:    // #Prnt{msg} - print result (show the value)
+     1555:  371:    if (ext == OMNI_NAM_PRNT || ext == OMNI_NAM_PRNL) {
+        1:  372:      omni_print_value_to(out, HEAP[val]);
+        1:  373:      return;
+        -:  374:    }
+        -:  375:
+        -:  376:    // #Err{msg} - error
+     1554:  377:    if (ext == OMNI_NAM_ERR) {
+       92:  378:      fprintf(out, "Error: ");
+       92:  379:      omni_print_value_to(out, HEAP[val]);
+       92:  380:      return;
+        -:  381:    }
+        -:  382:
+        -:  383:    // Default: show as #Name{...}
+        -:  384:    char name[16];
+     1462:  385:    nick_to_str(ext, name, sizeof(name));
+     1462:  386:    fprintf(out, "#%s", name);
+     1462:  387:    if (tag > C00) {
+     1351:  388:      fprintf(out, "{");
+     1351:  389:      u32 arity = tag - C00;
+     3078:  390:      for (u32 i = 0; i < arity && i < 3; i++) {
+     1727:  391:        if (i > 0) fprintf(out, ", ");
+     1727:  392:        omni_print_value_to(out, HEAP[val + i]);
+        -:  393:      }
+    1351*:  394:      if (arity > 3) fprintf(out, ", ...");
+     1351:  395:      fprintf(out, "}");
+        -:  396:    }
+     1462:  397:    return;
+        -:  398:  }
+        -:  399:
+        -:  400:  // References
+        5:  401:  if (tag == REF) {
+    #####:  402:    char *name = TABLE[ext];
+    #####:  403:    if (name) {
+    #####:  404:      fprintf(out, "%s", name);
+        -:  405:    } else {
+    #####:  406:      fprintf(out, "@%u", ext);
+        -:  407:    }
+    #####:  408:    return;
+        -:  409:  }
+        -:  410:
+        -:  411:  // Variables
+        5:  412:  if (tag == VAR) {
+    #####:  413:    fprintf(out, "v%u", val);
+    #####:  414:    return;
+        -:  415:  }
+        -:  416:
+        -:  417:  // Default
+        5:  418:  fprintf(out, "<%u:%u:%u>", tag, ext, val);
+        -:  419:}
+        -:  420:
+      139:  421:fn void omni_print_value(Term t) {
+      139:  422:  omni_print_value_to(stdout, t);
+      139:  423:}
+        -:  424:
+        -:  425:// =============================================================================
+        -:  426:// Runtime Initialization
+        -:  427:// =============================================================================
+        -:  428:
+        -:  429:// Track if runtime.hvm4 has been loaded
+        -:  430:static int g_runtime_loaded = 0;
+        -:  431:
+        -:  432:// Helper to find runtime file in multiple locations
+      562:  433:fn char* omni_find_runtime_file(const char *filename) {
+        -:  434:  static char path_buf[512];
+        -:  435:
+        -:  436:  // Try 1: Current directory (lib/filename)
+      562:  437:  snprintf(path_buf, sizeof(path_buf), "lib/%s", filename);
+     562*:  438:  if (access(path_buf, R_OK) == 0) return path_buf;
+        -:  439:
+        -:  440:  // Try 2: Parent directory (../lib/filename) - when running from clang/
+      562:  441:  snprintf(path_buf, sizeof(path_buf), "../lib/%s", filename);
+      562:  442:  if (access(path_buf, R_OK) == 0) return path_buf;
+        -:  443:
+        -:  444:  // Try 3: Executable directory (for installed builds)
+        -:  445:  // Use /proc/self/exe on Linux to get executable path
+        -:  446:  char exe_path[256];
+    #####:  447:  ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+    #####:  448:  if (len > 0) {
+    #####:  449:    exe_path[len] = '\0';
+        -:  450:    // Find last / and truncate to get directory
+    #####:  451:    char *last_slash = strrchr(exe_path, '/');
+    #####:  452:    if (last_slash) {
+    #####:  453:      *last_slash = '\0';
+    #####:  454:      snprintf(path_buf, sizeof(path_buf), "%s/../lib/%s", exe_path, filename);
+    #####:  455:      if (access(path_buf, R_OK) == 0) return path_buf;
+        -:  456:    }
+        -:  457:  }
+        -:  458:
+    #####:  459:  return NULL;
+        -:  460:}
+        -:  461:
+        -:  462:// Load runtime.hvm4 into the HVM4 book
+        -:  463:// Loads lib/prelude.hvm4 and lib/runtime.hvm4 definitions
+      282:  464:fn int omni_load_runtime(void) {
+      282:  465:  if (g_runtime_loaded) return 0;  // Already loaded
+        -:  466:
+        -:  467:  // Find and load prelude.hvm4
+      281:  468:  char *prelude_path = omni_find_runtime_file("prelude.hvm4");
+      281:  469:  if (!prelude_path) {
+    #####:  470:    fprintf(stderr, "Warning: Could not find lib/prelude.hvm4, using C interpreter\n");
+    #####:  471:    return 1;
+        -:  472:  }
+        -:  473:
+      281:  474:  char *prelude_src = sys_file_read(prelude_path);
+      281:  475:  if (!prelude_src) {
+    #####:  476:    fprintf(stderr, "Warning: Could not read %s, using C interpreter\n", prelude_path);
+    #####:  477:    return 1;
+        -:  478:  }
+        -:  479:
+      281:  480:  PState ps = {
+        -:  481:    .file = prelude_path,
+        -:  482:    .src  = prelude_src,
+        -:  483:    .pos  = 0,
+      281:  484:    .len  = (u32)strlen(prelude_src),
+        -:  485:    .line = 1,
+        -:  486:    .col  = 1
+        -:  487:  };
+      281:  488:  parse_def(&ps);
+      281:  489:  free(prelude_src);
+        -:  490:
+        -:  491:  // Find and load runtime.hvm4
+      281:  492:  char *runtime_path = omni_find_runtime_file("runtime.hvm4");
+      281:  493:  if (!runtime_path) {
+    #####:  494:    fprintf(stderr, "Warning: Could not find lib/runtime.hvm4, using C interpreter\n");
+    #####:  495:    return 1;
+        -:  496:  }
+        -:  497:
+      281:  498:  char *runtime_src = sys_file_read(runtime_path);
+      281:  499:  if (!runtime_src) {
+    #####:  500:    fprintf(stderr, "Warning: Could not read %s, using C interpreter\n", runtime_path);
+    #####:  501:    return 1;
+        -:  502:  }
+        -:  503:
+      281:  504:  PState rs = {
+        -:  505:    .file = runtime_path,
+        -:  506:    .src  = runtime_src,
+        -:  507:    .pos  = 0,
+      281:  508:    .len  = (u32)strlen(runtime_src),
+        -:  509:    .line = 1,
+        -:  510:    .col  = 1
+        -:  511:  };
+      281:  512:  parse_def(&rs);
+      281:  513:  free(runtime_src);
+        -:  514:
+        -:  515:  // Verify critical functions are loaded
+      281:  516:  u32 eval_id = table_find("omni_eval", 9);
+      281:  517:  u32 menv_id = table_find("omni_menv_empty", 15);
+        -:  518:
+      281:  519:  if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
+    #####:  520:    fprintf(stderr, "Warning: runtime.hvm4 missing required definitions, using C interpreter\n");
+    #####:  521:    return 1;
+        -:  522:  }
+        -:  523:
+      281:  524:  g_runtime_loaded = 1;
+      281:  525:  return 0;
+        -:  526:}
+        -:  527:
+      417:  528:fn void omni_runtime_init(void) {
+        -:  529:  // Initialize HVM4 runtime
+      417:  530:  thread_set_count(1);
+      417:  531:  wnf_set_tid(0);
+        -:  532:
+        -:  533:  // Allocate global memory
+      417:  534:  BOOK  = calloc(BOOK_CAP, sizeof(u32));
+      417:  535:  HEAP  = calloc(HEAP_CAP, sizeof(Term));
+      417:  536:  TABLE = calloc(BOOK_CAP, sizeof(char*));
+        -:  537:
+      417:  538:  if (!BOOK || !HEAP || !TABLE) {
+    #####:  539:    fprintf(stderr, "Error: Memory allocation failed\n");
+    #####:  540:    exit(1);
+        -:  541:  }
+      417:  542:  heap_init_slices();
+        -:  543:
+        -:  544:  // Initialize OmniLisp names
+      417:  545:  omni_names_init();
+        -:  546:
+        -:  547:  // Initialize FFI
+      417:  548:  omni_ffi_handle_init();
+      417:  549:  omni_ffi_register_stdlib();
+      417:  550:}
+        -:  551:
+      200:  552:fn void omni_runtime_cleanup(void) {
+        -:  553:  // Cleanup FFI
+      200:  554:  omni_ffi_pool_shutdown();
+      200:  555:  omni_ffi_handle_cleanup();
+      200:  556:}
+        -:  557:
+        -:  558:// =============================================================================
+        -:  559:// Reduction with FFI Interception
+        -:  560:// =============================================================================
+        -:  561:
+        -:  562:fn Term omni_reduce_with_ffi(Term t) {
+        -:  563:  // Reduce to weak normal form
+        -:  564:  Term result = wnf(t);
+        -:  565:
+        -:  566:  // Check if it's an FFI node (#FFI{name, args} has 2 args = C02)
+        -:  567:  if (term_tag(result) == C02 && term_ext(result) == OMNI_NAM_FFI) {
+        -:  568:    // Dispatch FFI call
+        -:  569:    result = omni_ffi_dispatch(result);
+        -:  570:  }
+        -:  571:
+        -:  572:  return result;
+        -:  573:}
+        -:  574:
+        -:  575:// Full normalization with FFI
+        -:  576:fn Term omni_normalize(Term t) {
+        -:  577:  Term wnf_result = omni_reduce_with_ffi(t);
+        -:  578:
+        -:  579:  // Continue normalization if needed
+        -:  580:  u32 tag = term_tag(wnf_result);
+        -:  581:
+        -:  582:  // Check if it's a constructor (C00-C16)
+        -:  583:  if (tag >= C00 && tag <= C16) {
+        -:  584:    u32 val = term_val(wnf_result);
+        -:  585:    u32 arity = tag - C00;
+        -:  586:
+        -:  587:    for (u32 i = 0; i < arity; i++) {
+        -:  588:      Term child = HEAP[val + i];
+        -:  589:      Term normalized = omni_normalize(child);
+        -:  590:      HEAP[val + i] = normalized;
+        -:  591:    }
+        -:  592:  }
+        -:  593:
+        -:  594:  return wnf_result;
+        -:  595:}
+        -:  596:
+        -:  597:// =============================================================================
+        -:  598:// Main Entry Points
+        -:  599:// =============================================================================
+        -:  600:
+        2:  601:fn int run_parse_only(const char *source, int debug) {
+        -:  602:  OmniParse parse;
+        2:  603:  omni_parse_init(&parse, source);
+        -:  604:
+        2:  605:  Term ast = omni_parse(&parse);
+        -:  606:
+        2:  607:  if (parse.error) {
+    #####:  608:    fprintf(stderr, "Parse error at line %u, col %u: %s\n",
+        -:  609:            parse.line, parse.col, parse.error);
+    #####:  610:    return 1;
+        -:  611:  }
+        -:  612:
+        2:  613:  print_ast(ast);
+        2:  614:  return 0;
+        -:  615:}
+        -:  616:
+       57:  617:fn int run_compile_only(const char *source, const char *output, int debug) {
+        -:  618:  OmniParse parse;
+       57:  619:  omni_parse_init(&parse, source);
+        -:  620:
+       57:  621:  Term ast = omni_parse(&parse);
+        -:  622:
+       53:  623:  if (parse.error) {
+    #####:  624:    fprintf(stderr, "Parse error at line %u, col %u: %s\n",
+        -:  625:            parse.line, parse.col, parse.error);
+    #####:  626:    return 1;
+        -:  627:  }
+        -:  628:
+       53:  629:  FILE *out = stdout;
+       53:  630:  if (output) {
+        3:  631:    out = fopen(output, "w");
+        3:  632:    if (!out) {
+        1:  633:      fprintf(stderr, "Error: Cannot create output file '%s'\n", output);
+        1:  634:      return 1;
+        -:  635:    }
+        -:  636:  }
+        -:  637:
+        -:  638:  // Emit HVM4 code
+       52:  639:  fprintf(out, "// Generated HVM4 code from OmniLisp\n\n");
+       52:  640:  omni_compile_emit(out, ast);
+       52:  641:  fprintf(out, "\n// Entry point\n");
+       52:  642:  fprintf(out, "@main = @omni_run(@omni_main)\n");
+        -:  643:
+       52:  644:  if (output) {
+        2:  645:    fclose(out);
+        2:  646:    printf("Compiled to: %s\n", output);
+        -:  647:  }
+        -:  648:
+       52:  649:  return 0;
+        -:  650:}
+        -:  651:
+      350:  652:fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug) {
+        -:  653:  OmniParse parse;
+      350:  654:  omni_parse_init(&parse, source);
+        -:  655:
+      350:  656:  Term ast = omni_parse(&parse);
+        -:  657:
+      277:  658:  if (parse.error) {
+    #####:  659:    fprintf(stderr, "Parse error at line %u, col %u: %s\n",
+        -:  660:            parse.line, parse.col, parse.error);
+    #####:  661:    return 1;
+        -:  662:  }
+        -:  663:
+      277:  664:  if (debug) {
+        3:  665:    printf("AST:\n");
+        3:  666:    print_ast(ast);
+        3:  667:    printf("\nEvaluating...\n\n");
+        -:  668:  }
+        -:  669:
+        -:  670:  // Load runtime.hvm4 if not already loaded
+      277:  671:  int runtime_err = omni_load_runtime();
+        -:  672:
+        -:  673:  Term result;
+        -:  674:
+      416:  675:  if (runtime_err == 0 && g_runtime_loaded) {
+        -:  676:    // Use the HVM4-based interpreter from runtime.hvm4
+        -:  677:
+        -:  678:    // Look up @omni_eval and @omni_menv_empty
+      277:  679:    u32 eval_id = table_find("omni_eval", 9);
+      277:  680:    u32 menv_id = table_find("omni_menv_empty", 15);
+        -:  681:
+      277:  682:    if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
+    #####:  683:      fprintf(stderr, "Error: runtime.hvm4 missing required definitions\n");
+    #####:  684:      return 1;
+        -:  685:    }
+        -:  686:
+        -:  687:    // Build: @omni_eval(@omni_menv_empty)(ast)
+      277:  688:    Term eval_ref = term_new_ref(eval_id);
+      277:  689:    Term menv_ref = term_new_ref(menv_id);
+        -:  690:
+        -:  691:    // @omni_eval(@omni_menv_empty)
+      277:  692:    Term eval_with_menv = term_new_app(eval_ref, menv_ref);
+        -:  693:
+        -:  694:    // @omni_eval(@omni_menv_empty)(ast)
+      277:  695:    Term eval_expr = term_new_app(eval_with_menv, ast);
+        -:  696:
+        -:  697:    // Evaluate to normal form
+      277:  698:    result = eval_normalize(eval_expr);
+        -:  699:  } else {
+        -:  700:    // Runtime is required - no fallback interpreter
+    #####:  701:    fprintf(stderr, "Error: runtime.hvm4 failed to load - cannot evaluate\n");
+    #####:  702:    return 1;
+        -:  703:  }
+        -:  704:
+      139:  705:  printf("Result: ");
+      139:  706:  omni_print_value(result);
+      139:  707:  printf("\n");
+        -:  708:
+      139:  709:  if (stats) {
+        1:  710:    printf("\nStatistics:\n");
+        1:  711:    printf("  Handles allocated: %u\n", omni_ffi_handle_count());
+        1:  712:    printf("  Interactions: %llu\n", (unsigned long long)wnf_itrs_total());
+        -:  713:  }
+        -:  714:
+      139:  715:  return 0;
+        -:  716:}
+        -:  717:
+        -:  718:// =============================================================================
+        -:  719:// REPL - Interactive Read-Eval-Print Loop
+        -:  720:// =============================================================================
+        -:  721:
+        -:  722:#define REPL_BUFFER_SIZE 4096
+        -:  723:
+        -:  724:// Evaluate a single expression and write result to output
+        -:  725:// Returns result string (caller must free) or NULL on error
+        7:  726:fn char* eval_to_string(const char *source, int debug) {
+        -:  727:  OmniParse parse;
+        7:  728:  omni_parse_init(&parse, source);
+        -:  729:
+        7:  730:  Term ast = omni_parse(&parse);
+        -:  731:
+        5:  732:  if (parse.error) {
+    #####:  733:    char *err = (char*)malloc(256);
+    #####:  734:    snprintf(err, 256, "Parse error at line %u, col %u: %s",
+        -:  735:             parse.line, parse.col, parse.error);
+    #####:  736:    return err;
+        -:  737:  }
+        -:  738:
+        -:  739:  // Load runtime if not loaded
+        5:  740:  omni_load_runtime();
+        -:  741:
+        -:  742:  Term result;
+        -:  743:
+        5:  744:  if (!g_runtime_loaded) {
+    #####:  745:    return strdup("Error: runtime.hvm4 failed to load");
+        -:  746:  }
+        -:  747:
+        -:  748:  // Use the HVM4 interpreter
+        5:  749:  u32 eval_id = table_find("omni_eval", 9);
+        5:  750:  u32 menv_id = table_find("omni_menv_empty", 15);
+        -:  751:
+        5:  752:  if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
+    #####:  753:    return strdup("Error: runtime.hvm4 missing required definitions");
+        -:  754:  }
+        -:  755:
+        5:  756:  Term eval_ref = term_new_ref(eval_id);
+        5:  757:  Term menv_ref = term_new_ref(menv_id);
+        5:  758:  Term eval_with_menv = term_new_app(eval_ref, menv_ref);
+        5:  759:  Term eval_expr = term_new_app(eval_with_menv, ast);
+        5:  760:  result = eval_normalize(eval_expr);
+        -:  761:
+        -:  762:  // Convert result to string using user-friendly printer
+        5:  763:  char *buf = (char*)malloc(REPL_BUFFER_SIZE);
+        5:  764:  FILE *memstream = fmemopen(buf, REPL_BUFFER_SIZE - 1, "w");
+        5:  765:  if (!memstream) {
+    #####:  766:    free(buf);
+    #####:  767:    return strdup("Error: failed to create output stream");
+        -:  768:  }
+        -:  769:
+        5:  770:  omni_print_value_to(memstream, result);
+        5:  771:  fclose(memstream);
+        -:  772:
+        5:  773:  return buf;
+        -:  774:}
+        -:  775:
+        3:  776:fn int run_repl(int debug) {
+        -:  777:  char input[REPL_BUFFER_SIZE];
+        -:  778:  char *line;
+        -:  779:
+        3:  780:  printf("OmniLisp REPL v0.1.0\n");
+        3:  781:  printf("Type expressions to evaluate. Ctrl+D to exit.\n\n");
+        -:  782:
+        7:  783:  while (g_running) {
+        7:  784:    printf("λ> ");
+        7:  785:    fflush(stdout);
+        -:  786:
+        7:  787:    line = fgets(input, REPL_BUFFER_SIZE, stdin);
+        7:  788:    if (!line) {
+        -:  789:      // EOF (Ctrl+D)
+        1:  790:      printf("\nBye!\n");
+        1:  791:      break;
+        -:  792:    }
+        -:  793:
+        -:  794:    // Skip empty lines
+        6:  795:    size_t len = strlen(line);
+        6:  796:    if (len == 0 || (len == 1 && line[0] == '\n')) {
+        1:  797:      continue;
+        -:  798:    }
+        -:  799:
+        -:  800:    // Remove trailing newline
+        5:  801:    if (len > 0 && line[len-1] == '\n') {
+        5:  802:      line[len-1] = '\0';
+        -:  803:    }
+        -:  804:
+        -:  805:    // Special commands
+        5:  806:    if (strcmp(line, ":q") == 0 || strcmp(line, ":quit") == 0) {
+        1:  807:      printf("Bye!\n");
+        1:  808:      break;
+        -:  809:    }
+        4:  810:    if (strcmp(line, ":h") == 0 || strcmp(line, ":help") == 0) {
+        1:  811:      printf("Commands:\n");
+        1:  812:      printf("  :q, :quit   Exit REPL\n");
+        1:  813:      printf("  :h, :help   Show this help\n");
+        1:  814:      printf("  :c, :clear  Clear screen\n");
+        1:  815:      printf("\n");
+        1:  816:      continue;
+        -:  817:    }
+        3:  818:    if (strcmp(line, ":c") == 0 || strcmp(line, ":clear") == 0) {
+        1:  819:      printf("\033[2J\033[H");  // ANSI clear screen
+        1:  820:      continue;
+        -:  821:    }
+        -:  822:
+        -:  823:    // Evaluate expression
+        2:  824:    char *result = eval_to_string(line, debug);
+        1:  825:    if (result) {
+        1:  826:      printf("%s\n", result);
+        1:  827:      free(result);
+        -:  828:    }
+        -:  829:  }
+        -:  830:
+        2:  831:  return 0;
+        -:  832:}
+        -:  833:
+        -:  834:// =============================================================================
+        -:  835:// Socket Server - For Editor Integration (neovim, etc.)
+        -:  836:// =============================================================================
+        -:  837://
+        -:  838:// Protocol:
+        -:  839://   Client sends: <expression>\n
+        -:  840://   Server sends: <result>\x00\n  (null byte marks end of result)
+        -:  841://
+        -:  842:// The null byte allows multi-line results while still having a clear delimiter.
+        -:  843:// Neovim/editors can read until they see \x00\n to know the response is complete.
+        -:  844:
+        6:  845:fn int handle_client(int client_fd, int debug) {
+        -:  846:  char buffer[REPL_BUFFER_SIZE];
+        -:  847:  ssize_t bytes_read;
+        -:  848:
+       11:  849:  while (g_running) {
+       11:  850:    bytes_read = recv(client_fd, buffer, REPL_BUFFER_SIZE - 1, 0);
+       11:  851:    if (bytes_read <= 0) {
+        -:  852:      // Client disconnected or error
+        5:  853:      break;
+        -:  854:    }
+        -:  855:
+        6:  856:    buffer[bytes_read] = '\0';
+        -:  857:
+        -:  858:    // Remove trailing newline
+        6:  859:    if (bytes_read > 0 && buffer[bytes_read - 1] == '\n') {
+        6:  860:      buffer[bytes_read - 1] = '\0';
+        -:  861:    }
+        -:  862:
+        -:  863:    // Skip empty input
+       6*:  864:    if (strlen(buffer) == 0) {
+    #####:  865:      continue;
+        -:  866:    }
+        -:  867:
+        -:  868:    // Special: :ping for keepalive
+        6:  869:    if (strcmp(buffer, ":ping") == 0) {
+        1:  870:      send(client_fd, "pong\0\n", 6, 0);
+        1:  871:      continue;
+        -:  872:    }
+        -:  873:
+        -:  874:    // Evaluate and send result
+        5:  875:    char *result = eval_to_string(buffer, debug);
+        4:  876:    if (result) {
+        4:  877:      send(client_fd, result, strlen(result), 0);
+        4:  878:      free(result);
+        -:  879:    } else {
+    #####:  880:      send(client_fd, "Error: evaluation failed", 24, 0);
+        -:  881:    }
+        -:  882:
+        -:  883:    // Send delimiter: null byte + newline
+        4:  884:    send(client_fd, "\0\n", 2, 0);
+        -:  885:  }
+        -:  886:
+        5:  887:  close(client_fd);
+        5:  888:  return 0;
+        -:  889:}
+        -:  890:
+        4:  891:fn int run_server(int port, int debug) {
+        -:  892:  int server_fd, client_fd;
+        -:  893:  struct sockaddr_in address;
+        4:  894:  int opt = 1;
+        4:  895:  socklen_t addrlen = sizeof(address);
+        -:  896:
+        -:  897:  // Create socket
+        4:  898:  server_fd = socket(AF_INET, SOCK_STREAM, 0);
+        4:  899:  if (server_fd < 0) {
+    #####:  900:    perror("socket failed");
+    #####:  901:    return 1;
+        -:  902:  }
+        -:  903:
+        -:  904:  // Allow address reuse
+        4:  905:  if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+    #####:  906:    perror("setsockopt failed");
+    #####:  907:    close(server_fd);
+    #####:  908:    return 1;
+        -:  909:  }
+        -:  910:
+        -:  911:  // Bind to port
+        4:  912:  address.sin_family = AF_INET;
+        4:  913:  address.sin_addr.s_addr = INADDR_ANY;
+        4:  914:  address.sin_port = htons(port);
+        -:  915:
+        4:  916:  if (bind(server_fd, (struct sockaddr*)&address, sizeof(address)) < 0) {
+    #####:  917:    perror("bind failed");
+    #####:  918:    close(server_fd);
+    #####:  919:    return 1;
+        -:  920:  }
+        -:  921:
+        -:  922:  // Listen
+        4:  923:  if (listen(server_fd, 3) < 0) {
+    #####:  924:    perror("listen failed");
+    #####:  925:    close(server_fd);
+    #####:  926:    return 1;
+        -:  927:  }
+        -:  928:
+        4:  929:  printf("OmniLisp server listening on port %d\n", port);
+        4:  930:  printf("Connect with: nc localhost %d\n", port);
+        4:  931:  printf("Or from neovim: :lua vim.fn.sockconnect('tcp', 'localhost:%d')\n", port);
+        4:  932:  printf("Press Ctrl+C to stop.\n\n");
+        -:  933:
+        -:  934:  // Setup signal handler for graceful shutdown
+        4:  935:  signal(SIGINT, signal_handler);
+        4:  936:  signal(SIGTERM, signal_handler);
+        -:  937:
+       10:  938:  while (g_running) {
+        -:  939:    // Use poll to allow checking g_running periodically
+        7:  940:    struct pollfd pfd = {server_fd, POLLIN, 0};
+        7:  941:    int poll_result = poll(&pfd, 1, 1000);  // 1 second timeout
+        -:  942:
+        7:  943:    if (poll_result < 0) {
+        1:  944:      if (errno == EINTR) continue;  // Interrupted by signal
+    #####:  945:      perror("poll failed");
+    #####:  946:      break;
+        -:  947:    }
+        -:  948:
+       6*:  949:    if (poll_result == 0) {
+    #####:  950:      continue;  // Timeout, check g_running and loop
+        -:  951:    }
+        -:  952:
+        -:  953:    // Accept connection
+        6:  954:    client_fd = accept(server_fd, (struct sockaddr*)&address, &addrlen);
+       6*:  955:    if (client_fd < 0) {
+    #####:  956:      if (errno == EINTR) continue;
+    #####:  957:      perror("accept failed");
+    #####:  958:      continue;
+        -:  959:    }
+        -:  960:
+        6:  961:    printf("Client connected from %s:%d\n",
+        6:  962:           inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+        -:  963:
+        -:  964:    // Handle client (single-threaded for simplicity)
+        6:  965:    handle_client(client_fd, debug);
+        -:  966:
+        5:  967:    printf("Client disconnected\n");
+        -:  968:  }
+        -:  969:
+        3:  970:  printf("\nShutting down server...\n");
+        3:  971:  close(server_fd);
+        3:  972:  return 0;
+        -:  973:}
+        -:  974:
+        -:  975:// =============================================================================
+        -:  976:// Main
+        -:  977:// =============================================================================
+        -:  978:
+      422:  979:int main(int argc, char *argv[]) {
+      422:  980:  OmniOptions opts = parse_options(argc, argv);
+        -:  981:
+      422:  982:  if (opts.help) {
+        3:  983:    print_usage(argv[0]);
+        3:  984:    return 0;
+        -:  985:  }
+        -:  986:
+      419:  987:  if (opts.version) {
+        2:  988:    print_version();
+        2:  989:    return 0;
+        -:  990:  }
+        -:  991:
+        -:  992:  // Initialize runtime
+      417:  993:  omni_runtime_init();
+        -:  994:
+      417:  995:  int result = 0;
+        -:  996:
+      417:  997:  if (opts.server_port > 0) {
+        -:  998:    // Socket server mode
+        4:  999:    result = run_server(opts.server_port, opts.debug);
+      413: 1000:  } else if (opts.interactive) {
+        -: 1001:    // Interactive REPL mode
+        3: 1002:    result = run_repl(opts.debug);
+      410: 1003:  } else if (opts.eval_mode && opts.expr) {
+        -: 1004:    // Evaluate expression
+      138: 1005:    if (opts.parse_only) {
+        1: 1006:      result = run_parse_only(opts.expr, opts.debug);
+      137: 1007:    } else if (opts.compile_only) {
+       50: 1008:      result = run_compile_only(opts.expr, opts.output, opts.debug);
+        -: 1009:    } else {
+       87: 1010:      result = run_evaluate(opts.expr, opts.collapse, opts.stats, opts.debug);
+        -: 1011:    }
+      272: 1012:  } else if (opts.file) {
+        -: 1013:    // Process file
+      272: 1014:    char *source = read_file(opts.file);
+      272: 1015:    if (!source) {
+        1: 1016:      result = 1;
+        -: 1017:    } else {
+      271: 1018:      if (opts.parse_only) {
+        1: 1019:        result = run_parse_only(source, opts.debug);
+      270: 1020:      } else if (opts.compile_only) {
+        7: 1021:        result = run_compile_only(source, opts.output, opts.debug);
+        -: 1022:      } else {
+      263: 1023:        result = run_evaluate(source, opts.collapse, opts.stats, opts.debug);
+        -: 1024:      }
+       83: 1025:      free(source);
+        -: 1026:    }
+        -: 1027:  } else {
+        -: 1028:    // No input - start interactive REPL by default
+    #####: 1029:    result = run_repl(opts.debug);
+        -: 1030:  }
+        -: 1031:
+        -: 1032:  // Cleanup
+      200: 1033:  omni_runtime_cleanup();
+        -: 1034:
+      200: 1035:  return result;
+        -: 1036:}
+        -: 1037:

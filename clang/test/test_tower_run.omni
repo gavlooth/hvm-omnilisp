@@ -1,0 +1,62 @@
+;; test_tower_run.lisp - Tests for run (execute code)
+
+;; Run executes code representation
+;; TEST: run simple expression
+;; EXPECT: 3
+(run '(+ 1 2))
+
+;; TEST: run literal
+;; EXPECT: 42
+(run 42)
+
+;; TEST: run string
+;; EXPECT: "hello"
+(run "hello")
+
+;; TEST: run quoted list
+;; EXPECT: (1 2 3)
+(run ''(1 2 3))
+
+;; TEST: run arithmetic
+;; EXPECT: 20
+(run '(* 4 5))
+
+;; Run with variables
+;; TEST: run with let
+;; EXPECT: 10
+(run '(let [x 5] (* x 2)))
+
+;; TEST: run function call
+;; EXPECT: 5
+(run '(length '(1 2 3 4 5)))
+
+;; Run staged code
+;; TEST: run generated code
+;; EXPECT: 7
+(let [code `(+ 3 4)]
+  (run code))
+
+;; TEST: run with condition
+;; EXPECT: "yes"
+(run '(if true "yes" "no"))
+
+;; Run preserves effects
+;; TEST: run with do
+;; EXPECT: 3
+(run '(do 1 2 3))
+
+;; TEST: run lambda
+;; EXPECT: 10
+(run '((lambda [x] (* x 2)) 5))
+
+;; Nested run
+;; TEST: nested run
+;; EXPECT: 42
+(run (run ''42))
+
+;; TEST: run match
+;; EXPECT: "one"
+(run '(match 1
+        1 "one"
+        2 "two"
+        _ "other"))

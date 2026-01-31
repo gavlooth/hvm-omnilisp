@@ -1,0 +1,50 @@
+;; test_pattern_array.lisp - Tests for array pattern matching
+
+;; Basic array destructuring
+(define sum-triple [arr]
+  (match arr
+    [a b c]  (+ a (+ b c))
+    _        0))
+
+;; TEST: destructure array of 3
+;; EXPECT: 6
+(sum-triple [1 2 3])
+
+;; Array with rest pattern
+(define array-head-tail [arr]
+  (match arr
+    []           '(nothing nothing)
+    [h .. t]     (cons h t)))
+
+;; TEST: array head and tail
+;; EXPECT: (1 2 3 4)
+(array-head-tail [1 2 3 4])
+
+;; Mixed array patterns
+(define array-length-class [arr]
+  (match arr
+    []           "empty"
+    [_]          "single"
+    [_ _]        "pair"
+    [_ _ _]      "triple"
+    _            "many"))
+
+;; TEST: empty array
+;; EXPECT: "empty"
+(array-length-class [])
+
+;; TEST: single element
+;; EXPECT: "single"
+(array-length-class [42])
+
+;; TEST: pair
+;; EXPECT: "pair"
+(array-length-class [1 2])
+
+;; TEST: triple
+;; EXPECT: "triple"
+(array-length-class [1 2 3])
+
+;; TEST: many elements
+;; EXPECT: "many"
+(array-length-class [1 2 3 4 5])

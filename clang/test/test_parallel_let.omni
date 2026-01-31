@@ -1,0 +1,142 @@
+;; test_parallel_let.lisp - A4: Automatic Let Parallelization
+;; Tests that independent let bindings are compiled for parallel execution
+
+;; TEST: Independent bindings - all can run in parallel
+;; EXPECT: 6
+(let [a 1]
+  (let [b 2]
+    (let [c 3]
+      (+ a (+ b c)))))
+
+;; TEST: Dependent bindings - must respect order
+;; EXPECT: 6
+(let [a 1]
+  (let [b (+ a 1)]
+    (let [c (+ b 1)]
+      (+ a (+ b c)))))
+
+;; TEST: Mixed dependencies - a,b parallel; c depends on both
+;; EXPECT: 14  (a=3, b=4, c=7, c+c=14)
+(let [a 3]
+  (let [b 4]
+    (let [c (+ a b)]
+      (+ c c))))
+
+;; TEST: More complex dependency pattern
+;; a, b, c independent; d depends on a,b; e depends on c,d
+;; EXPECT: 15  (a=1, b=2, c=3, d=3, e=6, sum=15)
+(let [a 1]
+  (let [b 2]
+    (let [c 3]
+      (let [d (+ a b)]
+        (let [e (+ c d)]
+          (+ a (+ b (+ c (+ d e)))))))))
+
+;; TEST: Nested let with lambda - lambda body doesn't affect dependencies
+;; EXPECT: 7  (f=lambda, a=3, b=f(a)=4, a+b=7)
+(let [f (lambda [x] (+ x 1))]
+  (let [a 3]
+    (let [b (f a)]
+      (+ a b))))
+
+;; TEST: Single binding (no parallelization needed)
+;; EXPECT: 5
+(let [x 5]
+  x)
+
+;; TEST: Two independent bindings
+;; EXPECT: 9
+(let [x 4]
+  (let [y 5]
+    (+ x y)))
+
+;; TEST: Force parallel with ^:parallel metadata
+;; EXPECT: 2
+(let [a 1]
+  (let [^:parallel b (+ a 1)]
+    b))
+
+;; TEST: Multiple ^:parallel bindings
+;; EXPECT: 14  (a=3, b=4, c=7, c+c=14)
+(let [^:parallel a 3]
+  (let [^:parallel b 4]
+    (let [^:parallel c (+ a b)]
+      (+ c c))))
+
+;; ============================================================
+;; DEPENDENCY ANALYSIS TESTS
+;; ============================================================
+
+;; TEST: Diamond dependency pattern - top parallel, bottom sequential
+;; EXPECT: 20
+(let [base 5]
+  (let [left (* base 2)]
+       [right (* base 2)]
+    (+ left right)))
+
+;; TEST: Large independent group
+;; EXPECT: 55
+(let [a 1] [b 2] [c 3] [d 4] [e 5]
+     [f 6] [g 7] [h 8] [i 9] [j 10]
+  (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j))))))))))
+
+;; TEST: Sibling bindings share dependency
+;; EXPECT: 50
+(let [x 10]
+  (let [a (* x 2)]     ;; 20, depends on x
+       [b (* x 3)]     ;; 30, depends on x (parallel with a)
+    (+ a b)))          ;; 50
+
+;; TEST: Dependency on multiple bindings
+;; EXPECT: 24
+(let [a 2]
+     [b 3]
+     [c 4]
+  (let [result (* a (* b c))]  ;; depends on a, b, c
+    result))
+
+;; ============================================================
+;; STRICT EVALUATION HINTS
+;; ============================================================
+
+;; TEST: ^:strict forces evaluation order
+;; EXPECT: 10
+(let ^:strict [a 5]
+  (let ^:strict [b 5]
+    (+ a b)))
+
+;; ============================================================
+;; FUNCTION BINDINGS
+;; ============================================================
+
+;; TEST: Function bindings can be parallel
+;; EXPECT: 25
+(let [double (lambda [x] (* x 2))]
+     [triple (lambda [x] (* x 3))]
+     [base 5]
+  (+ (double base) (triple base)))  ;; 10 + 15 = 25
+
+;; TEST: Function bindings parallel correct
+;; EXPECT: 25
+(let [double (lambda [x] (* x 2))]
+     [triple (lambda [x] (* x 3))]
+     [base 5]
+  (+ (double base) (triple base)))
+
+;; ============================================================
+;; NESTED SCOPE INDEPENDENCE
+;; ============================================================
+
+;; TEST: Inner scope bindings independent of outer unused
+;; EXPECT: 100
+(let [outer-unused 999]
+  (let [a 50]
+       [b 50]
+    (+ a b)))
+
+;; TEST: Closure captures don't force sequencing between closures
+;; EXPECT: 12
+(let [x 3]
+  (let [f (lambda [] (* x 2))]    ;; captures x
+       [g (lambda [] (* x 2))]    ;; also captures x, parallel with f
+    (+ (f) (g))))                 ;; 6 + 6 = 12

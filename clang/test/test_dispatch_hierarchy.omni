@@ -1,0 +1,77 @@
+;; test_dispatch_hierarchy.lisp - Tests for hierarchical dispatch
+
+;; Generic dispatch uses type hierarchy
+;; TEST: dispatch to parent
+;; EXPECT: "animal"
+(do
+  (deftype Animal [])
+  (deftype Dog [] :extends Animal)
+  (defgfun speak [x])
+  (defmethod speak [x {Animal}] "animal")
+  (speak (Dog)))
+
+;; TEST: child overrides parent
+;; EXPECT: "woof"
+(do
+  (deftype Animal [])
+  (deftype Dog [] :extends Animal)
+  (defgfun speak [x])
+  (defmethod speak [x {Animal}] "animal")
+  (defmethod speak [x {Dog}] "woof")
+  (speak (Dog)))
+
+;; TEST: multiple levels
+;; EXPECT: "terrier bark"
+(do
+  (deftype Animal [])
+  (deftype Dog [] :extends Animal)
+  (deftype Terrier [] :extends Dog)
+  (defgfun speak [x])
+  (defmethod speak [x {Animal}] "generic sound")
+  (defmethod speak [x {Dog}] "woof")
+  (defmethod speak [x {Terrier}] "terrier bark")
+  (speak (Terrier)))
+
+;; TEST: fallback to ancestor
+;; EXPECT: "dog woof"
+(do
+  (deftype Animal [])
+  (deftype Dog [] :extends Animal)
+  (deftype Poodle [] :extends Dog)
+  (defgfun speak [x])
+  (defmethod speak [x {Animal}] "animal sound")
+  (defmethod speak [x {Dog}] "dog woof")
+  (speak (Poodle)))
+
+;; TEST: prefer more specific
+;; EXPECT: :specific
+(do
+  (deftype Base [])
+  (deftype Child [] :extends Base)
+  (defgfun process [x])
+  (defmethod process [x {Base}] :general)
+  (defmethod process [x {Child}] :specific)
+  (process (Child)))
+
+;; TEST: derives? predicate
+;; EXPECT: true
+(do
+  (deftype A [])
+  (deftype B [] :extends A)
+  (derives? B A))
+
+;; TEST: ancestors list
+;; EXPECT: (Dog Animal Object)
+(do
+  (deftype Animal [])
+  (deftype Dog [] :extends Animal)
+  (deftype Terrier [] :extends Dog)
+  (ancestors Terrier))
+
+;; TEST: instanceof check
+;; EXPECT: true
+(do
+  (deftype Base [])
+  (deftype Sub [] :extends Base)
+  (let [x (Sub)]
+    (instanceof? x Base)))

@@ -1,0 +1,25 @@
+;; test_reset.omni - Tests for reset (continuation boundary)
+
+;; TEST: basic reset with immediate value
+;; EXPECT: 42
+(reset 42)
+
+;; TEST: reset with expression
+;; EXPECT: 7
+(reset (+ 3 4))
+
+;; TEST: nested reset
+;; EXPECT: 10
+(reset (reset (+ 5 5)))
+
+;; TEST: reset with let binding
+;; EXPECT: 15
+(reset
+  (let [x 10] [y 5]
+    (+ x y)))
+
+;; TEST: reset with function call
+(define add-one [x] (+ x 1))
+
+;; EXPECT: 6
+(reset (add-one 5))

@@ -224,7 +224,7 @@ fn void omni_ffi_execute_call(OmniFFIFuture *f) {
       f->call_type == OMNI_FFI_VOID_INT ||
       f->call_type == OMNI_FFI_VOID_PTR) {
     // Void return - use Nothing
-    f->result = term_new(CTR, OMNI_NAM_NOTH, 0);
+    f->result = term_new_ctr(OMNI_NAM_NOTH, 0, NULL);
   } else if (f->call_type == OMNI_FFI_PTR_VOID ||
              f->call_type == OMNI_FFI_PTR_INT ||
              f->call_type == OMNI_FFI_PTR_PTR ||
@@ -232,7 +232,7 @@ fn void omni_ffi_execute_call(OmniFFIFuture *f) {
              f->call_type == OMNI_FFI_PTR_PTR_PTR) {
     // Pointer return - wrap in handle
     if (result == 0) {
-      f->result = term_new(CTR, OMNI_NAM_NOTH, 0);
+      f->result = term_new_ctr(OMNI_NAM_NOTH, 0, NULL);
     } else {
       f->result = omni_ffi_handle_alloc(
         (void*)result,
@@ -241,8 +241,8 @@ fn void omni_ffi_execute_call(OmniFFIFuture *f) {
       );
     }
   } else {
-    // Integer return - wrap as Cst
-    f->result = term_new(CTR, OMNI_NAM_CST, heap_alloc(1, (u32*)&result));
+    // Integer return - wrap as Cst (NUM)
+    f->result = term_new_num((u32)result);
   }
 
   // Mark as ready (release fence)
@@ -369,12 +369,13 @@ fn Term omni_ffi_call_sync(
 // =============================================================================
 
 fn Term omni_ffi_await(Term pending) {
-  if (term_tag(pending) != CTR) return pending;
+  // #Ptr{hi, lo} is C02 (2 args)
+  if (term_tag(pending) != C02) return pending;
   if (term_ext(pending) != OMNI_NAM_PEND &&
       term_ext(pending) != OMNI_NAM_PTR) return pending;
 
   OmniFFIFuture *f = (OmniFFIFuture*)omni_ffi_ptr_unwrap(pending);
-  if (!f) return term_new(CTR, OMNI_NAM_ERR, 0);
+  if (!f) return term_new_ctr(OMNI_NAM_ERR, 0, NULL);
 
   // Spin wait with backoff
   u32 spins = 0;
@@ -448,16 +449,17 @@ fn OmniFFIEntry* omni_ffi_lookup(u32 name_nick) {
 
 // Dispatch #FFI{name, args} node
 fn Term omni_ffi_dispatch(Term ffi_node) {
-  if (term_tag(ffi_node) != CTR) return ffi_node;
+  // #FFI{name, args} is C02 (2 args)
+  if (term_tag(ffi_node) != C02) return ffi_node;
   if (term_ext(ffi_node) != OMNI_NAM_FFI) return ffi_node;
 
   u32 loc = term_val(ffi_node);
-  u32 name_nick = heap[loc];
-  Term args_list = (Term)heap[loc + 1];
+  u32 name_nick = term_val(HEAP[loc]);
+  Term args_list = HEAP[loc + 1];
 
   OmniFFIEntry *entry = omni_ffi_lookup(name_nick);
   if (!entry) {
-    return term_new(CTR, OMNI_NAM_ERR, 0);
+    return term_new_ctr(OMNI_NAM_ERR, 0, NULL);
   }
 
   // Extract arguments from cons list
@@ -465,19 +467,24 @@ fn Term omni_ffi_dispatch(Term ffi_node) {
   u32 arg_count = 0;
   Term cur = args_list;
 
-  while (term_tag(cur) == CTR && term_ext(cur) == NAM_CON && arg_count < 8) {
+  // #CON{h, t} is C02 (2 args)
+  while (term_tag(cur) == C02 && term_ext(cur) == NAM_CON && arg_count < 8) {
     u32 aloc = term_val(cur);
-    Term head = (Term)heap[aloc];
-    cur = (Term)heap[aloc + 1];
+    Term head = HEAP[aloc];
+    cur = HEAP[aloc + 1];
 
     // Convert Term to intptr_t
-    if (term_tag(head) == CTR) {
+    if (term_tag(head) == C01) {
+      // 1-arg constructors: #Cst{n}, #Hndl{packed}
       if (term_ext(head) == OMNI_NAM_CST) {
-        args[arg_count++] = (intptr_t)heap[term_val(head)];
+        args[arg_count++] = (intptr_t)term_val(HEAP[term_val(head)]);
       } else if (term_ext(head) == OMNI_NAM_HNDL) {
         void *ptr = omni_ffi_handle_borrow(head);
         args[arg_count++] = (intptr_t)ptr;
-      } else if (term_ext(head) == OMNI_NAM_PTR) {
+      }
+    } else if (term_tag(head) == C02) {
+      // 2-arg constructors: #Ptr{hi, lo}
+      if (term_ext(head) == OMNI_NAM_PTR) {
         void *ptr = omni_ffi_ptr_unwrap(head);
         args[arg_count++] = (intptr_t)ptr;
       }

@@ -1,0 +1,22 @@
+        -:    0:Source:../hvm4/clang/table/find.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// Finds or creates an ID for the given name.
+        -:    2:// If the name exists, returns its existing ID.
+        -:    3:// If not, assigns a new unique ID and stores the name.
+   323401:    4:fn u32 table_find(const char *name, u32 len) {
+        -:    5:  // Linear scan for existing name
+ 57156386:    6:  for (u32 i = 0; i < TABLE_LEN; i++) {
+ 57059276:    7:    if (strlen(TABLE[i]) == len && memcmp(TABLE[i], name, len) == 0) {
+   226291:    8:      return i;
+        -:    9:    }
+        -:   10:  }
+        -:   11:  // Not found - create new entry
+    97110:   12:  u32  id   = TABLE_LEN++;
+    97110:   13:  char *copy = malloc(len + 1);
+    97110:   14:  memcpy(copy, name, len);
+    97110:   15:  copy[len] = '\0';
+    97110:   16:  TABLE[id] = copy;
+    97110:   17:  return id;
+        -:   18:}

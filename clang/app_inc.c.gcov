@@ -1,0 +1,23 @@
+        -:    0:Source:../hvm4/clang/wnf/app_inc.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// (↑f x)
+        -:    2:// -------- APP-INC
+        -:    3:// ↑(f x)
+    #####:    4:fn Term wnf_app_inc(Term app, Term inc) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  app_loc = term_val(app);
+    #####:    7:  u32  inc_loc = term_val(inc);
+    #####:    8:  Term f       = heap_read(inc_loc);
+    #####:    9:  Term x       = heap_read(app_loc + 1);
+        -:   10:  // Reuse inc_loc for the new app, build new inc at app_loc
+    #####:   11:  heap_set(inc_loc + 0, f);
+        -:   12:  // Need to allocate since app has 2 slots, inc has 1
+    #####:   13:  u64 new_app_loc = heap_alloc(2);
+    #####:   14:  heap_write(new_app_loc + 0, f);
+    #####:   15:  heap_write(new_app_loc + 1, x);
+    #####:   16:  Term new_app = term_new(0, APP, 0, new_app_loc);
+    #####:   17:  heap_set(app_loc, new_app);
+    #####:   18:  return term_new(0, INC, 0, app_loc);
+        -:   19:}

@@ -1,0 +1,11 @@
+        -:    0:Source:../hvm4/clang/parse/consume.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+  3155068:    1:fn void parse_consume(PState *s, const char *str) {
+  3155068:    2:  parse_skip(s);
+  3155068:    3:  if (!parse_match(s, str)) {
+    #####:    4:    parse_error(s, str, parse_peek(s));
+        -:    5:  }
+  3155068:    6:  parse_skip(s);
+  3155068:    7:}

@@ -1,0 +1,226 @@
+// OmniLisp Runtime Tests: CPS Evaluator and Delimited Continuations
+// Tests @omni_eval_cps, @omni_apply_cps
+// Tests reset/control (prompt/ctrl) semantics
+
+// =============================================================================
+// Basic CPS Evaluation Tests
+// =============================================================================
+
+// Test: CPS eval of literal
+@test_cps_literal =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval_cps(menv)(#Lit{42})(λ&v. v);
+  @assert_num_eq(#cps_literal)(#Cst{42})(result)
+
+// Test: CPS eval of #Cst (already a value)
+@test_cps_cst =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval_cps(menv)(#Cst{100})(λ&v. v);
+  @assert_num_eq(#cps_cst)(#Cst{100})(result)
+
+// Test: CPS eval of addition
+@test_cps_add =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #Add{#Lit{3}, #Lit{4}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_add)(#Cst{7})(result)
+
+// Test: CPS eval of subtraction
+@test_cps_sub =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #Sub{#Lit{10}, #Lit{3}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_sub)(#Cst{7})(result)
+
+// Test: CPS eval of multiplication
+@test_cps_mul =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #Mul{#Lit{5}, #Lit{6}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_mul)(#Cst{30})(result)
+
+// Test: CPS eval of division
+@test_cps_div =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #Div{#Lit{20}, #Lit{4}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_div)(#Cst{5})(result)
+
+// Test: CPS eval of nested arithmetic
+@test_cps_nested_arith =
+  !!&menv = @omni_menv_empty;
+  // (2 + 3) * 4 = 20
+  !!&expr = #Mul{#Add{#Lit{2}, #Lit{3}}, #Lit{4}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_nested_arith)(#Cst{20})(result)
+
+// =============================================================================
+// CPS Conditional Tests
+// =============================================================================
+
+// Test: CPS if-true branch
+@test_cps_if_true =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #If{#Lit{1}, #Lit{100}, #Lit{200}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_if_true)(#Cst{100})(result)
+
+// Test: CPS if-false branch
+@test_cps_if_false =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #If{#Lit{0}, #Lit{100}, #Lit{200}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_if_false)(#Cst{200})(result)
+
+// Test: CPS if with computed condition
+@test_cps_if_computed =
+  !!&menv = @omni_menv_empty;
+  // if (5 > 3) then 1 else 0
+  // This requires @omni_gt which may return #True/#Fals
+  // Using a literal to test the path
+  !!&expr = #If{#Add{#Lit{0}, #Lit{1}}, #Lit{42}, #Lit{0}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_if_computed)(#Cst{42})(result)
+
+// =============================================================================
+// CPS Let Binding Tests
+// =============================================================================
+
+// Test: CPS let binding
+@test_cps_let =
+  !!&menv = @omni_menv_empty;
+  // let x = 5 in x + 3
+  !!&expr = #Let{#Lit{5}, #Add{#Var{0}, #Lit{3}}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_let)(#Cst{8})(result)
+
+// Test: CPS nested let
+@test_cps_nested_let =
+  !!&menv = @omni_menv_empty;
+  // let x = 2 in let y = 3 in x + y
+  !!&expr = #Let{#Lit{2}, #Let{#Lit{3}, #Add{#Var{1}, #Var{0}}}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_nested_let)(#Cst{5})(result)
+
+// =============================================================================
+// CPS Lambda/Application Tests
+// =============================================================================
+
+// Test: CPS lambda creation
+@test_cps_lambda =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #Lam{#Var{0}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  // Result should be a CPS closure #CloC
+  !!&is_cloc = (λ{#CloC: λ&e. λ&b. 1; _: λ&u_. 0})(result);
+  @assert_eq(#cps_lambda)(#Cst{1})(#Cst{is_cloc})
+
+// Test: CPS function application
+@test_cps_apply =
+  !!&menv = @omni_menv_empty;
+  // (λx. x + 1) 5
+  !!&expr = #App{#Lam{#Add{#Var{0}, #Lit{1}}}, #Lit{5}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_apply)(#Cst{6})(result)
+
+// Test: CPS nested application
+@test_cps_nested_apply =
+  !!&menv = @omni_menv_empty;
+  // (λx. λy. x + y) 2 3
+  !!&inner = #Lam{#Add{#Var{1}, #Var{0}}};
+  !!&outer = #Lam{inner};
+  !!&expr = #App{#App{outer, #Lit{2}}, #Lit{3}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#cps_nested_apply)(#Cst{5})(result)
+
+// =============================================================================
+// Reset/Control (Prompt/Ctrl) Tests
+// =============================================================================
+
+// Test: reset with no control returns value
+@test_reset_no_control =
+  !!&menv = @omni_menv_empty;
+  // (reset (+ 1 2))
+  !!&expr = #Prmt{#Add{#Lit{1}, #Lit{2}}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#reset_no_control)(#Cst{3})(result)
+
+// Test: control captures continuation
+@test_control_capture =
+  !!&menv = @omni_menv_empty;
+  // (reset (+ 10 (control k 5)))
+  // control captures k = (λv. (+ 10 v)), then returns 5
+  // Result should be 5 (the body of control)
+  !!&expr = #Prmt{#Add{#Lit{10}, #Ctrl{0, #Lit{5}}}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#control_capture)(#Cst{5})(result)
+
+// Test: control resumes continuation once
+@test_control_resume_once =
+  !!&menv = @omni_menv_empty;
+  // (reset (+ 10 (control k (k 3))))
+  // control captures k = (λv. (+ 10 v))
+  // then calls (k 3) = (+ 10 3) = 13
+  !!&expr = #Prmt{#Add{#Lit{10}, #Ctrl{0, #App{#Var{0}, #Lit{3}}}}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#control_resume_once)(#Cst{13})(result)
+
+// Test: control resumes continuation twice (multi-shot)
+@test_control_resume_twice =
+  !!&menv = @omni_menv_empty;
+  // (reset (+ 10 (control k (+ (k 3) (k 5)))))
+  // k = (λv. (+ 10 v))
+  // (+ (k 3) (k 5)) = (+ 13 15) = 28
+  !!&k_body = #Add{#App{#Var{0}, #Lit{3}}, #App{#Var{0}, #Lit{5}}};
+  !!&expr = #Prmt{#Add{#Lit{10}, #Ctrl{0, k_body}}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#control_resume_twice)(#Cst{28})(result)
+
+// Test: nested reset creates independent delimiters
+@test_nested_reset =
+  !!&menv = @omni_menv_empty;
+  // (reset (+ 1 (reset (+ 2 3))))
+  !!&inner = #Prmt{#Add{#Lit{2}, #Lit{3}}};
+  !!&expr = #Prmt{#Add{#Lit{1}, inner}};
+  !!&result = @omni_eval_cps(menv)(expr)(λ&v. v);
+  @assert_num_eq(#nested_reset)(#Cst{6})(result)
+
+// =============================================================================
+// CPS Apply with Captured Continuations
+// =============================================================================
+
+// Test: apply captured continuation (#Kont)
+@test_apply_kont =
+  !!&k = #Kont{λ&v. #Cst{(100 + (@omni_unwrap_cst(v)))}};
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_apply_cps(menv)(k)(#Cst{42})(λ&v. v);
+  @assert_num_eq(#apply_kont)(#Cst{142})(result)
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@cps_tests = #CON{@test_cps_literal,
+  #CON{@test_cps_cst,
+  #CON{@test_cps_add,
+  #CON{@test_cps_sub,
+  #CON{@test_cps_mul,
+  #CON{@test_cps_div,
+  #CON{@test_cps_nested_arith,
+  #CON{@test_cps_if_true,
+  #CON{@test_cps_if_false,
+  #CON{@test_cps_if_computed,
+  #CON{@test_cps_let,
+  #CON{@test_cps_nested_let,
+  #CON{@test_cps_lambda,
+  #CON{@test_cps_apply,
+  #CON{@test_cps_nested_apply,
+  #CON{@test_reset_no_control,
+  #CON{@test_control_capture,
+  #CON{@test_control_resume_once,
+  #CON{@test_control_resume_twice,
+  #CON{@test_nested_reset,
+  #CON{@test_apply_kont,
+  #NIL}}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@cps_tests)

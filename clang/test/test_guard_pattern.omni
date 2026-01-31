@@ -1,0 +1,79 @@
+;; test_guard_pattern.omni - Tests for guard patterns with &
+
+;; Guards add conditions to patterns using & syntax
+;; pattern & condition result
+
+;; Helper for tests
+(define even? [x] (= (% x 2) 0))
+
+;; TEST: basic guard
+;; EXPECT: "positive"
+(match 5
+  x & (> x 0) "positive"
+  x & (< x 0) "negative"
+  _           "zero")
+
+;; TEST: guard with zero
+;; EXPECT: "zero"
+(match 0
+  x & (> x 0) "positive"
+  x & (< x 0) "negative"
+  _           "zero")
+
+;; TEST: guard with negative
+;; EXPECT: "negative"
+(match -3
+  x & (> x 0) "positive"
+  x & (< x 0) "negative"
+  _           "zero")
+
+;; TEST: guard with equality
+;; EXPECT: "exactly ten"
+(match 10
+  x & (= x 10) "exactly ten"
+  x            "not ten")
+
+;; TEST: guard with multiple conditions
+;; EXPECT: "between"
+(match 5
+  x & (and (> x 0) (< x 10)) "between"
+  _                          "outside")
+
+;; TEST: guard with binding and computation
+;; EXPECT: 50
+(match 10
+  x & (even? x) (* x 5)
+  x             x)
+
+;; TEST: guard in array pattern
+;; EXPECT: "starts big"
+(match [100 2 3]
+  [a b c] & (> a 50) "starts big"
+  [a b c]            "starts small")
+
+;; TEST: guard with type check
+;; EXPECT: "is string"
+(match "hello"
+  x & (string? x) "is string"
+  x & (int? x)    "is int"
+  _               "other")
+
+;; TEST: nested guards
+;; EXPECT: "both positive"
+(match [3 5]
+  [a b] & (and (> a 0) (> b 0)) "both positive"
+  _                              "not both positive")
+
+;; TEST: guard with let-bound predicate
+(define big? [x] (> x 100))
+
+;; EXPECT: "big number"
+(match 150
+  x & (big? x) "big number"
+  _            "small number")
+
+;; EXPECT: true
+(= (match 42
+     x & (= x 42) true
+     _            false)
+   true)

@@ -1,0 +1,37 @@
+;; test_flip.omni - Tests for flip function combinator
+
+;; flip swaps the first two arguments
+
+;; TEST: flip subtraction
+;; (flip -) 5 10 = (- 10 5) = 5
+;; EXPECT: 5
+((flip -) 5 10)
+
+;; TEST: flip division
+;; (flip /) 2 10 = (/ 10 2) = 5
+;; EXPECT: 5
+((flip /) 2 10)
+
+;; TEST: flip with cons
+;; (flip cons) list elem = (cons elem list)
+;; EXPECT: (1 2 3)
+((flip cons) '(2 3) 1)
+
+;; TEST: flip comparison
+;; (flip <) 5 3 = (< 3 5) = true
+;; EXPECT: true
+((flip <) 5 3)
+
+;; TEST: flip with custom function
+(define prepend [s1] [s2] (str-concat s1 s2))
+
+;; (flip prepend) "world" "hello " = (prepend "hello " "world")
+;; EXPECT: "hello world"
+((flip prepend) "world" "hello ")
+
+;; TEST: double flip is identity
+;; EXPECT: 7
+((flip (flip -)) 10 3)
+
+;; EXPECT: 3
+((flip -) 7 10)

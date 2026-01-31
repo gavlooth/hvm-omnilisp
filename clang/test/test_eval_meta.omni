@@ -1,0 +1,41 @@
+;; test_eval_meta.omni - Tests for meta-level evaluation
+
+;; Eval evaluates quoted expressions
+;; TEST: basic eval
+;; EXPECT: 3
+(eval '(+ 1 2))
+
+;; TEST: eval with nested arithmetic
+;; EXPECT: 6
+(eval '(+ 1 (+ 2 3)))
+
+;; TEST: eval produces code
+;; EXPECT: (+ 1 2)
+(eval '(list '+ 1 2))
+
+;; TEST: eval with quasiquote
+;; EXPECT: (x 5)
+(let [n 5]
+  (eval `(list 'x ,n)))
+
+;; TEST: eval preserves types
+;; EXPECT: true
+(int? (eval '(+ 1 2)))
+
+;; TEST: eval with match
+;; EXPECT: 2
+(eval '(match 1
+         0 1
+         1 2
+         _ 3))
+
+;; TEST: eval let expression
+;; EXPECT: 10
+(eval '(let [x 5] (+ x x)))
+
+;; TEST: eval lambda
+;; EXPECT: 4
+(eval '((lambda [x] (* x x)) 2))
+
+;; EXPECT: 15
+(eval '(+ 5 (+ 5 5)))

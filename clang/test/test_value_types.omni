@@ -1,0 +1,63 @@
+;; test_value_types.omni - Tests for type annotations and predicates
+
+;; OmniLisp uses {} for type annotations in function parameters
+
+;; TEST: integer type annotation
+(define check-int [x {Int}] x)
+
+;; EXPECT: 42
+(check-int 42)
+
+;; TEST: string type annotation
+(define check-string [x {String}] x)
+
+;; EXPECT: "hello"
+(check-string "hello")
+
+;; TEST: pattern match with literal values
+;; EXPECT: "zero"
+(match 0
+  0  "zero"
+  1  "one"
+  _  "other")
+
+;; TEST: match with multiple literals
+;; EXPECT: "one"
+(match 1
+  0  "zero"
+  1  "one"
+  _  "other")
+
+;; TEST: boolean literal in match
+;; EXPECT: "yes"
+(match true
+  true  "yes"
+  false "no")
+
+;; TEST: string literal in match
+;; EXPECT: "matched"
+(match "test"
+  "test"  "matched"
+  "other" "not matched"
+  _       "unknown")
+
+;; TEST: function with return type
+(define double-it [x] (* x 2))
+
+;; EXPECT: 10
+(double-it 5)
+
+;; TEST: type predicate int?
+;; EXPECT: true
+(int? 42)
+
+;; TEST: type predicate string?
+;; EXPECT: true
+(string? "hello")
+
+;; TEST: type predicate on wrong type
+;; EXPECT: false
+(int? "not an int")
+
+;; EXPECT: true
+(and (int? 100) (string? "test"))

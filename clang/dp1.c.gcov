@@ -1,0 +1,7 @@
+        -:    0:Source:../hvm4/clang/term/new/dp1.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+ 17953530:    1:fn Term term_new_dp1(u32 lab, u32 loc) {
+ 17953530:    2:  return term_new(0, DP1, lab, loc);
+        -:    3:}

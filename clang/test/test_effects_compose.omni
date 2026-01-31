@@ -1,0 +1,68 @@
+;; test_effects_compose.omni - Tests for effect handler composition
+
+;; State + Reader composition
+;; TEST: combine state and reader
+;; EXPECT: "config: production"
+(handle
+  (handle
+    (str-concat "config: " (perform ask))
+    (ask [resume] (resume (perform get-env))))
+  (get-env [resume] (resume "production")))
+
+;; Reader + Writer composition
+;; TEST: read config and log
+;; EXPECT: "done"
+(handle
+  (handle
+    (do
+      (perform tell (perform ask-val))
+      "done")
+    (ask-val [resume] (resume "value")))
+  (tell [msg resume] (resume msg)))
+
+;; State + Exception composition
+;; TEST: state with error handling
+;; EXPECT: "error at 5"
+(handle
+  (handle
+    (do
+      (perform put-state 5)
+      (perform raise-err))
+    (raise-err [resume]
+      (str-concat "error at " (str (perform get-state)))))
+  (get-state [resume] (resume 5))
+  (put-state [v resume] (resume v)))
+
+;; All three: Reader + Writer + Exception
+;; TEST: three effects composed
+;; EXPECT: "ok"
+(handle
+  (handle
+    (handle
+      (let [config (perform ask-cfg)]
+        (perform log config)
+        (if (= config "error")
+          (perform raise "bad")
+          config))
+      (ask-cfg [resume] (resume "ok")))
+    (log [msg resume] (resume msg)))
+  (raise [msg resume] (resume "error")))
+
+;; Effect delegation pattern
+;; TEST: delegate to outer handler
+;; EXPECT: "delegated: inner"
+(handle
+  (handle
+    (perform forward "inner")
+    (forward [msg resume]
+      (perform outer-handle msg)))
+  (outer-handle [msg resume]
+    (resume (str-concat "delegated: " msg))))
+
+;; EXPECT: "RESULT"
+(handle
+  (handle
+    (perform process "result")
+    (process [msg resume]
+      (perform output (str-upper msg))))
+  (output [msg resume] (resume msg)))

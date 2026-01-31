@@ -1,0 +1,55 @@
+;; test_colon_quoted.omni - Tests for colon-quoted symbols
+;; In OmniLisp, :name is reader sugar for 'name (quoted symbol)
+
+;; TEST: basic colon-quoted symbol
+;; EXPECT: foo
+:foo
+
+;; TEST: colon-quoted equals quoted
+;; EXPECT: true
+(= :foo 'foo)
+
+;; TEST: colon-quoted in dict keys
+;; EXPECT: 10
+(get #{:a 10 :b 20} :a)
+
+;; TEST: both syntaxes work as keys
+;; EXPECT: 10
+(get #{:a 10} 'a)
+
+;; TEST: colon-quoted with hyphen
+;; EXPECT: my-key
+:my-key
+
+;; TEST: colon-quoted in list
+;; EXPECT: (a b c)
+(list :a :b :c)
+
+;; TEST: colon-quoted preserves case
+;; EXPECT: MySymbol
+:MySymbol
+
+;; TEST: colon-quoted with numbers
+;; EXPECT: foo123
+:foo123
+
+;; TEST: colon-quoted with special chars
+;; EXPECT: valid?
+:valid?
+
+;; TEST: colon-quoted with bang
+;; EXPECT: mutate!
+:mutate!
+
+;; TEST: nested in data structure
+;; EXPECT: value
+(let [data #{:key :value}]
+  (get data :key))
+
+;; TEST: match on symbol via binding
+;; EXPECT: "found"
+(let [val :a]
+  (if (= val :a) "found" "not found"))
+
+;; EXPECT: true
+(and (= :x 'x) (= :hello 'hello) (symbol? :test))

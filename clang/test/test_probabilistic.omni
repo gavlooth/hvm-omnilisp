@@ -1,0 +1,138 @@
+;; test_probabilistic.lisp - A7: Probabilistic Effects
+;; Tests for distributions, sample, observe, factor, and flip
+
+;; =========================================================================
+;; DISTRIBUTION CONSTRUCTORS
+;; =========================================================================
+
+;; TEST: bernoulli creates distribution object
+;; EXPECT: #Bern{50}
+(bernoulli 50)
+
+;; TEST: uniform creates distribution object
+;; EXPECT: #Unif{0,100}
+(uniform 0 100)
+
+;; TEST: beta creates distribution object
+;; EXPECT: #Beta{2,2}
+(beta 2 2)
+
+;; TEST: categorical creates distribution object
+;; EXPECT: #Catg{[1(50),2(50)]}
+(categorical '((1 50) (2 50)))
+
+;; =========================================================================
+;; SAMPLE (deterministic in C interpreter)
+;; =========================================================================
+
+;; TEST: sample from bernoulli (prob >= 50) returns true
+;; EXPECT: #True{}
+(sample (bernoulli 50))
+
+;; TEST: sample from bernoulli (prob < 50) returns false
+;; EXPECT: #Fals{}
+(sample (bernoulli 49))
+
+;; TEST: sample from bernoulli (prob = 100) returns true
+;; EXPECT: #True{}
+(sample (bernoulli 100))
+
+;; TEST: sample from bernoulli (prob = 0) returns false
+;; EXPECT: #Fals{}
+(sample (bernoulli 0))
+
+;; TEST: sample from uniform returns midpoint
+;; EXPECT: 50
+(sample (uniform 0 100))
+
+;; TEST: sample from uniform with different range
+;; EXPECT: 15
+(sample (uniform 10 20))
+
+;; TEST: sample from beta returns expected value as percentage
+;; EXPECT: 50
+(sample (beta 2 2))
+
+;; TEST: sample from beta (alpha=1, beta=3) returns 25%
+;; EXPECT: 25
+(sample (beta 1 3))
+
+;; TEST: sample from beta (alpha=3, beta=1) returns 75%
+;; EXPECT: 75
+(sample (beta 3 1))
+
+;; =========================================================================
+;; FLIP (shorthand for sample bernoulli)
+;; =========================================================================
+
+;; TEST: flip with prob >= 50 returns true
+;; EXPECT: #True{}
+(flip 50)
+
+;; TEST: flip with prob < 50 returns false
+;; EXPECT: #Fals{}
+(flip 49)
+
+;; TEST: flip with prob = 100 returns true
+;; EXPECT: #True{}
+(flip 100)
+
+;; TEST: flip with prob = 0 returns false
+;; EXPECT: #Fals{}
+(flip 0)
+
+;; =========================================================================
+;; OBSERVE (returns nothing, used for conditioning)
+;; =========================================================================
+
+;; TEST: observe with true condition returns nothing
+;; EXPECT: nothing
+(observe true)
+
+;; TEST: observe with false condition returns nothing (rejection in HVM4)
+;; EXPECT: nothing
+(observe false)
+
+;; TEST: observe with computed condition
+;; EXPECT: nothing
+(observe (> 10 5))
+
+;; =========================================================================
+;; FACTOR (returns nothing, used for weighting)
+;; =========================================================================
+
+;; TEST: factor with weight returns nothing
+;; EXPECT: nothing
+(factor 1)
+
+;; TEST: factor with zero weight
+;; EXPECT: nothing
+(factor 0)
+
+;; TEST: factor with computed weight
+;; EXPECT: nothing
+(factor (* 2 3))
+
+;; =========================================================================
+;; COMBINED USAGE
+;; =========================================================================
+
+;; TEST: sample inside let binding
+;; EXPECT: #True{}
+(let [x (sample (bernoulli 75))] x)
+
+;; TEST: flip inside conditional
+;; EXPECT: 1
+(if (flip 100) 1 0)
+
+;; TEST: flip in conditional (prob 0)
+;; EXPECT: 0
+(if (flip 0) 1 0)
+
+;; TEST: observe in do block
+;; EXPECT: 42
+(do (observe true) 42)
+
+;; TEST: factor in do block
+;; EXPECT: 100
+(do (factor 50) 100)

@@ -1,0 +1,47 @@
+;; test_list_flatten.lisp - Tests for flatten
+
+;; Flatten one level of nesting
+(define flatten-one [lst]
+  (match lst
+    ()       '()
+    (h .. t) (append h (flatten-one t))))
+
+;; TEST: flatten one level
+;; EXPECT: (1 2 3 4 5 6)
+(flatten-one '((1 2) (3 4) (5 6)))
+
+;; TEST: flatten with empty sublists
+;; EXPECT: (1 2 5 6)
+(flatten-one '((1 2) () (5 6)))
+
+;; TEST: flatten empty
+;; EXPECT: ()
+(flatten-one '())
+
+;; Deep flatten (recursive)
+(define list? [x]
+  (match x
+    ()       true
+    (_ .. _) true
+    _        false))
+
+(define flatten-deep [x]
+  (match x
+    ()       '()
+    (h .. t)
+      (if (list? h)
+        (append (flatten-deep h) (flatten-deep t))
+        (cons h (flatten-deep t)))
+    _        (cons x '())))
+
+;; TEST: deep flatten nested lists
+;; EXPECT: (1 2 3 4 5 6)
+(flatten-deep '((1 (2 3)) ((4 5) 6)))
+
+;; TEST: flatten already flat
+;; EXPECT: (1 2 3)
+(flatten-deep '(1 2 3))
+
+;; TEST: deeply nested
+;; EXPECT: (1 2 3)
+(flatten-deep '(((1)) ((2)) ((3))))

@@ -1,0 +1,155 @@
+// OmniLisp Runtime Tests: Algebraic Effects
+// Tests @omni_handle_cps, @omni_perform_cps
+// Tests handler lookup, continuation capture, and resumption
+
+// =============================================================================
+// Effect Tags (nick-encoded)
+// =============================================================================
+
+// Simple effect tags for testing
+@eff_ask = 12345   // 'ask' effect
+@eff_tell = 12346  // 'tell' effect
+@eff_fail = 12347  // 'fail' effect
+
+// =============================================================================
+// Handler Evaluation Tests
+// =============================================================================
+
+// Test: evaluate handler definition
+@test_eval_handler =
+  !!&menv = @omni_menv_empty;
+  // Handler: ('ask (lambda (payload resume) 42))
+  !!&handler_fn = #Clo{#NIL, #Lit{42}};  // Simplified: returns 42
+  !!&hdef = #HDef{@eff_ask, #Lam{#Lam{#Lit{42}}}};
+  !!&result = @omni_eval_one_handler(menv)(hdef);
+  // Should produce #Hdlr{tag, closure}
+  !!&is_hdlr = (λ{#Hdlr: λ&t. λ&f. 1; _: λ&u_. 0})(result);
+  @assert_eq(#eval_handler)(#Cst{1})(#Cst{is_hdlr})
+
+// Test: handler matching
+@test_handler_matches_true =
+  !!&handler = #Hdlr{@eff_ask, #Clo{#NIL, #Lit{0}}};
+  !!&result = @omni_handler_matches(handler)(@eff_ask);
+  @assert_eq(#handler_matches_true)(#Cst{1})(#Cst{result})
+
+@test_handler_matches_false =
+  !!&handler = #Hdlr{@eff_ask, #Clo{#NIL, #Lit{0}}};
+  !!&result = @omni_handler_matches(handler)(@eff_tell);
+  @assert_eq(#handler_matches_false)(#Cst{0})(#Cst{result})
+
+// =============================================================================
+// Handle with No Effects Tests
+// =============================================================================
+
+// Test: handle body with no perform returns body result
+@test_handle_no_effects =
+  !!&menv = @omni_menv_empty;
+  !!&handlers = #NIL;  // No handlers needed
+  !!&body = #Add{#Lit{1}, #Lit{2}};
+  !!&result = @omni_handle_cps(menv)(handlers)(body)(λ&v. v);
+  @assert_num_eq(#handle_no_effects)(#Cst{3})(result)
+
+// Test: handle preserves computation
+@test_handle_preserves_computation =
+  !!&menv = @omni_menv_empty;
+  !!&handlers = #NIL;
+  // let x = 5 in x * 2
+  !!&body = #Let{#Lit{5}, #Mul{#Var{0}, #Lit{2}}};
+  !!&result = @omni_handle_cps(menv)(handlers)(body)(λ&v. v);
+  @assert_num_eq(#handle_preserves_computation)(#Cst{10})(result)
+
+// =============================================================================
+// Effect Handler Invocation Tests (Simplified)
+// =============================================================================
+
+// Note: Full effect testing requires proper handler function evaluation
+// These tests verify the structural behavior of the effect system
+
+// Test: handler lookup finds first matching
+@test_find_handler_first =
+  !!&menv = @omni_menv_empty;
+  !!&h1 = #Hdlr{@eff_ask, #Clo{#NIL, #Lit{100}}};
+  !!&h2 = #Hdlr{@eff_tell, #Clo{#NIL, #Lit{200}}};
+  !!&handlers = #CON{h1, #CON{h2, #NIL}};
+  // Find handler returns #Hdlr or invokes it
+  // We test that it doesn't error with #Err{#sym_nohandler}
+  !!&is_found = (λ{
+    #Err: λ&t. 0  // Error means not found
+    _: λ&u_. 1          // Anything else means found/invoked
+  })(@omni_find_handler_cps(menv)(handlers)(@eff_ask)(#Cst{0})(#Kont{λ&v.v}));
+  @assert_eq(#find_handler_first)(#Cst{1})(#Cst{is_found})
+
+// Test: handler lookup returns error when not found
+@test_find_handler_not_found =
+  !!&menv = @omni_menv_empty;
+  !!&handlers = #NIL;  // Empty handlers
+  !!&result = @omni_find_handler_cps(menv)(handlers)(@eff_ask)(#Cst{0})(#Kont{λ&v.v});
+  @assert_err(#find_handler_not_found)(#sym_nohandler)(result)
+
+// Test: handler lookup skips non-matching handlers
+@test_find_handler_skips =
+  !!&menv = @omni_menv_empty;
+  !!&h1 = #Hdlr{@eff_tell, #Clo{#NIL, #Lit{100}}};  // Wrong effect
+  !!&h2 = #Hdlr{@eff_ask, #Clo{#NIL, #Lit{200}}};   // Right effect
+  !!&handlers = #CON{h1, #CON{h2, #NIL}};
+  // Should find h2 (not error)
+  !!&is_found = (λ{
+    #Err: λ&t. 0
+    _: λ&u_. 1
+  })(@omni_find_handler_cps(menv)(handlers)(@eff_ask)(#Cst{0})(#Kont{λ&v.v}));
+  @assert_eq(#find_handler_skips)(#Cst{1})(#Cst{is_found})
+
+// =============================================================================
+// Truthy Tests (used by proof system)
+// =============================================================================
+
+@test_truthy_int_nonzero =
+  !!&result = @omni_truthy(#Cst{5});
+  @assert_eq(#truthy_int_nonzero)(#Cst{1})(#Cst{result})
+
+@test_truthy_int_zero =
+  !!&result = @omni_truthy(#Cst{0});
+  @assert_eq(#truthy_int_zero)(#Cst{0})(#Cst{result})
+
+@test_truthy_true =
+  !!&result = @omni_truthy(#True{});
+  @assert_eq(#truthy_true)(#Cst{1})(#Cst{result})
+
+@test_truthy_false =
+  !!&result = @omni_truthy(#Fals{});
+  @assert_eq(#truthy_false)(#Cst{0})(#Cst{result})
+
+@test_truthy_empty_list =
+  !!&result = @omni_truthy(#NIL);
+  @assert_eq(#truthy_empty_list)(#Cst{0})(#Cst{result})
+
+@test_truthy_nothing =
+  !!&result = @omni_truthy(#Noth{});
+  @assert_eq(#truthy_nothing)(#Cst{0})(#Cst{result})
+
+@test_truthy_list =
+  !!&result = @omni_truthy(#CON{#Cst{1}, #NIL});
+  @assert_eq(#truthy_list)(#Cst{1})(#Cst{result})
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@effects_tests = #CON{@test_eval_handler,
+  #CON{@test_handler_matches_true,
+  #CON{@test_handler_matches_false,
+  #CON{@test_handle_no_effects,
+  #CON{@test_handle_preserves_computation,
+  #CON{@test_find_handler_first,
+  #CON{@test_find_handler_not_found,
+  #CON{@test_find_handler_skips,
+  #CON{@test_truthy_int_nonzero,
+  #CON{@test_truthy_int_zero,
+  #CON{@test_truthy_true,
+  #CON{@test_truthy_false,
+  #CON{@test_truthy_empty_list,
+  #CON{@test_truthy_nothing,
+  #CON{@test_truthy_list,
+  #NIL}}}}}}}}}}}}}}}
+
+@main = @run_tests(@effects_tests)

@@ -1,0 +1,50 @@
+;; test_effect_rows.lisp - A2: Effect Rows for Automatic Parallelization
+;; Tests effect tracking at type level and effect-free? predicate
+
+;; TEST: ^:pure functions are effect-free
+;; EXPECT: #True{}
+(do (define pure-add [x] [y] ^:pure (+ x y)) (effect-free? pure-add))
+
+;; TEST: Plain lambda without annotation is conservatively not effect-free
+;; EXPECT: #Fals{}
+(effect-free? (lambda [x] (+ x 1)))
+
+;; TEST: ^:pure wrapper detected on named function
+;; EXPECT: #True{}
+(do (define pure-mul [a] [b] ^:pure (* a b)) (effect-free? pure-mul))
+
+;; TEST: Inline ^:pure lambda is effect-free
+;; EXPECT: #True{}
+(do (define inline-pure ^:pure (lambda [x] x)) (effect-free? inline-pure))
+
+;; TEST: Functions composed of pure operations
+;; EXPECT: #True{}
+(do (define pure-square [x] ^:pure (* x x)) (effect-free? pure-square))
+
+;; TEST: Typed function with empty effect row is effect-free
+;; EXPECT: #True{}
+(do (define typed-pure-fn [x {Int}] {Int} ^:effects [] (+ x 1)) (effect-free? typed-pure-fn))
+
+;; TEST: Typed function with IO effect is NOT effect-free
+;; EXPECT: #Fals{}
+(do (define io-effectful [x {Int}] {Int} ^:effects [{IO}] (+ x 1)) (effect-free? io-effectful))
+
+;; TEST: Typed function with Error effect is NOT effect-free
+;; EXPECT: #Fals{}
+(do (define error-effectful [x {Int}] {Int} ^:effects [{Error}] (+ x 1)) (effect-free? error-effectful))
+
+;; TEST: Typed function with multiple effects is NOT effect-free
+;; EXPECT: #Fals{}
+(do (define multi-effectful [x {Int}] {Int} ^:effects [{IO} {Error}] (+ x 1)) (effect-free? multi-effectful))
+
+;; TEST: Typed function WITHOUT explicit effect annotation - typed methods default to effect-free
+;; EXPECT: #True{}
+(do (define typed-no-eff [x {Int}] {Int} (+ x 1)) (effect-free? typed-no-eff))
+
+;; TEST: All methods effect-free means generic function is effect-free
+;; EXPECT: #True{}
+(do (define all-pure-gf [x {Int}] {Int} ^:effects [] (+ x 1)) (define all-pure-gf [x {String}] {String} ^:effects [] x) (effect-free? all-pure-gf))
+
+;; TEST: Mixed effect rows - some methods have effects
+;; EXPECT: #Fals{}
+(do (define mixed-gf [x {Int}] {Int} ^:effects [] x) (define mixed-gf [x {String}] {String} ^:effects [{IO}] x) (effect-free? mixed-gf))

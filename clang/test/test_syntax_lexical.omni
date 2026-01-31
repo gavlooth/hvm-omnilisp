@@ -1,0 +1,156 @@
+;; Test Lexical Syntax from SYNTAX.md
+;; Section: Lexical Syntax
+
+;; ============================================
+;; INTEGERS
+;; ============================================
+
+(print "=== Integer Tests ===")
+
+;; Basic integers
+(print "Integer 42:")
+(print 42)
+
+(print "Integer 0:")
+(print 0)
+
+;; Negative integers
+(print "Integer -123:")
+(print -123)
+
+;; Positive with sign
+(print "Integer +456:")
+(print +456)
+
+;; Integer arithmetic to verify values
+(print "42 + 8 = 50:")
+(print (+ 42 8))
+
+(print "-10 + 15 = 5:")
+(print (+ -10 15))
+
+;; ============================================
+;; FLOATS
+;; ============================================
+
+(print "=== Float Tests ===")
+
+;; Standard float
+(print "Float 3.14:")
+(print 3.14)
+
+;; Negative float
+(print "Float -0.5:")
+(print -0.5)
+
+;; Leading dot (.5) - NOTE: may not be supported
+;; (print "Float .5:")
+;; (print .5)  ; Might cause parse error
+
+;; Trailing dot (3.) - NOTE: may not be supported
+;; (print "Float 3.:")
+;; (print 3.)  ; Causes parse error - trailing dot not implemented
+
+;; Positive with sign
+(print "Float +2.718:")
+(print +2.718)
+
+;; Float arithmetic
+(print "1.5 + 2.5 = 4.0:")
+(print (+ 1.5 2.5))
+
+;; ============================================
+;; SYMBOLS
+;; ============================================
+
+(print "=== Symbol Tests ===")
+
+;; Symbols as values (quoted)
+(print "Symbol 'foo:")
+(print 'foo)
+
+(print "Symbol 'foo-bar:")
+(print 'foo-bar)
+
+(print "Symbol 'foo123:")
+(print 'foo123)
+
+(print "Symbol 'x1_y2:")
+(print 'x1_y2)
+
+(print "Symbol 'set!:")
+(print 'set!)
+
+(print "Symbol 'null?:")
+(print 'null?)
+
+;; Operator symbols
+(print "Symbol '*:")
+(print '*)
+
+(print "Symbol '<=:")
+(print '<=)
+
+(print "Symbol '==:")
+(print '==)
+
+;; ============================================
+;; STRINGS
+;; ============================================
+
+(print "=== String Tests ===")
+
+;; Basic string
+(print "String hello:")
+(print "hello")
+
+;; String with spaces
+(print "String with spaces:")
+(print "hello world")
+
+;; Empty string
+(print "Empty string:")
+(print "")
+
+;; String concatenation
+(print "String concat:")
+(print (str-concat "hello " "world"))
+
+;; ============================================
+;; COLON-QUOTED SYMBOLS
+;; ============================================
+
+(print "=== Colon-Quoted Symbol Tests ===")
+
+;; :name is equivalent to 'name
+(print "Colon-quoted :foo:")
+(print :foo)
+
+(print "Colon-quoted :my-keyword:")
+(print :my-keyword)
+
+;; Verify :foo equals 'foo
+(print ":foo equals 'foo:")
+(print (= :foo 'foo))
+
+;; ============================================
+;; COMMENTS
+;; ============================================
+
+(print "=== Comment Test ===")
+
+; This is a comment - should not affect output
+(print "After comment:")  ; inline comment
+(print 42)
+
+;; ============================================
+;; WHITESPACE
+;; ============================================
+
+(print "=== Whitespace Test ===")
+
+;; Multiple spaces and newlines are treated as whitespace
+(print "Expression with extra whitespace:")
+(print (+   1   2   3))
+
+(print "All lexical syntax tests completed")

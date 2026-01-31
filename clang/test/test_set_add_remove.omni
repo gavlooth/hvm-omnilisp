@@ -1,0 +1,45 @@
+;; test_set_add_remove.lisp - Tests for set-add and set-remove
+
+;; Set-add adds an element to a set
+(define set-add [s] [elem]
+  (dict-set s elem true))
+
+;; Set-remove removes an element from a set
+(define set-remove [s] [elem]
+  (dict-remove s elem))
+
+;; TEST: add to empty set
+;; EXPECT: #{1 true}
+(set-add #{} 1)
+
+;; TEST: add to existing set
+;; EXPECT: #{1 true 2 true 3 true}
+(set-add #{1 2} 3)
+
+;; TEST: add duplicate (no change)
+;; EXPECT: #{1 true 2 true}
+(set-add #{1 2} 1)
+
+;; TEST: add multiple via chaining
+;; EXPECT: #{1 true 2 true 3 true 4 true}
+(set-add (set-add (set-add #{1} 2) 3) 4)
+
+;; TEST: remove from set
+;; EXPECT: #{1 true 3 true}
+(set-remove #{1 2 3} 2)
+
+;; TEST: remove non-existent (no change)
+;; EXPECT: #{1 true 2 true}
+(set-remove #{1 2} 99)
+
+;; TEST: remove from empty set
+;; EXPECT: #{}
+(set-remove #{} 1)
+
+;; TEST: remove all elements
+;; EXPECT: #{}
+(set-remove (set-remove #{1 2} 1) 2)
+
+;; TEST: add then remove
+;; EXPECT: #{1 true 2 true}
+(set-remove (set-add #{1 2} 3) 3)

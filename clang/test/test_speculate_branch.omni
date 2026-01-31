@@ -1,0 +1,65 @@
+;; test_speculate_branch.omni - Tests for ^:speculate metadata
+
+;; ^:speculate enables speculative execution of branches
+;; Both branches execute in parallel; unused one is discarded
+
+;; TEST: basic speculative if
+;; EXPECT: 10
+(if ^:speculate true
+  10
+  20)
+
+;; TEST: speculative with false condition
+;; EXPECT: 20
+(if ^:speculate false
+  10
+  20)
+
+;; TEST: speculative with computed condition
+;; EXPECT: 100
+(if ^:speculate (> 5 3)
+  (* 10 10)
+  (* 5 5))
+
+;; TEST: speculative match
+;; EXPECT: "one"
+(match ^:speculate 1
+  1 "one"
+  2 "two"
+  _ "other")
+
+;; TEST: speculative match with binding
+;; EXPECT: 42
+(match ^:speculate 21
+  x (* x 2))
+
+;; TEST: speculative in let binding
+;; EXPECT: 50
+(let [result (if ^:speculate true
+               (+ 25 25)
+               (+ 10 10))]
+  result)
+
+;; TEST: nested speculative
+;; EXPECT: 1
+(if ^:speculate true
+  (if ^:speculate true
+    1
+    2)
+  3)
+
+;; TEST: speculative with pure function calls
+(define ^:pure expensive-true [] (* 1000 1000))
+(define ^:pure expensive-false [] (* 999 999))
+
+;; EXPECT: 1000000
+(if ^:speculate true
+  (expensive-true)
+  (expensive-false))
+
+;; EXPECT: 30
+(match ^:speculate 3
+  1 10
+  2 20
+  3 30
+  _ 0)

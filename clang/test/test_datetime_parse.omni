@@ -1,0 +1,51 @@
+;; test_datetime_parse.omni - Tests for string parsing
+
+;; TEST: parse int from string
+;; EXPECT: 2024
+(str-to-int "2024")
+
+;; TEST: parse negative int
+;; EXPECT: -15
+(str-to-int "-15")
+
+;; TEST: string split
+;; EXPECT: ("2024" "01" "15")
+(str-split "2024-01-15" "-")
+
+;; Parse year from date-like string
+(define parse-year [date-str]
+  (str-to-int (head (str-split date-str "-"))))
+
+;; TEST: parse year from ISO
+;; EXPECT: 2024
+(parse-year "2024-01-15")
+
+;; Parse month
+(define parse-month [date-str]
+  (str-to-int (head (tail (str-split date-str "-")))))
+
+;; TEST: parse month
+;; EXPECT: 1
+(parse-month "2024-01-15")
+
+;; Parse day
+(define parse-day [date-str]
+  (str-to-int (head (tail (tail (str-split date-str "-"))))))
+
+;; TEST: parse day
+;; EXPECT: 15
+(parse-day "2024-01-15")
+
+;; TEST: string join (reverse of split)
+;; EXPECT: "a-b-c"
+(str-join "-" '("a" "b" "c"))
+
+;; Roundtrip test
+;; TEST: parse and format roundtrip
+;; EXPECT: "2024-06-15"
+(let [parts (str-split "2024-06-15" "-")]
+  (str-join "-" parts))
+
+;; EXPECT: true
+(let [date "2024-12-25"]
+  (= (str-join "-" (str-split date "-")) date))

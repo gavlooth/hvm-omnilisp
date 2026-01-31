@@ -1,0 +1,48 @@
+;; test_meta_level.lisp - Tests for tower meta-levels
+
+;; Meta-levels in reflective tower
+;; TEST: current meta-level
+;; EXPECT: 0
+(meta-level)
+
+;; TEST: lift increases level
+;; EXPECT: 1
+(lift (meta-level))
+
+;; TEST: nested lift
+;; EXPECT: 2
+(lift (lift (meta-level)))
+
+;; TEST: run decreases level
+;; EXPECT: 0
+(lift (run (meta-level)))
+
+;; TEST: meta-level in staged code
+;; EXPECT: 0
+(run (lift (meta-level)))
+
+;; TEST: at-level jumps to specific level
+;; EXPECT: 3
+(at-level 3 (meta-level))
+
+;; TEST: code at different levels
+;; EXPECT: (0 1 2)
+(list (meta-level)
+      (lift (meta-level))
+      (lift (lift (meta-level))))
+
+;; TEST: level-aware operations
+;; EXPECT: true
+(lift?
+  (lift 42))
+
+;; TEST: level comparison
+;; EXPECT: true
+(do
+  (let [code (lift (+ 1 2))]
+    (> (code-level code) 0)))
+
+;; TEST: cross-level reference
+;; EXPECT: 42
+(let [x 42]
+  (run (lift x)))

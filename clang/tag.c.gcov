@@ -1,0 +1,7 @@
+        -:    0:Source:../hvm4/clang/term/tag.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+64412563562:    1:fn u8 term_tag(Term t) {
+64412563562:    2:  return (t >> TAG_SHIFT) & TAG_MASK;
+        -:    3:}

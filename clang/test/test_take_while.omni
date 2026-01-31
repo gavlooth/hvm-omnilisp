@@ -1,0 +1,57 @@
+;; test_take_while.lisp - Tests for take-while and drop-while
+
+;; Take-while takes elements while predicate is true
+(define take-while [pred] [lst]
+  (match lst
+    ()       '()
+    (h .. t) (if (pred h)
+               (cons h (take-while pred t))
+               '())))
+
+;; TEST: take-while less than 5
+;; EXPECT: (1 2 3 4)
+(take-while (lambda [x] (< x 5)) '(1 2 3 4 5 6 7))
+
+;; TEST: take-while all match
+;; EXPECT: (1 2 3)
+(take-while (lambda [x] (< x 10)) '(1 2 3))
+
+;; TEST: take-while none match
+;; EXPECT: ()
+(take-while (lambda [x] (< x 0)) '(1 2 3))
+
+;; TEST: take-while on empty
+;; EXPECT: ()
+(take-while (lambda [x] true) '())
+
+;; Drop-while drops elements while predicate is true
+(define drop-while [pred] [lst]
+  (match lst
+    ()       '()
+    (h .. t) (if (pred h)
+               (drop-while pred t)
+               lst)))
+
+;; TEST: drop-while less than 5
+;; EXPECT: (5 6 7)
+(drop-while (lambda [x] (< x 5)) '(1 2 3 4 5 6 7))
+
+;; TEST: drop-while all match
+;; EXPECT: ()
+(drop-while (lambda [x] (< x 10)) '(1 2 3))
+
+;; TEST: drop-while none match
+;; EXPECT: (1 2 3)
+(drop-while (lambda [x] (< x 0)) '(1 2 3))
+
+;; TEST: drop-while on empty
+;; EXPECT: ()
+(drop-while (lambda [x] true) '())
+
+;; Span combines both: (take-while, drop-while)
+(define span [pred] [lst]
+  (cons (take-while pred lst) (cons (drop-while pred lst) nil)))
+
+;; TEST: span splits at predicate boundary
+;; EXPECT: ((1 2 3 4) (5 6 7))
+(span (lambda [x] (< x 5)) '(1 2 3 4 5 6 7))

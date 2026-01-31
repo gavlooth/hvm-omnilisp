@@ -1,0 +1,43 @@
+;; test_control.omni - Tests for control (continuation capture)
+
+;; TEST: basic control - capture and invoke continuation once
+;; control captures continuation up to nearest reset
+;; k = (lambda [x] (+ 1 x))
+;; EXPECT: 11
+(reset
+  (+ 1 (control k (k 10))))
+
+;; TEST: control without invoking continuation (abort)
+;; EXPECT: 42
+(reset
+  (+ 1 (control k 42)))
+
+;; TEST: control - invoke continuation twice (multi-shot)
+;; k = (lambda [x] (+ 1 x))
+;; (k (k 10)) = (+ 1 (+ 1 10)) = 12
+;; EXPECT: 12
+(reset
+  (+ 1 (control k (k (k 10)))))
+
+;; TEST: control with computation in handler
+;; EXPECT: 20
+(reset
+  (+ 1 (control k (* 2 (k 9)))))
+
+;; TEST: nested control
+;; EXPECT: 5
+(reset
+  (+ 1
+    (control k1
+      (reset
+        (+ 2 (control k2 (k1 (k2 0))))))))
+
+;; TEST: control capturing context
+;; EXPECT: 14
+(reset
+  (let [x 10]
+    (+ x (control k (k 4)))))
+
+;; EXPECT: 30
+(reset
+  (* 3 (control k (k (k 10)))))

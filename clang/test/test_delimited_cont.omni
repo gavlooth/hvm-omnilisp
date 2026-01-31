@@ -1,0 +1,65 @@
+;; test_delimited_cont.omni - Tests for delimited continuation patterns
+;; Using handle/perform as delimited continuation mechanism
+
+;; TEST: simple reset/shift via handle
+;; EXPECT: 42
+(handle
+  (perform shift 42)
+  (shift [val resume] val))
+
+;; TEST: continuation that resumes
+;; EXPECT: 43
+(handle
+  (+ 1 (perform shift 42))
+  (shift [val resume] (resume val)))
+
+;; TEST: backtracking pattern - first value
+;; EXPECT: 1
+(handle
+  (perform choose '(1 2 3))
+  (choose [opts resume]
+    (match opts
+      (h .. t) h
+      _ 0)))
+
+;; TEST: exception-like abort
+;; EXPECT: "error"
+(handle
+  (let [x 0]
+    (if (= x 0)
+      (perform abort "error")
+      (/ 10 x)))
+  (abort [msg resume] msg))
+
+;; TEST: state simulation
+;; EXPECT: 10
+(handle
+  (let [state 0]
+    (+ state (perform delta)))
+  (delta [resume] (resume 10)))
+
+;; TEST: nested delimiters
+;; EXPECT: 9
+(handle
+  (+ 1
+    (handle
+      (* 2 (perform inner))
+      (inner [resume] (resume 2))))
+  (outer [resume] (resume 999)))
+
+;; TEST: effect-like pattern for reader
+;; EXPECT: 50
+(handle
+  (+ (perform ask) (perform ask))
+  (ask [resume] (resume 25)))
+
+;; TEST: early return
+;; EXPECT: 42
+(handle
+  (do
+    (perform return 42)
+    (+ 1 (+ 2 3)))
+  (return [val resume] val))
+
+;; EXPECT: true
+(= (handle (+ 1 (perform val)) (val [resume] (resume 5))) 6)

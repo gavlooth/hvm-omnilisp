@@ -1,0 +1,59 @@
+;; test_type_annotate.lisp - Tests for type annotations
+
+;; Type annotations use {Type} syntax in slot definitions
+
+;; TEST: annotated function compiles
+;; EXPECT: 3
+(define typed-add [x {Int}] [y {Int}] {Int}
+  (+ x y))
+(typed-add 1 2)
+
+;; TEST: annotated with float
+;; EXPECT: 6.28
+(define double-pi [x {Float}] {Float}
+  (* x 2.0))
+(double-pi 3.14)
+
+;; TEST: annotated with string
+;; EXPECT: "HELLO"
+(define to-upper [s {String}] {String}
+  (str-upper s))
+(to-upper "hello")
+
+;; TEST: annotated with list type
+;; EXPECT: 3
+(define list-len [lst {(List Any)}] {Int}
+  (length lst))
+(list-len '(1 2 3))
+
+;; TEST: annotated with function type
+;; EXPECT: 10
+(define apply-twice [f {(-> Int Int)}] [x {Int}] {Int}
+  (f (f x)))
+(apply-twice (lambda [n] (+ n 1)) 8)
+
+;; TEST: annotated with optional type
+;; EXPECT: 42
+(define with-default [x {(Maybe Int)}] [default {Int}] {Int}
+  (if (nil? x) default x))
+(with-default nil 42)
+
+;; TEST: annotated with union type
+;; EXPECT: "number"
+(define describe [x {(| Int String)}] {String}
+  (if (int? x) "number" "text"))
+(describe 42)
+
+;; TEST: nested type annotation
+;; EXPECT: 6
+(define sum-nested [lst {(List (List Int))}] {Int}
+  (foldl (lambda [acc] [inner]
+           (+ acc (foldl (lambda [a] [x] (+ a x)) 0 inner)))
+         0 lst))
+(sum-nested '((1 2) (3)))
+
+;; TEST: type annotation preserves behavior
+;; EXPECT: "hello world"
+(define greet [name {String}] {String}
+  (str-concat "hello " name))
+(greet "world")

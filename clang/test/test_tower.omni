@@ -1,0 +1,49 @@
+;; test_tower.omni - Tests for tower of interpreters
+
+;; The tower of interpreters supports multi-level metaprogramming
+
+;; TEST: lift value to code
+;; EXPECT: 42
+(run (lift 42))
+
+;; TEST: run code
+;; EXPECT: 10
+(run (quote (+ 5 5)))
+
+;; TEST: eval-meta - compile-time evaluation
+;; EXPECT: 6
+(eval-meta '(+ 1 (+ 2 3)))
+
+;; TEST: meta-level query
+;; EXPECT: 0
+(meta-level)
+
+;; TEST: shift up one meta level
+;; EXPECT: 1
+(reset
+  (shift-level 1
+    (meta-level)))
+
+;; TEST: lift and run roundtrip
+;; EXPECT: 100
+(run (lift (* 10 10)))
+
+;; TEST: staged function
+;; EXPECT: 8
+(let [double-code (lift (fn [x] (* x 2)))]
+  ((run double-code) 4))
+
+;; TEST: compile lambda (clambda)
+;; EXPECT: 25
+((clambda [x] (* x x)) 5)
+
+;; TEST: eval-meta with complex expression
+;; EXPECT: 120
+(eval-meta '(foldl * 1 '(1 2 3 4 5)))
+
+;; TEST: tower composition
+;; EXPECT: 9
+(run (lift (run (lift (+ 4 5)))))
+
+;; EXPECT: 16
+((clambda [x] (clambda [y] (* x y))) 4 4)

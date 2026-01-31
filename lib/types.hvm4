@@ -311,23 +311,100 @@
   }(tapp)
 
 // =============================================================================
+// Superposition Types
+// =============================================================================
+
+// Superposition type: #TSup{elem_type}
+// Represents HVM4's non-deterministic superposition of values
+// A value of type {(Sup T)} can be any value of type T simultaneously
+// Used for parallel branching and probabilistic programming
+
+@make_sup_type = λelem_type.
+  #TSup{elem_type}
+
+@sup_type_elem = λtsup.
+  λ{
+    #TSup: λ&elem. elem
+    _: @type_Any
+  }(tsup)
+
+// Check if type is a superposition type
+@sup_type? = λtype.
+  λ{
+    #TSup: λ&_. #True{}
+    _: #Fals{}
+  }(type)
+
+// Weighted superposition type: #TWSup{elem_type}
+// Represents superpositions with probability weights
+// Used for probabilistic inference with importance sampling
+
+@make_weighted_sup_type = λelem_type.
+  #TWSup{elem_type}
+
+@weighted_sup_type_elem = λtsup.
+  λ{
+    #TWSup: λ&elem. elem
+    _: @type_Any
+  }(tsup)
+
+// Check if type is a weighted superposition
+@weighted_sup_type? = λtype.
+  λ{
+    #TWSup: λ&_. #True{}
+    _: #Fals{}
+  }(type)
+
+// =============================================================================
 // Function Types
 // =============================================================================
 
 // Function type: #TFun{arg_types, ret_type}
+// For backward compatibility, #TFun without effects = unknown purity
 @make_fun_type = λarg_types. λret_type.
   #TFun{arg_types, ret_type}
+
+// Function type with effects: #TFunE{arg_types, ret_type, effects}
+// effects is #ERws{effect_list} or #NIL (pure)
+@make_fun_type_with_effects = λarg_types. λret_type. λeffects.
+  #TFunE{arg_types, ret_type, effects}
+
+// Pure function type (shorthand)
+@make_pure_fun_type = λarg_types. λret_type.
+  #TFunE{arg_types, ret_type, #NIL}
 
 @fun_type_args = λtfun.
   λ{
     #TFun: λ&args. λ&ret. args
+    #TFunE: λ&args. λ&ret. λ&eff. args
     _: #NIL
   }(tfun)
 
 @fun_type_ret = λtfun.
   λ{
     #TFun: λ&args. λ&ret. ret
+    #TFunE: λ&args. λ&ret. λ&eff. ret
     _: @type_Any
+  }(tfun)
+
+// Get effects from function type (returns #NIL for pure, #ERws{list} for effectful)
+@fun_type_effects = λtfun.
+  λ{
+    #TFunE: λ&args. λ&ret. λ&eff. eff
+    #TFun: λ&args. λ&ret. #Noth{}  // Unknown purity
+    _: #Noth{}
+  }(tfun)
+
+// Check if function type is known pure
+@fun_type_pure? = λtfun.
+  λ{
+    #TFunE: λ&args. λ&ret. λ&eff.
+      λ{
+        #NIL: #True{}
+        _: #Fals{}
+      }(eff)
+    #TFun: λ&args. λ&ret. #Fals{}  // Unknown = not provably pure
+    _: #Fals{}
   }(tfun)
 
 // =============================================================================
@@ -368,6 +445,15 @@
 
     #TFun: λ&args. λ&ret.
       #TFun{@map(@subst_type(subst))(args), @subst_type(subst)(ret)}
+
+    #TFunE: λ&args. λ&ret. λ&eff.
+      #TFunE{@map(@subst_type(subst))(args), @subst_type(subst)(ret), eff}
+
+    #TSup: λ&elem.
+      #TSup{@subst_type(subst)(elem)}
+
+    #TWSup: λ&elem.
+      #TWSup{@subst_type(subst)(elem)}
 
     _: type
   }(type)
@@ -667,6 +753,15 @@
 
     #TFun: λ&args. λ&ret.
       #TFun{@map(@subst_type_deep(subst))(args), @subst_type_deep(subst)(ret)}
+
+    #TFunE: λ&args. λ&ret. λ&eff.
+      #TFunE{@map(@subst_type_deep(subst))(args), @subst_type_deep(subst)(ret), eff}
+
+    #TSup: λ&elem.
+      #TSup{@subst_type_deep(subst)(elem)}
+
+    #TWSup: λ&elem.
+      #TWSup{@subst_type_deep(subst)(elem)}
 
     #TStr: λ&name. λ&parent. λ&fields. λ&mutable.
       #TStr{name, @subst_type_deep(subst)(parent), @map(@subst_field(subst))(fields), mutable}

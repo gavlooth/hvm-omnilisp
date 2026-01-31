@@ -1,0 +1,43 @@
+// Tests for Meta-Environment functions
+// Run: ./hvm4/clang/main test/test_menv.hvm4
+
+#include "../lib/runtime.hvm4"
+
+// Test @omni_menv_empty returns a valid MEnv
+@test_menv_empty = 
+  (λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. 1  // Returns 1 if it's an MEnv
+    _: 0
+  })(@omni_menv_empty)
+
+// Test @omni_menv_new creates MEnv with given values
+@test_menv_new = 
+  !!&m = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{0});
+  (λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. 1
+    _: 0
+  })(m)
+
+// Test @omni_menv_level returns the level
+@test_menv_level =
+  !!&m = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{42});
+  !!&lvl = @omni_menv_level(m);
+  (λ{
+    #Cst: λ&n. n
+    _: 999
+  })(lvl)
+// Expected: 42
+
+// Test @omni_menv_child creates child with incremented level
+@test_menv_child =
+  !!&parent = @omni_menv_new(#NIL)(#NIL)(#Noth)(#Cst{5});
+  !!&child = @omni_menv_child(parent);
+  !!&lvl = @omni_menv_level(child);
+  (λ{
+    #Cst: λ&n. n
+    _: 999
+  })(lvl)
+// Expected: 6
+
+// Run all tests - returns sum of results (should be 1+1+42+6 = 50)
+@main = (@test_menv_empty + @test_menv_new + @test_menv_level + @test_menv_child)

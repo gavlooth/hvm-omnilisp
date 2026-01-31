@@ -1,0 +1,185 @@
+// OmniLisp Runtime Tests: List Operations
+// Tests @omni_list_length, @omni_append, @omni_reverse
+// Tests @omni_list_append, @omni_get, @omni_get_in
+
+// =============================================================================
+// List Length Tests
+// =============================================================================
+
+@test_list_length_empty =
+  !!&len = @omni_list_length(#NIL);
+  @assert_eq(#list_length_empty)(#Cst{0})(#Cst{len})
+
+@test_list_length_one =
+  !!&list = #CON{#Cst{1}, #NIL};
+  !!&len = @omni_list_length(list);
+  @assert_eq(#list_length_one)(#Cst{1})(#Cst{len})
+
+@test_list_length_three =
+  !!&list = #CON{#Cst{1}, #CON{#Cst{2}, #CON{#Cst{3}, #NIL}}};
+  !!&len = @omni_list_length(list);
+  @assert_eq(#list_length_three)(#Cst{3})(#Cst{len})
+
+// =============================================================================
+// Append Tests
+// =============================================================================
+
+@test_append_empty_left =
+  !!&result = @omni_append(#NIL)(#CON{#Cst{1}, #NIL});
+  !!&len = @omni_list_length(result);
+  @assert_eq(#append_empty_left)(#Cst{1})(#Cst{len})
+
+@test_append_empty_right =
+  !!&result = @omni_append(#CON{#Cst{1}, #NIL})(#NIL);
+  !!&len = @omni_list_length(result);
+  @assert_eq(#append_empty_right)(#Cst{1})(#Cst{len})
+
+@test_append_both_empty =
+  !!&result = @omni_append(#NIL)(#NIL);
+  @assert_empty_list(#append_both_empty)(result)
+
+@test_append_two_lists =
+  !!&left = #CON{#Cst{1}, #CON{#Cst{2}, #NIL}};
+  !!&right = #CON{#Cst{3}, #CON{#Cst{4}, #NIL}};
+  !!&result = @omni_append(left)(right);
+  !!&len = @omni_list_length(result);
+  @assert_eq(#append_two_lists)(#Cst{4})(#Cst{len})
+
+@test_append_preserves_order =
+  !!&left = #CON{#Cst{1}, #CON{#Cst{2}, #NIL}};
+  !!&right = #CON{#Cst{3}, #NIL};
+  !!&result = @omni_append(left)(right);
+  // First element should be 1
+  !!&first = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#append_preserves_order)(#Cst{1})(first)
+
+// =============================================================================
+// Reverse Tests
+// =============================================================================
+
+@test_reverse_empty =
+  !!&result = @omni_reverse(#NIL);
+  @assert_empty_list(#reverse_empty)(result)
+
+@test_reverse_one =
+  !!&list = #CON{#Cst{42}, #NIL};
+  !!&result = @omni_reverse(list);
+  !!&first = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#reverse_one)(#Cst{42})(first)
+
+@test_reverse_three =
+  !!&list = #CON{#Cst{1}, #CON{#Cst{2}, #CON{#Cst{3}, #NIL}}};
+  !!&result = @omni_reverse(list);
+  // First element should be 3 (was last)
+  !!&first = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#reverse_three)(#Cst{3})(first)
+
+@test_reverse_twice_identity =
+  !!&list = #CON{#Cst{1}, #CON{#Cst{2}, #CON{#Cst{3}, #NIL}}};
+  !!&result = @omni_reverse(@omni_reverse(list));
+  !!&first = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#reverse_twice_identity)(#Cst{1})(first)
+
+// =============================================================================
+// Get Tests (Index Access)
+// =============================================================================
+
+@test_get_index_0 =
+  !!&list = #CON{#Cst{10}, #CON{#Cst{20}, #CON{#Cst{30}, #NIL}}};
+  !!&result = @omni_get(list)(#Cst{0});
+  @assert_num_eq(#get_index_0)(#Cst{10})(result)
+
+@test_get_index_1 =
+  !!&list = #CON{#Cst{10}, #CON{#Cst{20}, #CON{#Cst{30}, #NIL}}};
+  !!&result = @omni_get(list)(#Cst{1});
+  @assert_num_eq(#get_index_1)(#Cst{20})(result)
+
+@test_get_index_2 =
+  !!&list = #CON{#Cst{10}, #CON{#Cst{20}, #CON{#Cst{30}, #NIL}}};
+  !!&result = @omni_get(list)(#Cst{2});
+  @assert_num_eq(#get_index_2)(#Cst{30})(result)
+
+@test_get_empty_list =
+  !!&result = @omni_get(#NIL)(#Cst{0});
+  @assert_nothing(#get_empty_list)(result)
+
+// =============================================================================
+// Get-In Tests (Nested Access)
+// =============================================================================
+
+@test_get_in_empty_path =
+  !!&coll = #Cst{42};
+  !!&result = @omni_get_in(coll)(#NIL);
+  @assert_num_eq(#get_in_empty_path)(#Cst{42})(result)
+
+@test_get_in_one_level =
+  !!&list = #CON{#Cst{10}, #CON{#Cst{20}, #NIL}};
+  !!&path = #CON{#Cst{1}, #NIL};
+  !!&result = @omni_get_in(list)(path);
+  @assert_num_eq(#get_in_one_level)(#Cst{20})(result)
+
+@test_get_in_nested =
+  // [[1 2] [3 4]]
+  !!&inner1 = #CON{#Cst{1}, #CON{#Cst{2}, #NIL}};
+  !!&inner2 = #CON{#Cst{3}, #CON{#Cst{4}, #NIL}};
+  !!&outer = #CON{inner1, #CON{inner2, #NIL}};
+  // Get [1][1] => 4
+  !!&path = #CON{#Cst{1}, #CON{#Cst{1}, #NIL}};
+  !!&result = @omni_get_in(outer)(path);
+  @assert_num_eq(#get_in_nested)(#Cst{4})(result)
+
+@test_get_in_not_found =
+  !!&list = #CON{#Cst{1}, #NIL};
+  !!&path = #CON{#Cst{5}, #NIL};
+  !!&result = @omni_get_in(list)(path);
+  @assert_nothing(#get_in_not_found)(result)
+
+// =============================================================================
+// Property Tests
+// =============================================================================
+
+// Property: reverse(reverse(xs)) == xs (for length preservation)
+@test_prop_reverse_length =
+  !!&list = #CON{#Cst{1}, #CON{#Cst{2}, #CON{#Cst{3}, #NIL}}};
+  !!&len1 = @omni_list_length(list);
+  !!&len2 = @omni_list_length(@omni_reverse(list));
+  @assert_eq(#prop_reverse_length)(#Cst{len1})(#Cst{len2})
+
+// Property: length(append(xs, ys)) == length(xs) + length(ys)
+@test_prop_append_length =
+  !!&xs = #CON{#Cst{1}, #CON{#Cst{2}, #NIL}};
+  !!&ys = #CON{#Cst{3}, #CON{#Cst{4}, #CON{#Cst{5}, #NIL}}};
+  !!&len_xs = @omni_list_length(xs);
+  !!&len_ys = @omni_list_length(ys);
+  !!&len_appended = @omni_list_length(@omni_append(xs)(ys));
+  @assert_eq(#prop_append_length)(#Cst{(len_xs + len_ys)})(#Cst{len_appended})
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@list_tests = #CON{@test_list_length_empty,
+  #CON{@test_list_length_one,
+  #CON{@test_list_length_three,
+  #CON{@test_append_empty_left,
+  #CON{@test_append_empty_right,
+  #CON{@test_append_both_empty,
+  #CON{@test_append_two_lists,
+  #CON{@test_append_preserves_order,
+  #CON{@test_reverse_empty,
+  #CON{@test_reverse_one,
+  #CON{@test_reverse_three,
+  #CON{@test_reverse_twice_identity,
+  #CON{@test_get_index_0,
+  #CON{@test_get_index_1,
+  #CON{@test_get_index_2,
+  #CON{@test_get_empty_list,
+  #CON{@test_get_in_empty_path,
+  #CON{@test_get_in_one_level,
+  #CON{@test_get_in_nested,
+  #CON{@test_get_in_not_found,
+  #CON{@test_prop_reverse_length,
+  #CON{@test_prop_append_length,
+  #NIL}}}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@list_tests)

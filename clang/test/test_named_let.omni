@@ -1,0 +1,49 @@
+;; test_named_let.lisp - Tests for named let (loop construct)
+
+;; Sum from 0 to n using named let
+(define sum-to [n]
+  (let loop [i 0] [acc 0]
+    (if (<= i n)
+      (loop (+ i 1) (+ acc i))
+      acc)))
+
+;; TEST: sum 0 to 5 = 15
+;; EXPECT: 15
+(sum-to 5)
+
+;; TEST: sum 0 to 10 = 55
+;; EXPECT: 55
+(sum-to 10)
+
+;; Factorial using named let
+(define factorial [n]
+  (let fact [i n] [acc 1]
+    (if (<= i 1)
+      acc
+      (fact (- i 1) (* acc i)))))
+
+;; TEST: factorial 5 = 120
+;; EXPECT: 120
+(factorial 5)
+
+;; Count down
+(define countdown [n]
+  (let go [i n] [result '()]
+    (if (< i 0)
+      result
+      (go (- i 1) (cons i result)))))
+
+;; TEST: countdown from 4
+;; EXPECT: (0 1 2 3 4)
+(countdown 4)
+
+;; Build list in reverse
+(define range-list [start] [end]
+  (let build [i start] [acc '()]
+    (if (> i end)
+      acc
+      (build (+ i 1) (cons i acc)))))
+
+;; TEST: range-list produces reversed range
+;; EXPECT: (5 4 3 2 1)
+(range-list 1 5)

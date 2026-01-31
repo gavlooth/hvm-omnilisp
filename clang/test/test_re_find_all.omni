@@ -1,0 +1,57 @@
+;; test_re_find_all.lisp - Tests for finding all regex matches
+
+;; Re-find-all returns all matches
+;; TEST: find all words
+;; EXPECT: ("hello" "world" "test")
+(re-find-all "hello world test" "\\w+")
+
+;; TEST: find all digits
+;; EXPECT: ("1" "2" "3")
+(re-find-all "a1b2c3" "[0-9]")
+
+;; TEST: find all digit groups
+;; EXPECT: ("12" "34" "56")
+(re-find-all "12ab34cd56" "[0-9]+")
+
+;; TEST: find none
+;; EXPECT: ()
+(re-find-all "hello world" "[0-9]+")
+
+;; TEST: find single match
+;; EXPECT: ("hello")
+(re-find-all "hello" "\\w+")
+
+;; TEST: find overlapping (non-overlapping behavior)
+;; EXPECT: ("aa" "aa")
+(re-find-all "aaaa" "aa")
+
+;; TEST: find all with pattern
+;; EXPECT: ("cat" "cat" "cat")
+(re-find-all "cat dog cat bird cat" "cat")
+
+;; Find all with groups
+;; TEST: find all groups
+;; EXPECT: (("a1" "a" "1") ("b2" "b" "2"))
+(re-find-all "a1 b2 c" "([a-z])([0-9])")
+
+;; Count matches
+;; TEST: count matches
+;; EXPECT: 3
+(length (re-find-all "one two three" "\\w+"))
+
+;; TEST: find all empty string
+;; EXPECT: ()
+(re-find-all "" "\\w+")
+
+;; TEST: find all characters
+;; EXPECT: ("h" "e" "l" "l" "o")
+(re-find-all "hello" ".")
+
+;; Extract emails
+;; TEST: find all email-like
+;; EXPECT: ("a@b.com" "c@d.org")
+(re-find-all "Contact a@b.com or c@d.org" "[a-z]+@[a-z]+\\.[a-z]+")
+
+;; TEST: find all from complex
+;; EXPECT: ("123" "456" "789")
+(re-find-all "Price: $123, Qty: 456, Total: $789" "[0-9]+")

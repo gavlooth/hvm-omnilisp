@@ -1,0 +1,59 @@
+;; test_pipe.omni - Tests for pipe operator (|>)
+
+;; |> threads a value through single-argument functions
+;; (|> x f g h) = (h (g (f x)))
+
+;; TEST: basic pipe with single function
+(define inc [x] (+ x 1))
+
+;; EXPECT: 6
+(|> 5 inc)
+
+;; TEST: pipe through multiple functions
+(define double [x] (* x 2))
+
+;; (|> 5 inc double) = (double (inc 5)) = (double 6) = 12
+;; EXPECT: 12
+(|> 5 inc double)
+
+;; TEST: pipe with square
+(define square [x] (* x x))
+
+;; (|> 3 inc square) = (square (inc 3)) = (square 4) = 16
+;; EXPECT: 16
+(|> 3 inc square)
+
+;; TEST: long pipe chain
+;; (|> 1 inc inc inc inc inc) = 6
+;; EXPECT: 6
+(|> 1 inc inc inc inc inc)
+
+;; TEST: pipe identity
+(define id [x] x)
+
+;; EXPECT: 42
+(|> 42 id id id)
+
+;; TEST: pipe with negate
+(define negate [x] (- 0 x))
+
+;; EXPECT: -9
+(|> 3 square negate)
+
+;; TEST: pipe with string operations
+(define add-exclaim [s] (str-concat s "!"))
+
+;; EXPECT: "hello!"
+(|> "hello" add-exclaim)
+
+;; TEST: pipe in let binding
+;; EXPECT: 50
+(let [result (|> 5 double double inc inc inc)]
+  result)
+
+;; TEST: pipe value only (no functions)
+;; EXPECT: 100
+(|> 100)
+
+;; EXPECT: 64
+(|> 2 double double double double double)

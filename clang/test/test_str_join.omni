@@ -1,0 +1,46 @@
+;; test_str_join.lisp - Tests for string joining
+
+;; Str-join concatenates strings with separator
+;; TEST: basic join
+;; EXPECT: "a,b,c"
+(str-join "," '("a" "b" "c"))
+
+;; TEST: join with space
+;; EXPECT: "hello world"
+(str-join " " '("hello" "world"))
+
+;; TEST: join empty separator
+;; EXPECT: "abc"
+(str-join "" '("a" "b" "c"))
+
+;; TEST: join single element
+;; EXPECT: "only"
+(str-join "," '("only"))
+
+;; TEST: join empty list
+;; EXPECT: ""
+(str-join "," '())
+
+;; TEST: join with newline
+;; EXPECT: "line1\nline2\nline3"
+(str-join "\n" '("line1" "line2" "line3"))
+
+;; TEST: join numbers (converted)
+;; EXPECT: "1-2-3"
+(str-join "-" (map str '(1 2 3)))
+
+;; TEST: join multi-char separator
+;; EXPECT: "a :: b :: c"
+(str-join " :: " '("a" "b" "c"))
+
+;; TEST: interpose (lazy version)
+;; EXPECT: ("a" "," "b" "," "c")
+(interpose "," '("a" "b" "c"))
+
+;; TEST: join with tab
+;; EXPECT: "col1\tcol2\tcol3"
+(str-join "\t" '("col1" "col2" "col3"))
+
+;; TEST: join path components
+;; EXPECT: "home/user/docs"
+(str-join "/" '("home" "user" "docs"))

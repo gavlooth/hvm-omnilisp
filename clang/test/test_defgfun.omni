@@ -1,0 +1,48 @@
+;; test_defgfun.omni - Tests for polymorphic behavior via pattern matching
+;; OmniLisp uses match and dict tags for dispatch
+
+;; TEST: dispatch on value
+;; EXPECT: "small"
+(define describe-size [n]
+  (match n
+    0 "zero"
+    1 "one"
+    _ "small"))
+(describe-size 2)
+
+;; TEST: dispatch returns zero
+;; EXPECT: "zero"
+(describe-size 0)
+
+;; Area calculation via dict tag pattern
+(define make-circle [r]
+  #{"type" "circle" "radius" r})
+
+(define make-rect [w] [h]
+  #{"type" "rect" "width" w "height" h})
+
+(define area [shape]
+  (let [t (get shape "type")]
+    (match t
+      "circle" (* 3 (* (get shape "radius") (get shape "radius")))
+      "rect" (* (get shape "width") (get shape "height"))
+      _ 0)))
+
+;; TEST: circle area (3 * r^2 approximation)
+;; EXPECT: 75
+(area (make-circle 5))
+
+;; TEST: rectangle area
+;; EXPECT: 20
+(area (make-rect 4 5))
+
+;; Combine function via type dispatch
+(define combine [a] [b]
+  (+ a b))
+
+;; TEST: combine numbers
+;; EXPECT: 15
+(combine 7 8)
+
+;; EXPECT: 12
+(area (make-rect 3 4))

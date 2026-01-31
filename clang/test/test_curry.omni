@@ -1,0 +1,39 @@
+;; test_curry.omni - Tests for curry function combinator
+
+;; TEST: curry binary function
+(define add [x] [y] (+ x y))
+
+;; EXPECT: 15
+((curry add) 5 10)
+
+;; TEST: curried partial application
+;; EXPECT: 12
+(let [add5 ((curry add) 5)]
+  (add5 7))
+
+;; TEST: curry with explicit arity
+(define add3 [x] [y] [z] (+ x (+ y z)))
+
+;; EXPECT: 6
+((curry add3 3) 1 2 3)
+
+;; TEST: curry nested application
+;; EXPECT: 20
+(let [addCurried (curry add)]
+  (let [add8 (addCurried 8)]
+    (add8 12)))
+
+;; TEST: curry subtract
+(define sub [x] [y] (- x y))
+
+;; EXPECT: 7
+((curry sub) 10 3)
+
+;; TEST: curry with partial then complete
+;; EXPECT: 2
+(let [sub10 ((curry sub) 10)]
+  (sub10 8))
+
+;; EXPECT: 100
+(let [mul ((curry *) 10)]
+  (mul 10))

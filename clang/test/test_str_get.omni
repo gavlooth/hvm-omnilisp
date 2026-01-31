@@ -1,0 +1,48 @@
+;; test_str_get.lisp - Tests for character access
+
+;; Str-get returns character at index
+;; TEST: get first char
+;; EXPECT: "h"
+(str-get "hello" 0)
+
+;; TEST: get middle char
+;; EXPECT: "l"
+(str-get "hello" 2)
+
+;; TEST: get last char
+;; EXPECT: "o"
+(str-get "hello" 4)
+
+;; TEST: get from single char string
+;; EXPECT: "x"
+(str-get "x" 0)
+
+;; Char-at is alias
+(define char-at [s] [i] (str-get s i))
+
+;; TEST: char-at
+;; EXPECT: "o"
+(char-at "world" 1)
+
+;; First and last char helpers
+(define str-first [s]
+  (str-get s 0))
+
+(define str-last [s]
+  (str-get s (- (str-len s) 1)))
+
+;; TEST: str-first
+;; EXPECT: "a"
+(str-first "abc")
+
+;; TEST: str-last
+;; EXPECT: "c"
+(str-last "abc")
+
+;; TEST: str-first on single
+;; EXPECT: "x"
+(str-first "x")
+
+;; TEST: str-last on single
+;; EXPECT: "x"
+(str-last "x")

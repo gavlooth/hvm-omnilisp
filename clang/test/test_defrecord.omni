@@ -1,0 +1,61 @@
+;; test_defrecord.omni - Tests for record-like structures using dicts
+
+;; Records are implemented as dicts with a type tag
+(define make-person [name] [age]
+  #{"_type" "Person" "name" name "age" age})
+
+(define person? [p]
+  (and (dict? p) (= (get p "_type") "Person")))
+
+;; TEST: basic record creation
+;; EXPECT: true
+(person? (make-person "Alice" 30))
+
+;; TEST: record field access
+;; EXPECT: "Alice"
+(let [p (make-person "Alice" 30)]
+  (get p "name"))
+
+;; TEST: record age access
+;; EXPECT: 30
+(let [p (make-person "Alice" 30)]
+  (get p "age"))
+
+;; Point constructor
+(define make-point [x] [y]
+  #{"_type" "Point" "x" x "y" y})
+
+;; TEST: point constructor
+;; EXPECT: true
+(let [p (make-point 3 4)]
+  (and (= (get p "x") 3) (= (get p "y") 4)))
+
+;; TEST: record update with dict-set
+;; EXPECT: 99
+(let [p1 (make-point 1 2)]
+  (let [p2 (dict-set p1 "y" 99)]
+    (get p2 "y")))
+
+;; TEST: original unchanged after update
+;; EXPECT: 2
+(let [p1 (make-point 1 2)]
+  (let [p2 (dict-set p1 "y" 99)]
+    (get p1 "y")))
+
+;; TEST: record pattern match via dict access
+;; EXPECT: 7
+(let [pt (make-point 3 4)]
+  (+ (get pt "x") (get pt "y")))
+
+;; TEST: record equality
+;; EXPECT: true
+(= (make-point 1 2) (make-point 1 2))
+
+;; TEST: record type check
+;; EXPECT: true
+(let [pt (make-point 1 2)]
+  (= (get pt "_type") "Point"))
+
+;; EXPECT: 5
+(let [pt (make-point 2 3)]
+  (+ (get pt "x") (get pt "y")))

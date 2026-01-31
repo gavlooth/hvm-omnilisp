@@ -1,0 +1,56 @@
+;; test_fiber.omni - Tests for lightweight concurrency via effects
+;; OmniLisp uses effects for concurrency patterns
+
+;; TEST: simple effect for "fiber" value
+;; EXPECT: 10
+(handle
+  (perform fiber-return 10)
+  (fiber-return [val resume] val))
+
+;; TEST: effect with computation
+;; EXPECT: 42
+(handle
+  (perform compute (+ 20 22))
+  (compute [val resume] val))
+
+;; TEST: yield-like effect
+;; EXPECT: 1
+(handle
+  (do
+    (perform yield-val 1)
+    (perform yield-val 2)
+    3)
+  (yield-val [val resume] val))
+
+;; TEST: resume and get next
+;; EXPECT: 2
+(handle
+  (do
+    (perform yield-val 1)
+    (perform yield-val 2)
+    3)
+  (yield-val [val resume] (resume val)))
+
+;; TEST: closure captures scope
+;; EXPECT: 15
+(let [x 5]
+  (let [y 10]
+    (+ x y)))
+
+;; TEST: spawn-like pattern with effects
+;; EXPECT: 30
+(let [a (handle (perform task 10) (task [v resume] v))]
+  (let [b (handle (perform task 20) (task [v resume] v))]
+    (+ a b)))
+
+;; TEST: preserves lexical scope
+;; EXPECT: 50
+(let [base 40]
+  (handle
+    (+ base (perform get-delta))
+    (get-delta [resume] (resume 10))))
+
+;; EXPECT: 100
+(handle
+  (* (perform val) (perform val))
+  (val [resume] (resume 10)))

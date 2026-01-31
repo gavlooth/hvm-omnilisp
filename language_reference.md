@@ -183,6 +183,34 @@ OmniLisp functions support **Multiple Dispatch**, allowing a single name to refe
 (define add [x {String}] [y {String}] (string-append x y))
 ```
 
+#### Type Coercion Pattern
+
+Multiple dispatch enables elegant **type coercion** functions that convert between types:
+
+```lisp
+;; The `list` coercer uses multiple dispatch for each input type:
+(define list [x {List}] {List} x)                     ; identity
+(define list [x {Array}] {List} (array->list x))      ; array → list
+(define list [x {Iterator}] {List} (realize x))       ; realize iterator
+(define list [x {Range}] {List} (realize x))          ; realize range
+(define list [x {Dict}] {List} (dict-entries x))      ; dict → list of pairs
+
+;; Similarly for `array`:
+(define array [x {Array}] {Array} x)                  ; identity
+(define array [x {List}] {Array} (list->array x))     ; list → array
+(define array [x {Iterator}] {Array} (list->array (realize x)))
+
+;; Usage:
+(list [1 2 3])        ; Array → List: (1 2 3)
+(array '(a b c))      ; List → Array: [a b c]
+(list (range 5))      ; Iterator → List: (0 1 2 3 4)
+```
+
+This pattern provides:
+- **Uniform interface**: Same function name for all conversions
+- **Type safety**: Dispatch ensures correct conversion method
+- **Efficiency**: Identity returns input unchanged (no copying)
+
 ### 2.7 Pipe Operator (`|>`)
 
 The pipe operator threads a value through a series of functions. Each function receives the result of the previous one as its argument.
@@ -543,16 +571,101 @@ Check if a value is of a specific type:
 
 ## 4. Sequences & Iterators
 
-### 4.1 Lazy Iterators
-Core sequence functions are lazy and return `T_ITER` objects.
-*   `(range n)`: Returns an iterator from 0 to n-1.
-*   `(map f iter)`: Returns a lazy transformed iterator.
-*   `(filter pred iter)`: Returns a lazy filtered iterator.
+### 4.1 Type Coercion (Multiple Dispatch)
 
-### 4.2 Realization
-To convert a lazy iterator into an eager structure:
-*   `(collect-list iter)`: Produces a Persistent Linked List `()`.
-*   `(collect-array iter)`: Produces a Contiguous Realized Array `[]`.
+OmniLisp provides **multi-dispatch coercers** to convert between sequence types:
+
+```lisp
+;; list: Coerce any sequence to List
+(list [1 2 3])           ; Array → List: (1 2 3)
+(list (range 5))         ; Iterator → List: (0 1 2 3 4)
+(list '(a b c))          ; List → List: identity
+
+;; array: Coerce any sequence to Array
+(array '(1 2 3))         ; List → Array: [1 2 3]
+(array (range 5))        ; Iterator → Array: [0 1 2 3 4]
+(array [a b c])          ; Array → Array: identity
+
+;; dict: Coerce sequence of pairs to Dict
+(dict '((a 1) (b 2)))    ; List → Dict: #{:a 1 :b 2}
+(dict #{:x 10})          ; Dict → Dict: identity
+```
+
+These coercers use **multiple dispatch** to handle each input type efficiently:
+- **Identity**: Same-type coercion returns the input unchanged
+- **Conversion**: Cross-type coercion performs efficient conversion
+- **Realization**: Lazy iterators are fully realized into the target type
+
+### 4.2 Lazy Iterators
+Core sequence functions are lazy when given iterators and return `#Iter` objects.
+*   `(range n)`: Returns an iterator from 0 to n-1.
+*   `(map f iter)`: Returns a lazy transformed iterator (when given iterator).
+*   `(filter pred iter)`: Returns a lazy filtered iterator (when given iterator).
+
+### 4.3 Parallel-by-Default Semantics
+
+When operating on **eager types** (List, Array, Dict), sequence operations are **parallel by default**:
+
+```lisp
+;; These use fork2 for automatic parallelism:
+(map square '(1 2 3 4 5 6 7 8))      ; Parallel map over list
+(filter even? '(1 2 3 4 5 6 7 8))    ; Parallel filter
+(foldl + 0 '(1 2 3 4 5 6 7 8))       ; Parallel tree reduction
+```
+
+**How it works:**
+- Lists are split in half recursively
+- Each half is processed in parallel using `fork2`
+- Results are combined (append for map/filter, apply op for fold)
+
+**When to use sequential:**
+- Non-associative operations in fold
+- When ordering/side-effects matter
+- Very small lists (parallelism overhead)
+
+```lisp
+;; Sequential versions using ^:seq metadata (preferred):
+(map ^:seq f xs)           ; Sequential map
+(filter ^:seq pred xs)     ; Sequential filter
+(foldl ^:seq f acc xs)     ; Sequential left fold
+
+;; Equivalent internal function calls (also available):
+(map_seq f xs)             ; Sequential map
+(filter_seq pred xs)       ; Sequential filter
+(foldl_seq f acc xs)       ; Sequential left fold
+```
+
+The `^:seq` metadata provides a clean, consistent syntax for opting into sequential processing. It mirrors the `^:seq` syntax used for sequential `let` bindings:
+
+```lisp
+;; Sequential let (each binding sees previous ones)
+(let ^:seq [x 1] [y (+ x 1)] y)  ; → 2
+
+;; Sequential map (process elements in order)
+(map ^:seq println '(1 2 3))     ; prints 1, 2, 3 in order
+```
+
+**Iterator paths remain lazy:**
+```lisp
+;; These stay lazy (no parallelism):
+(map square (range 1000000))   ; Returns lazy iterator
+(filter even? (range 1000000)) ; Returns lazy iterator
+
+;; Realize when needed:
+(list (map square (range 10))) ; → (0 1 4 9 16 25 36 49 64 81)
+```
+
+### 4.4 Performance Notes
+
+| Input Type | Behavior | Parallelism |
+|------------|----------|-------------|
+| List (`#CON`) | Eager | ✅ Parallel via `fork2` |
+| Array (`#Arr`) | Eager | ✅ Parallel (uses list parallelism) |
+| Dict (`#Dict`) | Eager | ✅ Parallel (maps/filters values) |
+| Iterator (`#Iter`) | Lazy | ❌ Sequential (lazy by nature) |
+| Range (`#Rang`) | Lazy | ❌ Sequential (lazy by nature) |
+
+For very small collections (< 8 elements), the overhead of parallelism may exceed benefits. The runtime optimizes this automatically via HVM4's superposition semantics.
 
 ---
 
@@ -588,37 +701,185 @@ OmniLisp uses **Algebraic Effects** as its primary mechanism for non-local contr
 ;; => 43
 ```
 
-### 6.2 Fibers & Channels (Two-Tier Concurrency)
-OmniLisp implements a **Two-Tier Concurrency** model that separates physical parallelism from massive logical concurrency.
-
-*   **Tier 1 (Parallel):** OS Threads (pthreads) for multi-core utilization.
-*   **Tier 2 (Concurrent):** Lightweight **Fibers** (continuations) for massive concurrency (1M+ fibers).
+### 6.2 Fibers (Lightweight Concurrency)
+OmniLisp implements lightweight **Fibers** (continuations) for massive concurrency (1M+ fibers).
 
 #### Fiber Management
-*   **`fiber`**: Creates a paused fiber from a thunk.
-*   **`resume`**: Manually steps into a fiber (direct control).
-*   **`yield`**: Suspends the current fiber, returning control to the caller or scheduler.
-*   **`with-fibers`**: Establishes a local **Fiber Scheduler** scope. The block waits until all spawned fibers complete.
-*   **`spawn`**: Registers a fiber with the current scheduler.
-*   **`join`**: Blocks the current fiber until the target fiber completes, returning its result.
-*   **`run-fibers`**: Explicitly runs the scheduler loop until all pending fibers are done.
 
-#### Channels (CSP)
-Fibers communicate via **Channels**, enabling ownership transfer without shared-memory locks.
-*   **`chan`**: Creates an unbuffered (rendezvous) channel.
-*   **`(chan n)`**: Creates a buffered channel with capacity `n`.
-*   **`send` / `recv`**: Synchronous or buffered communication. If a channel is full (on send) or empty (on recv), the fiber **Parks** (Tier 2 suspension) to let others run.
+| Form | Description |
+|------|-------------|
+| `(spawn body)` | Create and start a fiber from body expression |
+| `(yield val)` | Suspend current fiber, yielding a value to mailbox |
+| `(fiber-resume f val)` | Resume suspended fiber with a value |
+| `(fiber-done? f)` | Check if fiber has completed |
+| `(fiber-result f)` | Get final result from completed fiber |
+| `(fiber-mailbox f)` | Get list of yielded values |
+
+#### Basic Fiber Usage
 
 ```lisp
-(with-fibers
-  (define c (chan 3))
-  (spawn (fiber (lambda [] (send c "ping"))))
+;; Create a fiber that yields multiple values
+(define f (spawn
+  (do
+    (yield 1)
+    (yield 2)
+    (yield 3)
+    42)))  ; Final result
+
+;; Check fiber state
+(fiber-done? f)        ; → false (suspended after first yield)
+
+;; Resume the fiber (runs until next yield or completion)
+(fiber-resume f 'continue)
+
+;; Get all yielded values
+(fiber-mailbox f)      ; → (1 2 3)
+
+;; Get final result (only valid when fiber is done)
+(fiber-result f)       ; → 42
 ```
 
-#### Ownership Transfer
-Sending a value through a channel performs an **Ownership Transfer**. The sending fiber/thread yields control of the object's lifetime to the receiver, preventing data races by ensuring only one owner exists at any time. Immutable objects (frozen) can be shared safely across Tier 1 threads.
+#### Generator Pattern
 
-### 6.3 Pattern Matching (`match`)
+```lisp
+;; Fibonacci generator using fibers
+(define (fib-gen n)
+  (spawn
+    (let loop [a 0] [b 1] [i 0]
+      (if (< i n)
+          (do
+            (yield a)
+            (loop b (+ a b) (+ i 1)))
+          'done))))
+
+(define fibs (fib-gen 10))
+(fiber-mailbox (fiber-resume (fiber-resume fibs 0) 0))
+;; → (0 1 1 2 3 5 8 13 21 34)
+```
+
+#### Communication via Effects
+Fibers communicate using **algebraic effects** rather than Go-style channels. Since HVM4 has no shared mutable state, effects provide a natural way for fibers to interact with the scheduler and each other without requiring channel synchronization primitives.
+
+### 6.3 Parallel Combinators (HVM4 Superposition)
+
+OmniLisp provides parallel combinators that exploit HVM4's native superposition semantics for automatic parallelism. These are **prelude functions** (not special forms) that build on two primitives:
+
+| Primitive | Description |
+|-----------|-------------|
+| `(fork2 a b)` | Fork two computations for parallel execution |
+| `(choice xs)` | Nondeterministic choice from a list |
+
+#### Parallel Map, Fold, Filter
+
+These combinators split work into balanced pairs, recursively applying `fork2` for maximum parallelism. Optimal speedup occurs when operations are pure and independent.
+
+```lisp
+;; Parallel map - splits list in half, maps each half in parallel
+(par-map square (range 1 1000))
+
+;; Parallel fold - balanced tree reduction (requires associative op)
+(par-fold + 0 (range 1 1000))        ;; → 499500
+(par-sum (range 1 1000))             ;; Optimized parallel sum
+(par-product (range 1 10))           ;; Optimized parallel product
+
+;; Parallel filter
+(par-filter even? (range 1 100))
+
+;; Parallel predicates
+(par-all? positive? numbers)         ;; Are all positive?
+(par-any? zero? numbers)             ;; Is any zero?
+
+;; Parallel zipWith
+(par-zipWith + xs ys)                ;; Element-wise addition
+```
+
+**Chunked operations** for fine-grained control:
+
+```lisp
+;; Map with explicit chunk size (better for I/O-bound work)
+(par-map-chunked 100 expensive-fn large-list)
+```
+
+#### Nondeterministic Choice (Amb)
+
+The `amb` (ambiguous) operator enables nondeterministic programming. HVM4's superposition semantics explores all possible choices in parallel, returning all valid results.
+
+```lisp
+;; Choose one value nondeterministically
+(amb '(1 2 3 4 5))                   ;; → one of 1..5
+
+;; Binary choice
+(amb2 'heads 'tails)                 ;; → 'heads or 'tails
+
+;; Require a condition (prune invalid branches)
+(amb-require (> x 0))                ;; Fails branch if x <= 0
+
+;; Constraint solving example: find pairs where x + y = 10
+(let [x (amb-range 1 10)]
+  (let [y (amb-range 1 10)]
+    (amb-require (= (+ x y) 10))
+    (list x y)))
+;; → all valid pairs: (1 9), (2 8), (3 7), ...
+```
+
+**Search patterns:**
+
+```lisp
+;; Find first element matching predicate
+(amb-find even? numbers)
+
+;; Find all matching elements
+(amb-find-all prime? (range 2 100))
+
+;; Choose from range
+(amb-range 1 100)                    ;; → one of 1..99
+
+;; Combinations: choose n elements from list
+(amb-choose-n 2 '(a b c d))          ;; → all 2-combinations
+```
+
+**Collecting results:**
+
+```lisp
+;; Collect all valid results from nondeterministic computation
+(amb-collect
+  (let [x (amb '(1 2 3))]
+    (amb-require (odd? x))
+    (* x 2)))
+;; → (2 6)  ;; 1*2 and 3*2
+
+;; Get first successful result
+(amb-first (amb-find even? numbers))
+```
+
+**Parallel search** combines `fork2` and `choice`:
+
+```lisp
+;; Explore choices in parallel
+(par-amb large-search-space)
+
+;; Parallel search with predicate
+(par-search valid-solution? candidates)
+```
+
+#### When to Use
+
+| Use Case | Recommended |
+|----------|-------------|
+| CPU-bound pure functions | `par-map`, `par-fold`, `par-filter` |
+| Balanced tree reductions | `par-fold` with associative op |
+| Search problems | `amb`, `amb-find`, `par-search` |
+| Constraint solving | `amb-require`, `amb-tuple` |
+| Speculative execution | `amb2`, `fork2` |
+| I/O-bound work | Prefer `par-map-chunked` or fibers |
+
+**Performance notes:**
+- Parallelism is automatic but not free—avoid for very small lists
+- Best speedup with pure, independent operations
+- `fork2` creates superposition; HVM4 runtime decides execution strategy
+- `choice` on empty list fails (use for constraint pruning)
+
+### 6.4 Pattern Matching (`match`)
 
 **Pattern matching is the source of truth for all control flow in OmniLisp.** The `if` form is syntactic sugar that desugars to a binary `match`.
 

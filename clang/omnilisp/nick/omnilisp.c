@@ -34,6 +34,7 @@ static u32 OMNI_NAM_LAMR;  // Recursive lambda
 static u32 OMNI_NAM_APP;   // Application
 static u32 OMNI_NAM_LET;   // Let binding (lazy by default)
 static u32 OMNI_NAM_LETS;  // Strict let binding (^:strict)
+static u32 OMNI_NAM_LETP;  // Parallel let binding (^:parallel - force parallel)
 static u32 OMNI_NAM_IF;    // Conditional
 static u32 OMNI_NAM_DO;    // Sequencing
 
@@ -258,6 +259,9 @@ static u32 OMNI_NAM_TANN;  // Type annotation: #TAnn{expr, type}
 static u32 OMNI_NAM_TDSC;  // Type descriptor: #TDsc{name, parent, fields}
 static u32 OMNI_NAM_TVAR;  // Type variable: #TVar{name}
 static u32 OMNI_NAM_TFUN;  // Function type: #TFun{args, ret}
+static u32 OMNI_NAM_TFUNE; // Function type with effects: #TFunE{args, ret, effects}
+static u32 OMNI_NAM_TSUP;  // Superposition type: #TSup{elem}
+static u32 OMNI_NAM_TWSUP; // Weighted superposition: #TWSup{elem}
 static u32 OMNI_NAM_TAPP;  // Type application: #TApp{base, args}
 static u32 OMNI_NAM_VTYP;  // Value type (singleton): #VTyp{value} - {3} = #val 3
 
@@ -276,6 +280,7 @@ static u32 OMNI_NAM_TEOP;  // Effect operation: #TEOp{name, params, ret_type}
 // Metadata
 static u32 OMNI_NAM_META;  // Metadata: #Meta{key, value, target}
 static u32 OMNI_NAM_PURE;  // Purity marker: #Pure{fn} - function has no side effects
+static u32 OMNI_NAM_ASSC;  // Associative marker: #Assc{fn} - function is associative (can use tree reduction)
 static u32 OMNI_NAM_COVR;  // Covariance marker: #Covr{tvar}
                            // e.g., ^:covar T → type parameter T is covariant
 static u32 OMNI_NAM_CNVR;  // Contravariance marker: #Cnvr{tvar}
@@ -295,6 +300,10 @@ static u32 OMNI_NAM_HDEF;  // Handler definition: #HdlrDef{tag, fn_expr}
 static u32 OMNI_NAM_EFF;   // Effect declaration
 static u32 OMNI_NAM_ERWS;  // Effect row signature: #ERws{effects}
                            // e.g., ^:effects [{Error} {Ask}] → #ERws{[Error, Ask]}
+static u32 OMNI_NAM_EFFR;  // Effect-free check: #Effr{fn} - returns true if fn has empty effect row
+static u32 OMNI_NAM_STPR;  // Staged-pure check: #StPr{code} - compile-time purity analysis of AST
+static u32 OMNI_NAM_MPCH;  // Map-chunks: #MpCh{f, xs, size} - chunked parallel map
+static u32 OMNI_NAM_CPMF;  // Compile-parallel-map factory: #CpMf{f} - generate parallel map code
 
 // Proof-as-Effect system (contract verification)
 // These use the algebraic effects system for proof obligations
@@ -322,8 +331,40 @@ static u32 OMNI_NAM_PRSC;  // Proof success: #PrSc{proof} - search found proof
 
 // Concurrency
 static u32 OMNI_NAM_FIBR;  // Fiber: #Fibr{state, cont, mailbox}
-static u32 OMNI_NAM_FORK;  // Fork (HVM4 superposition)
+static u32 OMNI_NAM_FORK;  // Fork (HVM4 superposition): #Fork{a, b}
 static u32 OMNI_NAM_AMB;   // Nondeterminism
+static u32 OMNI_NAM_CHOI;  // Choice (nested superposition): #Choi{list}
+static u32 OMNI_NAM_REQT;  // Require test: #Reqt{cond} - reject if cond is false (exploration)
+static u32 OMNI_NAM_EXFR;  // Explore-first: #ExFr{choices, pred} - first matching choice
+static u32 OMNI_NAM_EXAL;  // Explore-all: #ExAl{choices, body} - collect all valid results
+static u32 OMNI_NAM_EXRG;  // Explore-range: #ExRg{lo, hi} - explore integer range
+
+// Speculative Transactions (A3)
+static u32 OMNI_NAM_ROLL;  // Rollback: #Roll{reason} - abort transaction
+static u32 OMNI_NAM_COMT;  // Commit: #Comt{value} - commit transaction successfully
+static u32 OMNI_NAM_SPTX;  // Speculative transaction: #SpTx{strategies} - race strategies
+static u32 OMNI_NAM_WROL;  // With-rollback: #WRol{body, cleanup} - transaction with cleanup
+
+// Ambient Parallelism (A5)
+static u32 OMNI_NAM_PCTX;  // Parallel context: #PCtx{} - get current parallel context
+static u32 OMNI_NAM_FJOI;  // Fork-join: #FJoi{tasks} - parallel task execution
+static u32 OMNI_NAM_WPAR;  // With-parallelism: #WPar{workers, body} - set parallel context
+
+// Probabilistic Effects (A7)
+static u32 OMNI_NAM_BERN;  // Bernoulli distribution: #Bern{prob} - weighted coin
+static u32 OMNI_NAM_CATG;  // Categorical distribution: #Catg{probs} - discrete distribution
+static u32 OMNI_NAM_UNIF;  // Uniform distribution: #Unif{lo, hi} - uniform range
+static u32 OMNI_NAM_BETA;  // Beta distribution: #Beta{alpha, beta} - beta distribution
+static u32 OMNI_NAM_SMPL;  // Sample: #Smpl{dist} - sample from distribution
+static u32 OMNI_NAM_OBSV;  // Observe: #Obsv{cond} - condition on observation
+static u32 OMNI_NAM_FCTR;  // Factor: #Fctr{weight} - weight current execution path
+static u32 OMNI_NAM_FLIP;  // Flip: #Flip{prob} - weighted coin flip (returns bool)
+static u32 OMNI_NAM_ENMR;  // Enumerate-infer: #EnmI{model} - exact probabilistic inference
+static u32 OMNI_NAM_IMPS;  // Importance-sample: #ImpS{model, n} - approximate inference
+static u32 OMNI_NAM_WGTS;  // Weighted superposition: #WgtS{val, weight} - value with probability weight
+static u32 OMNI_NAM_DMIX;  // Mixture distribution: #DMix{dists, weights} - weighted combination
+static u32 OMNI_NAM_DPRD;  // Product distribution: #DPrd{dists} - independent joint distribution
+static u32 OMNI_NAM_DMAP;  // Mapped distribution: #DMap{dist, fn} - transform samples
 
 // Definitions
 static u32 OMNI_NAM_DEF;   // Define: #Def{name, params, body}
@@ -489,6 +530,12 @@ static u32 OMNI_NAM_GCAP;  // Capture: #GCap{name, pattern}
 static u32 OMNI_NAM_GACT;  // Action: #GAct{pattern, action}
 static u32 OMNI_NAM_GANY;  // Any character (.): #GAny{}
 static u32 OMNI_NAM_PRSR;  // Parser state: #Prsr{input, pos, captures}
+
+// List comprehensions (parallel by default)
+static u32 OMNI_NAM_CMPR;  // Comprehension: #Cmpr{clauses, yield_expr}
+static u32 OMNI_NAM_CFOR;  // For clause: #CFor{var_nick, collection}
+static u32 OMNI_NAM_CWHN;  // When clause: #CWhn{predicate}
+static u32 OMNI_NAM_CYLD;  // Yield marker: #CYld{expr}
 static u32 OMNI_NAM_PRES;  // Parse result: #PRes{success, value, pos}
 
 fn void omni_names_init(void) {
@@ -503,6 +550,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_APP  = omni_nick("App");
   OMNI_NAM_LET  = omni_nick("Let");
   OMNI_NAM_LETS = omni_nick("LetS");
+  OMNI_NAM_LETP = omni_nick("LetP");
   OMNI_NAM_IF   = omni_nick("If");
   OMNI_NAM_DO   = omni_nick("Do");
 
@@ -721,6 +769,9 @@ fn void omni_names_init(void) {
   OMNI_NAM_TDSC = omni_nick("TDsc");
   OMNI_NAM_TVAR = omni_nick("TVar");
   OMNI_NAM_TFUN = omni_nick("TFun");
+  OMNI_NAM_TFUNE = omni_nick("TFunE");
+  OMNI_NAM_TSUP = omni_nick("TSup");
+  OMNI_NAM_TWSUP = omni_nick("TWSup");
   OMNI_NAM_TAPP = omni_nick("TApp");
   OMNI_NAM_VTYP = omni_nick("VTyp");
 
@@ -737,6 +788,7 @@ fn void omni_names_init(void) {
   // Metadata
   OMNI_NAM_META = omni_nick("Meta");
   OMNI_NAM_PURE = omni_nick("Pure");  // Purity marker
+  OMNI_NAM_ASSC = omni_nick("Assc");  // Associative marker
   OMNI_NAM_COVR = omni_nick("Covr");  // Covariance marker
   OMNI_NAM_CNVR = omni_nick("Cnvr");  // Contravariance marker
 
@@ -753,6 +805,10 @@ fn void omni_names_init(void) {
   OMNI_NAM_HDEF = omni_nick("HDef");
   OMNI_NAM_EFF  = omni_nick("Eff");
   OMNI_NAM_ERWS = omni_nick("ERws");  // Effect row signature
+  OMNI_NAM_EFFR = omni_nick("Effr");  // Effect-free check
+  OMNI_NAM_STPR = omni_nick("StPr");  // Staged-pure check
+  OMNI_NAM_MPCH = omni_nick("MpCh");  // Map-chunks
+  OMNI_NAM_CPMF = omni_nick("CpMf");  // Compile-parallel-map factory
 
   // Proof-as-Effect system
   OMNI_NAM_REQR = omni_nick("Reqr");  // Require (precondition)
@@ -778,6 +834,38 @@ fn void omni_names_init(void) {
   OMNI_NAM_FIBR = omni_nick("Fibr");
   OMNI_NAM_FORK = omni_nick("Fork");
   OMNI_NAM_AMB  = omni_nick("Amb");
+  OMNI_NAM_CHOI = omni_nick("Choi");  // Choice (nested superposition)
+  OMNI_NAM_REQT = omni_nick("Reqt");  // Require test (exploration)
+  OMNI_NAM_EXFR = omni_nick("ExFr");  // Explore-first
+  OMNI_NAM_EXAL = omni_nick("ExAl");  // Explore-all
+  OMNI_NAM_EXRG = omni_nick("ExRg");  // Explore-range
+
+  // Speculative Transactions (A3)
+  OMNI_NAM_ROLL = omni_nick("Roll");  // Rollback
+  OMNI_NAM_COMT = omni_nick("Comt");  // Commit
+  OMNI_NAM_SPTX = omni_nick("SpTx");  // Speculative transaction
+  OMNI_NAM_WROL = omni_nick("WRol");  // With-rollback
+
+  // Ambient Parallelism (A5)
+  OMNI_NAM_PCTX = omni_nick("PCtx");  // Parallel context
+  OMNI_NAM_FJOI = omni_nick("FJoi");  // Fork-join
+  OMNI_NAM_WPAR = omni_nick("WPar");  // With-parallelism
+
+  // Probabilistic Effects (A7)
+  OMNI_NAM_BERN = omni_nick("Bern");  // Bernoulli distribution
+  OMNI_NAM_CATG = omni_nick("Catg");  // Categorical distribution
+  OMNI_NAM_UNIF = omni_nick("Unif");  // Uniform distribution
+  OMNI_NAM_BETA = omni_nick("Beta");  // Beta distribution
+  OMNI_NAM_SMPL = omni_nick("Smpl");  // Sample
+  OMNI_NAM_OBSV = omni_nick("Obsv");  // Observe
+  OMNI_NAM_FCTR = omni_nick("Fctr");  // Factor
+  OMNI_NAM_FLIP = omni_nick("Flip");  // Flip (weighted coin)
+  OMNI_NAM_ENMR = omni_nick("EnmI");  // Enumerate-infer
+  OMNI_NAM_IMPS = omni_nick("ImpS");  // Importance-sample
+  OMNI_NAM_WGTS = omni_nick("WgtS");  // Weighted superposition
+  OMNI_NAM_DMIX = omni_nick("DMix");  // Mixture distribution
+  OMNI_NAM_DPRD = omni_nick("DPrd");  // Product distribution
+  OMNI_NAM_DMAP = omni_nick("DMap");  // Mapped distribution
 
   // Definitions
   OMNI_NAM_DEF  = omni_nick("Def");
@@ -936,6 +1024,12 @@ fn void omni_names_init(void) {
   OMNI_NAM_GANY = omni_nick("GAny");
   OMNI_NAM_PRSR = omni_nick("Prsr");
   OMNI_NAM_PRES = omni_nick("PRes");
+
+  // List comprehensions
+  OMNI_NAM_CMPR = omni_nick("Cmpr");
+  OMNI_NAM_CFOR = omni_nick("CFor");
+  OMNI_NAM_CWHN = omni_nick("CWhn");
+  OMNI_NAM_CYLD = omni_nick("CYld");
 
   OMNI_NAMES_READY = 1;
 }

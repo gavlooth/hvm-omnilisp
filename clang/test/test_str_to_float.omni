@@ -1,0 +1,51 @@
+;; test_str_to_float.lisp - Tests for string to float conversion
+
+;; Str->float parses string to float
+;; TEST: parse simple float
+;; EXPECT: 3.14
+(str->float "3.14")
+
+;; TEST: parse integer as float
+;; EXPECT: 42.0
+(str->float "42")
+
+;; TEST: parse negative float
+;; EXPECT: -2.5
+(str->float "-2.5")
+
+;; TEST: parse zero
+;; EXPECT: 0.0
+(str->float "0.0")
+
+;; TEST: parse with leading zero
+;; EXPECT: 0.5
+(str->float "0.5")
+
+;; Parse-float is alias
+(define parse-float [s] (str->float s))
+
+;; TEST: parse-float
+;; EXPECT: 1.618
+(parse-float "1.618")
+
+;; Float->str converts float to string
+;; TEST: float to string
+;; EXPECT: "3.14"
+(float->str 3.14)
+
+;; TEST: float to string negative
+;; EXPECT: "-2.5"
+(float->str -2.5)
+
+;; TEST: float to string integer value
+;; EXPECT: "5.0"
+(float->str 5.0)
+
+;; Roundtrip tests
+;; TEST: roundtrip float->str->float
+;; EXPECT: 2.718
+(str->float (float->str 2.718))
+
+;; TEST: roundtrip str->float->str
+;; EXPECT: "9.81"
+(float->str (str->float "9.81"))

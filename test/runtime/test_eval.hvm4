@@ -1,0 +1,323 @@
+// OmniLisp Runtime Tests: Core Evaluator
+// Tests @omni_eval for all AST node types
+
+// =============================================================================
+// Literal Evaluation Tests
+// =============================================================================
+
+// Test: evaluate literal integer
+@test_eval_lit =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Lit{42});
+  @assert_num_eq(#eval_lit)(#Cst{42})(result)
+
+// Test: evaluate literal zero
+@test_eval_lit_zero =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Lit{0});
+  @assert_num_eq(#eval_lit_zero)(#Cst{0})(result)
+
+// NOTE: Negative literal test removed - HVM4 uses unsigned 32-bit integers
+
+// =============================================================================
+// Variable Evaluation Tests
+// =============================================================================
+
+// Test: evaluate bound variable
+@test_eval_var =
+  !!&env = @omni_env_extend(#NIL)(#Cst{99});
+  !!&menv = @omni_menv_new(env)(#NIL)(#Noth)(#Cst{0});
+  !!&result = @omni_eval(menv)(#Var{0});
+  @assert_num_eq(#eval_var)(#Cst{99})(result)
+
+// Test: evaluate second variable in nested env
+@test_eval_var_nested =
+  !!&env1 = @omni_env_extend(#NIL)(#Cst{10});
+  !!&env2 = @omni_env_extend(env1)(#Cst{20});
+  !!&menv = @omni_menv_new(env2)(#NIL)(#Noth)(#Cst{0});
+  // Var 1 should get 10 (the older binding)
+  !!&result = @omni_eval(menv)(#Var{1});
+  @assert_num_eq(#eval_var_nested)(#Cst{10})(result)
+
+// Test: evaluate unbound variable returns error
+@test_eval_var_unbound =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Var{0});
+  @assert_err(#eval_var_unbound)(#sym_unbound)(result)
+
+// =============================================================================
+// Lambda Evaluation Tests
+// =============================================================================
+
+// Test: evaluate lambda creates closure
+@test_eval_lam =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Lam{#Var{0}});
+  !!&is_clo = (λ{#Clo: λ&e. λ&b. 1; _: λ&u_. 0})(result);
+  @assert_eq(#eval_lam)(#Cst{1})(#Cst{is_clo})
+
+// Test: evaluate recursive lambda creates recursive closure
+@test_eval_lamr =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#LamR{#Var{0}});
+  !!&is_clor = (λ{#CloR: λ&e. λ&b. 1; _: λ&u_. 0})(result);
+  @assert_eq(#eval_lamr)(#Cst{1})(#Cst{is_clor})
+
+// =============================================================================
+// Application Tests
+// =============================================================================
+
+// Test: apply identity function
+@test_eval_app_id =
+  !!&menv = @omni_menv_empty;
+  // ((λx. x) 5)
+  !!&expr = #App{#Lam{#Var{0}}, #Lit{5}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_app_id)(#Cst{5})(result)
+
+// Test: apply add-one function
+@test_eval_app_add_one =
+  !!&menv = @omni_menv_empty;
+  // ((λx. x + 1) 7)
+  !!&expr = #App{#Lam{#Add{#Var{0}, #Lit{1}}}, #Lit{7}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_app_add_one)(#Cst{8})(result)
+
+// Test: apply curried function
+@test_eval_app_curried =
+  !!&menv = @omni_menv_empty;
+  // ((λx. λy. x + y) 3 4)
+  !!&inner = #Lam{#Add{#Var{1}, #Var{0}}};
+  !!&outer = #Lam{inner};
+  !!&expr = #App{#App{outer, #Lit{3}}, #Lit{4}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_app_curried)(#Cst{7})(result)
+
+// =============================================================================
+// Let Binding Tests
+// =============================================================================
+
+// Test: simple let binding
+@test_eval_let =
+  !!&menv = @omni_menv_empty;
+  // let x = 5 in x
+  !!&expr = #Let{#Lit{5}, #Var{0}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_let)(#Cst{5})(result)
+
+// Test: let with computation in body
+@test_eval_let_compute =
+  !!&menv = @omni_menv_empty;
+  // let x = 3 in x * 2
+  !!&expr = #Let{#Lit{3}, #Mul{#Var{0}, #Lit{2}}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_let_compute)(#Cst{6})(result)
+
+// Test: nested let bindings
+@test_eval_let_nested =
+  !!&menv = @omni_menv_empty;
+  // let x = 2 in let y = 3 in x * y
+  !!&expr = #Let{#Lit{2}, #Let{#Lit{3}, #Mul{#Var{1}, #Var{0}}}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_let_nested)(#Cst{6})(result)
+
+// =============================================================================
+// Conditional Tests
+// =============================================================================
+
+// Test: if-then branch (truthy)
+@test_eval_if_true =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #If{#Lit{1}, #Lit{100}, #Lit{200}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_if_true)(#Cst{100})(result)
+
+// Test: if-else branch (falsy)
+@test_eval_if_false =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #If{#Lit{0}, #Lit{100}, #Lit{200}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_if_false)(#Cst{200})(result)
+
+// Test: if with computed condition
+@test_eval_if_computed =
+  !!&menv = @omni_menv_empty;
+  // if (2 + 3) then 1 else 0  (5 is truthy)
+  !!&expr = #If{#Add{#Lit{2}, #Lit{3}}, #Lit{1}, #Lit{0}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_if_computed)(#Cst{1})(result)
+
+// =============================================================================
+// Sequence (Do) Tests
+// =============================================================================
+
+// Test: do returns last value
+@test_eval_do =
+  !!&menv = @omni_menv_empty;
+  // (do 1 2 3) => 3
+  !!&expr = #Do{#Lit{1}, #Do{#Lit{2}, #Lit{3}}};
+  !!&result = @omni_eval(menv)(expr);
+  @assert_num_eq(#eval_do)(#Cst{3})(result)
+
+// =============================================================================
+// Arithmetic Expression Tests
+// =============================================================================
+
+// Test: addition
+@test_eval_add =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Add{#Lit{2}, #Lit{3}});
+  @assert_num_eq(#eval_add)(#Cst{5})(result)
+
+// Test: subtraction
+@test_eval_sub =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Sub{#Lit{10}, #Lit{4}});
+  @assert_num_eq(#eval_sub)(#Cst{6})(result)
+
+// Test: multiplication
+@test_eval_mul =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Mul{#Lit{3}, #Lit{4}});
+  @assert_num_eq(#eval_mul)(#Cst{12})(result)
+
+// Test: division
+@test_eval_div =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Div{#Lit{15}, #Lit{3}});
+  @assert_num_eq(#eval_div)(#Cst{5})(result)
+
+// Test: modulo
+@test_eval_mod =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Mod{#Lit{17}, #Lit{5}});
+  @assert_num_eq(#eval_mod)(#Cst{2})(result)
+
+// Test: nested arithmetic
+@test_eval_arith_nested =
+  !!&menv = @omni_menv_empty;
+  // (2 + 3) * (4 - 1) = 5 * 3 = 15
+  !!&left = #Add{#Lit{2}, #Lit{3}};
+  !!&right = #Sub{#Lit{4}, #Lit{1}};
+  !!&result = @omni_eval(menv)(#Mul{left, right});
+  @assert_num_eq(#eval_arith_nested)(#Cst{15})(result)
+
+// =============================================================================
+// Comparison Tests
+// =============================================================================
+
+// Test: equality true
+@test_eval_eql_true =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Eql{#Lit{5}, #Lit{5}});
+  @assert_true(#eval_eql_true)(result)
+
+// Test: equality false
+@test_eval_eql_false =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Eql{#Lit{5}, #Lit{6}});
+  @assert_false(#eval_eql_false)(result)
+
+// Test: less than true
+@test_eval_lt_true =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Lt{#Lit{3}, #Lit{5}});
+  @assert_true(#eval_lt_true)(result)
+
+// Test: less than false
+@test_eval_lt_false =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Lt{#Lit{5}, #Lit{3}});
+  @assert_false(#eval_lt_false)(result)
+
+// Test: greater than true
+@test_eval_gt_true =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#Gt{#Lit{7}, #Lit{4}});
+  @assert_true(#eval_gt_true)(result)
+
+// =============================================================================
+// List Evaluation Tests
+// =============================================================================
+
+// Test: evaluate empty list
+@test_eval_empty_list =
+  !!&menv = @omni_menv_empty;
+  !!&result = @omni_eval(menv)(#NIL);
+  @assert_empty_list(#eval_empty_list)(result)
+
+// Test: evaluate cons
+@test_eval_cons =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #CON{#Lit{1}, #NIL};
+  !!&result = @omni_eval(menv)(expr);
+  !!&is_cons = (λ{#CON: λ&h. λ&t. 1; _: λ&u_. 0})(result);
+  @assert_eq(#eval_cons)(#Cst{1})(#Cst{is_cons})
+
+// Test: evaluate cons with nested computation
+@test_eval_cons_computed =
+  !!&menv = @omni_menv_empty;
+  !!&expr = #CON{#Add{#Lit{1}, #Lit{2}}, #NIL};
+  !!&result = @omni_eval(menv)(expr);
+  !!&head = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#eval_cons_computed)(#Cst{3})(head)
+
+// =============================================================================
+// First/Second Tests
+// =============================================================================
+
+// Test: first of pair
+@test_eval_fst =
+  !!&menv = @omni_menv_empty;
+  !!&pair = #CON{#Lit{10}, #CON{#Lit{20}, #NIL}};
+  !!&result = @omni_eval(menv)(#Fst{pair});
+  @assert_num_eq(#eval_fst)(#Cst{10})(result)
+
+// Test: second of pair
+@test_eval_snd =
+  !!&menv = @omni_menv_empty;
+  !!&pair = #CON{#Lit{10}, #CON{#Lit{20}, #NIL}};
+  !!&result = @omni_eval(menv)(#Snd{pair});
+  !!&val = (λ{#CON: λ&h. λ&t. h; _: λ&u_. #Err{}})(result);
+  @assert_num_eq(#eval_snd)(#Cst{20})(val)
+
+// =============================================================================
+// Run All Tests
+// =============================================================================
+
+@eval_tests = #CON{@test_eval_lit,
+  #CON{@test_eval_lit_zero,
+  #CON{@test_eval_var,
+  #CON{@test_eval_var_nested,
+  #CON{@test_eval_var_unbound,
+  #CON{@test_eval_lam,
+  #CON{@test_eval_lamr,
+  #CON{@test_eval_app_id,
+  #CON{@test_eval_app_add_one,
+  #CON{@test_eval_app_curried,
+  #CON{@test_eval_let,
+  #CON{@test_eval_let_compute,
+  #CON{@test_eval_let_nested,
+  #CON{@test_eval_if_true,
+  #CON{@test_eval_if_false,
+  #CON{@test_eval_if_computed,
+  #CON{@test_eval_do,
+  #CON{@test_eval_add,
+  #CON{@test_eval_sub,
+  #CON{@test_eval_mul,
+  #CON{@test_eval_div,
+  #CON{@test_eval_mod,
+  #CON{@test_eval_arith_nested,
+  #CON{@test_eval_eql_true,
+  #CON{@test_eval_eql_false,
+  #CON{@test_eval_lt_true,
+  #CON{@test_eval_lt_false,
+  #CON{@test_eval_gt_true,
+  #CON{@test_eval_empty_list,
+  #CON{@test_eval_cons,
+  #CON{@test_eval_cons_computed,
+  #CON{@test_eval_fst,
+  #CON{@test_eval_snd,
+  #NIL}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+
+@main = @run_tests(@eval_tests)

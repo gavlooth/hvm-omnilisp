@@ -1,0 +1,66 @@
+;; test_file_list.lisp - Tests for directory listing
+
+;; List-dir lists directory contents
+;; TEST: list dir
+;; EXPECT: ("a.txt" "b.txt" "c.txt")
+(with-temp-dir
+  (write-file "a.txt" "")
+  (write-file "b.txt" "")
+  (write-file "c.txt" "")
+  (sort (list-dir ".")))
+
+;; TEST: list empty dir
+;; EXPECT: ()
+(with-temp-dir
+  (make-dir "empty")
+  (list-dir "empty"))
+
+;; TEST: list includes subdirs
+;; EXPECT: true
+(with-temp-dir
+  (make-dir "subdir")
+  (write-file "file.txt" "")
+  (member? "subdir" (list-dir ".")))
+
+;; List with filter
+;; TEST: list-dir filter
+;; EXPECT: ("a.txt" "b.txt")
+(with-temp-dir
+  (write-file "a.txt" "")
+  (write-file "b.txt" "")
+  (write-file "c.md" "")
+  (sort (list-dir "." :filter "*.txt")))
+
+;; Glob pattern matching
+;; TEST: glob files
+;; EXPECT: ("src/a.lisp" "src/b.lisp")
+(with-temp-dir
+  (make-dir "src")
+  (write-file "src/a.lisp" "")
+  (write-file "src/b.lisp" "")
+  (write-file "src/c.txt" "")
+  (sort (glob "src/*.lisp")))
+
+;; TEST: glob recursive
+;; EXPECT: true
+(with-temp-dir
+  (make-dir "a/b")
+  (write-file "a/x.txt" "")
+  (write-file "a/b/y.txt" "")
+  (> (length (glob "**/*.txt")) 1))
+
+;; Directory tree
+;; TEST: walk-dir
+;; EXPECT: 3
+(with-temp-dir
+  (make-dir "a")
+  (write-file "x.txt" "")
+  (write-file "a/y.txt" "")
+  (write-file "a/z.txt" "")
+  (length (walk-dir "." :files-only true)))
+
+;; TEST: list-dir nonexistent
+;; EXPECT: nil
+(handle
+  (list-dir "nonexistent")
+  (DirectoryNotFound [_ resume] nil))

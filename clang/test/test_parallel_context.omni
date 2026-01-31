@@ -1,0 +1,42 @@
+;; test_parallel_context.lisp - A5: Ambient Parallelism Effect
+;; Tests for parallel-context, fork-join, and with-parallelism
+
+;; TEST: parallel-context returns context list
+;; EXPECT: [#Fals{},1,1000,10]
+(parallel-context)
+
+;; TEST: fork-join executes tasks sequentially in C interpreter
+;; EXPECT: [3,12,5]
+(fork-join (+ 1 2) (* 3 4) (- 10 5))
+
+;; TEST: fork-join with single task
+;; EXPECT: [42]
+(fork-join 42)
+
+;; TEST: fork-join with no tasks returns empty list
+;; EXPECT: []
+(fork-join)
+
+;; TEST: with-parallelism executes body
+;; EXPECT: 30
+(with-parallelism 4 (+ 10 20))
+
+;; TEST: with-parallelism with zero workers still executes
+;; EXPECT: 100
+(with-parallelism 0 (* 10 10))
+
+;; TEST: nested with-parallelism
+;; EXPECT: 15
+(with-parallelism 2 (with-parallelism 4 (+ 5 10)))
+
+;; TEST: fork-join inside with-parallelism
+;; EXPECT: [1,4,9]
+(with-parallelism 4 (fork-join (* 1 1) (* 2 2) (* 3 3)))
+
+;; TEST: parallel-context inside with-parallelism (still returns C defaults)
+;; EXPECT: [#Fals{},1,1000,10]
+(with-parallelism 8 (parallel-context))
+
+;; TEST: fork-join with computed values
+;; EXPECT: [6,24,120]
+(fork-join (* 2 3) (* 4 6) (* 10 12))

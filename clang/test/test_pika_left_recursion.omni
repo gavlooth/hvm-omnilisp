@@ -1,0 +1,69 @@
+;; test_pika_left_recursion.lisp - Tests for Pika left recursion handling
+
+;; Pika handles left recursion (unlike PEG)
+;; TEST: direct left recursion
+;; EXPECT: 6
+(pika-parse
+  (grammar
+    [expr (alt
+            (action (seq expr "+" term) (lambda [a _ b] (+ a b)))
+            term)]
+    [term (action (class "0-9") str-to-int)])
+  "1+2+3")
+
+;; TEST: left recursive list
+;; EXPECT: (1 2 3)
+(pika-parse
+  (grammar
+    [list (alt
+            (action (seq list "," item) (lambda [l _ i] (append l (list i))))
+            (action item (lambda [i] (list i))))]
+    [item (action (class "0-9") str-to-int)])
+  "1,2,3")
+
+;; TEST: expression with precedence
+;; EXPECT: 7
+(pika-parse
+  (grammar
+    [expr (alt
+            (action (seq expr "+" term) (lambda [a _ b] (+ a b)))
+            (action (seq expr "-" term) (lambda [a _ b] (- a b)))
+            term)]
+    [term (alt
+            (action (seq term "*" factor) (lambda [a _ b] (* a b)))
+            factor)]
+    [factor (alt
+              (action (seq "(" expr ")") (lambda [_ e _] e))
+              (action (rep1 (class "0-9"))
+                (lambda [ds] (str-to-int (str-join "" ds)))))])
+  "1+2*3")
+
+;; TEST: indirect left recursion
+;; EXPECT: "matched"
+(pika-parse
+  (grammar
+    [A (alt (seq B "a") "a")]
+    [B (alt (seq A "b") "b")]
+    [S (action (seq A eof) (lambda [_] [_] "matched"))]
+    [eof (not any)])
+  "aba")
+
+;; TEST: left recursion with associativity
+;; EXPECT: 2
+(pika-parse
+  (grammar
+    [expr (alt
+            (action (seq expr "-" num) (lambda [a _ b] (- a b)))
+            num)]
+    [num (action (class "0-9") str-to-int)])
+  "5-2-1")  ;; left assoc: (5-2)-1 = 2
+
+;; TEST: deeply nested left recursion
+;; EXPECT: (((1 2) 3) 4)
+(pika-parse
+  (grammar
+    [S (alt
+         (action (seq S "," num) (lambda [s _ n] (list s n)))
+         (action num (lambda [n] n)))]
+    [num (action (class "0-9") str-to-int)])
+  "1,2,3,4")

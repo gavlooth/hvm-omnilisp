@@ -1,0 +1,39 @@
+        -:    0:Source:../hvm4/clang/wnf/op2_num_num.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// (#a op #b)
+        -:    2:// -------------- OP2-NUM-NUM
+        -:    3:// #(a opr b)
+      357:    4:fn Term wnf_op2_num_num_raw(u32 opr, u32 a, u32 b) {
+      357:    5:  ITRS++;
+      357:    6:  if (__builtin_expect(opr == OP_SUB, 1)) {
+      185:    7:    return term_new_num(a - b);
+        -:    8:  }
+        -:    9:  u32 result;
+      172:   10:  switch (opr) {
+       70:   11:    case OP_ADD: result = a + b; break;
+    #####:   12:    case OP_SUB: result = a - b; break;
+       28:   13:    case OP_MUL: result = a * b; break;
+       5*:   14:    case OP_DIV: result = b != 0 ? a / b : 0; break;
+       6*:   15:    case OP_MOD: result = b != 0 ? a % b : 0; break;
+    #####:   16:    case OP_AND: result = a & b; break;
+    #####:   17:    case OP_OR:  result = a | b; break;
+    #####:   18:    case OP_XOR: result = a ^ b; break;
+    #####:   19:    case OP_LSH: result = a << b; break;
+    #####:   20:    case OP_RSH: result = a >> b; break;
+    #####:   21:    case OP_NOT: result = ~b; break;
+       16:   22:    case OP_EQ:  result = a == b ? 1 : 0; break;
+    #####:   23:    case OP_NE:  result = a != b ? 1 : 0; break;
+       23:   24:    case OP_LT:  result = a < b ? 1 : 0; break;
+    #####:   25:    case OP_LE:  result = a <= b ? 1 : 0; break;
+       24:   26:    case OP_GT:  result = a > b ? 1 : 0; break;
+    #####:   27:    case OP_GE:  result = a >= b ? 1 : 0; break;
+    #####:   28:    default:     result = 0; break;
+        -:   29:  }
+      172:   30:  return term_new_num(result);
+        -:   31:}
+        -:   32:
+        -:   33:fn Term wnf_op2_num_num(u32 opr, Term x, Term y) {
+        -:   34:  return wnf_op2_num_num_raw(opr, term_val(x), term_val(y));
+        -:   35:}

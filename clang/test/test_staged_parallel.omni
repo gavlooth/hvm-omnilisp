@@ -1,0 +1,68 @@
+;; Test staged parallelism features
+;; A4: Tower + Superposition integration
+
+;; ============================================
+;; Test map-chunks - chunked parallel map
+;; ============================================
+
+;; Define a simple function for mapping
+(define double [x] (* x 2))
+
+(print "map-chunks with chunk size 2:")
+(print (map-chunks double '(1 2 3 4 5 6) 2))
+
+(print "map-chunks with chunk size 3:")
+(print (map-chunks double '(1 2 3 4 5 6 7 8 9) 3))
+
+(print "map-chunks with single chunk:")
+(print (map-chunks double '(1 2 3) 10))
+
+;; Empty list case
+(print "map-chunks on empty list:")
+(print (map-chunks double '() 2))
+
+;; ============================================
+;; Test compile-parallel-map - purity-aware factory
+;; ============================================
+
+;; Pure lambda: should detect as pure (true)
+(print "compile-parallel-map on pure multiplication lambda:")
+(print (compile-parallel-map (lambda [x] (* x x))))
+
+(print "compile-parallel-map on pure addition lambda:")
+(print (compile-parallel-map (lambda [x] (+ x 1))))
+
+(print "compile-parallel-map on pure nested arithmetic:")
+(print (compile-parallel-map (lambda [x] (+ (* x 2) 1))))
+
+;; ============================================
+;; Test staged-pure? directly on lambda body
+;; ============================================
+
+(print "staged-pure? on multiplication lambda:")
+(print (staged-pure? (lambda [x] (* x x))))
+
+(print "staged-pure? on addition lambda:")
+(print (staged-pure? (lambda [x] (+ x 1))))
+
+;; ============================================
+;; Test with map-chunks on larger data
+;; ============================================
+
+(print "map-chunks processing list (0..19) with chunk-size 4:")
+(define inc [x] (+ x 1))
+(print (map-chunks inc '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19) 4))
+
+(print "map-chunks processing list (1..10) with chunk-size 5:")
+(print (map-chunks (lambda [x] (* x x)) '(1 2 3 4 5 6 7 8 9 10) 5))
+
+;; ============================================
+;; Integration: Use purity to decide strategy
+;; ============================================
+
+(print "Decision based on purity analysis:")
+(if (first (compile-parallel-map (lambda [n] (* n n))))
+    (print "=> Function is pure, safe for parallel execution")
+    (print "=> Function has effects, use sequential execution"))
+
+(print "All staged parallelism tests completed")

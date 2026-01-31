@@ -1,0 +1,59 @@
+;; test_pure_functions.omni - Tests for ^:pure metadata
+
+;; ^:pure marks functions as having no side effects
+;; This enables parallel execution, memoization, and CSE
+;; Syntax: (define name [params] ^:pure body)
+
+;; TEST: basic pure function
+(define add [x] [y] ^:pure (+ x y))
+
+;; EXPECT: 15
+(add 7 8)
+
+;; TEST: pure function enables parallel map
+(define square [x] ^:pure (* x x))
+
+;; EXPECT: (1 4 9 16 25)
+(map square '(1 2 3 4 5))
+
+;; TEST: pure recursive function
+(define factorial [n] ^:pure
+  (if (<= n 1)
+    1
+    (* n (factorial (- n 1)))))
+
+;; EXPECT: 120
+(factorial 5)
+
+;; TEST: pure higher-order function
+(define apply-twice [f] [x] ^:pure
+  (f (f x)))
+
+;; EXPECT: 16
+(apply-twice square 2)
+
+;; TEST: pure with explicit type
+(define typed-add [x {Int}] [y {Int}] ^:pure
+  (+ x y))
+
+;; EXPECT: 30
+(typed-add 10 20)
+
+;; TEST: multiple pure functions compose
+(define inc [x] ^:pure (+ x 1))
+(define double [x] ^:pure (* x 2))
+
+;; EXPECT: 22
+(inc (double (inc 10)))
+
+;; TEST: pure enables memoization
+(define fib [n] ^:pure
+  (if (< n 2)
+    n
+    (+ (fib (- n 1)) (fib (- n 2)))))
+
+;; EXPECT: 55
+(fib 10)
+
+;; EXPECT: 89
+(fib 11)

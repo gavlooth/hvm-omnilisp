@@ -1,0 +1,27 @@
+        -:    0:Source:../hvm4/clang/wnf/op2_inc.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// (↑x op y)
+        -:    2:// ---------- OP2-INC-X
+        -:    3:// ↑(x op y)
+    #####:    4:fn Term wnf_op2_inc_x(u32 opr, Term inc, Term y) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  inc_loc = term_val(inc);
+    #####:    7:  Term x       = heap_read(inc_loc);
+    #####:    8:  Term op      = term_new_op2(opr, x, y);
+    #####:    9:  heap_set(inc_loc, op);
+    #####:   10:  return term_new(0, INC, 0, inc_loc);
+        -:   11:}
+        -:   12:
+        -:   13:// (#n op ↑y)
+        -:   14:// ---------- OP2-INC-Y
+        -:   15:// ↑(#n op y)
+    #####:   16:fn Term wnf_op2_inc_y(u32 opr, Term x, Term inc) {
+    #####:   17:  ITRS++;
+    #####:   18:  u32  inc_loc = term_val(inc);
+    #####:   19:  Term y       = heap_read(inc_loc);
+    #####:   20:  Term op      = term_new_op2(opr, x, y);
+    #####:   21:  heap_set(inc_loc, op);
+    #####:   22:  return term_new(0, INC, 0, inc_loc);
+        -:   23:}

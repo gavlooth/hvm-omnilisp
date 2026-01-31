@@ -1,0 +1,14 @@
+        -:    0:Source:../hvm4/clang/wnf/app_red_inc.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// ((f ~> ↑g) x)
+        -:    2:// -------------- APP-RED-INC
+        -:    3:// ↑((f ~> g) x)
+    #####:    4:fn Term wnf_app_red_inc(Term f, Term inc, Term arg) {
+    #####:    5:  ITRS++;
+    #####:    6:  u32  inc_loc = term_val(inc);
+    #####:    7:  Term g       = heap_read(inc_loc);
+    #####:    8:  Term new_app = term_new_app(term_new_red(f, g), arg);
+    #####:    9:  return term_new_inc(new_app);
+        -:   10:}

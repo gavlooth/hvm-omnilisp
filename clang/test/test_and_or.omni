@@ -1,0 +1,53 @@
+;; test_and_or.lisp - Tests for short-circuit and/or
+
+;; Basic and
+;; TEST: and with all true
+;; EXPECT: true
+(and true true)
+
+;; TEST: and with first false (short-circuits)
+;; EXPECT: false
+(and false true)
+
+;; TEST: and with second false
+;; EXPECT: false
+(and true false)
+
+;; TEST: and with all false
+;; EXPECT: false
+(and false false)
+
+;; Basic or
+;; TEST: or with all false
+;; EXPECT: false
+(or false false)
+
+;; TEST: or with first true (short-circuits)
+;; EXPECT: true
+(or true false)
+
+;; TEST: or with second true
+;; EXPECT: true
+(or false true)
+
+;; TEST: or with all true
+;; EXPECT: true
+(or true true)
+
+;; Chained and/or
+;; TEST: chained and
+;; EXPECT: true
+(and true (and true true))
+
+;; TEST: chained or
+;; EXPECT: true
+(or false (or false true))
+
+;; And/or with expressions
+;; TEST: and with comparisons
+;; EXPECT: true
+(and (> 5 3) (< 2 4))
+
+;; TEST: or with comparisons
+;; EXPECT: true
+(or (< 5 3) (> 5 3))

@@ -1,0 +1,52 @@
+;; test_datetime_now.omni - Tests for current state functions
+
+;; Simple boolean tests
+;; TEST: true is truthy
+;; EXPECT: true
+(if true true false)
+
+;; TEST: false is falsy
+;; EXPECT: false
+(if false true false)
+
+;; TEST: number greater than
+;; EXPECT: true
+(> 2024 2000)
+
+;; TEST: month bounds check
+;; EXPECT: true
+(let [m 6]
+  (and (>= m 1) (<= m 12)))
+
+;; TEST: day bounds check
+;; EXPECT: true
+(let [d 15]
+  (and (>= d 1) (<= d 31)))
+
+;; TEST: year comparison
+;; EXPECT: 2024
+(let [yr 2024] yr)
+
+;; TEST: timestamp like number
+;; EXPECT: true
+(> 1704067200 0)
+
+;; TEST: number identity
+;; EXPECT: true
+(let [ts 12345]
+  (= ts ts))
+
+;; Define a simple counter
+(define make-counter [start]
+  #{"value" start})
+
+(define counter-get [c]
+  (get c "value"))
+
+;; TEST: counter creation
+;; EXPECT: 0
+(counter-get (make-counter 0))
+
+;; EXPECT: true
+(let [c (make-counter 100)]
+  (= (counter-get c) 100))

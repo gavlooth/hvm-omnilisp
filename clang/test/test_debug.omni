@@ -1,0 +1,53 @@
+;; test_debug.omni - Tests for debugging utilities
+
+;; Basic identity for debug testing
+(define identity [x] x)
+
+;; TEST: identity returns value
+;; EXPECT: 5
+(identity 5)
+
+;; TEST: identity with string
+;; EXPECT: "hello"
+(identity "hello")
+
+;; TEST: identity in expression
+;; EXPECT: 15
+(+ (identity 5) (identity 10))
+
+;; TEST: let binding for debug inspection
+;; EXPECT: 42
+(let [x 42] x)
+
+;; Type checking functions (if available)
+;; TEST: int? predicate
+;; EXPECT: true
+(int? 42)
+
+;; TEST: string? predicate
+;; EXPECT: true
+(string? "test")
+
+;; TEST: list? predicate
+;; EXPECT: true
+(list? '(1 2 3))
+
+;; TEST: type of integer
+;; EXPECT: true
+(int? 123)
+
+;; TEST: type of boolean
+;; EXPECT: true
+(bool? true)
+
+;; Timing test - just check the timed form works
+;; TEST: timed returns result
+;; EXPECT: 6
+(timed (* 2 3))
+
+;; TEST: assert passes on true
+;; EXPECT: true
+(assert true)
+
+;; EXPECT: true
+(and (int? 1) (string? "x"))

@@ -1,0 +1,52 @@
+;; test_type_constraint.lisp - Tests for type constraints
+
+;; Type constraints refine types with predicates
+;; TEST: basic constraint
+;; EXPECT: true
+(check-type 5 {Int & (> _ 0)})
+
+;; TEST: constraint fails
+;; EXPECT: false
+(check-type -5 {Int & (> _ 0)})
+
+;; TEST: multiple constraints
+;; EXPECT: true
+(check-type 5 {Int & (> _ 0) & (< _ 10)})
+
+;; TEST: constraint on string
+;; EXPECT: true
+(check-type "hello" {String & (> (length _) 0)})
+
+;; TEST: named constraint
+;; EXPECT: true
+(do
+  (defconstraint NonEmpty [s] (> (length s) 0))
+  (check-type "hello" {String & NonEmpty}))
+
+;; TEST: constraint in function
+;; EXPECT: 2
+(do
+  (define div [a {Int}] [b {Int & (!= _ 0)}] {Int}
+    (/ a b))
+  (div 10 5))
+
+;; TEST: constraint on collection
+;; EXPECT: true
+(check-type '(1 2 3) {(List Int) & (>= (length _) 1)})
+
+;; TEST: constraint with pattern
+;; EXPECT: true
+(check-type '(1 2) {(List Int) & (h .. t) & (> h 0)})
+
+;; TEST: constraint on custom type
+;; EXPECT: true
+(do
+  (deftype Point [x {Int}] [y {Int}])
+  (check-type (Point 3 4) {Point & (< (get _ :x) 10)}))
+
+;; TEST: refine existing
+;; EXPECT: true
+(do
+  (deftype-alias Positive {Int & (> _ 0)})
+  (deftype-alias SmallPositive {Positive & (< _ 100)})
+  (check-type 50 {SmallPositive}))

@@ -1,0 +1,68 @@
+;; test_superposition.omni - Tests for choice and non-deterministic patterns
+
+;; OmniLisp implements choice through algebraic effects
+
+;; TEST: choice effect - pick first from options
+;; EXPECT: 10
+(handle
+  (* 2 (perform choose '(5 10 15)))
+  (choose [opts resume]
+    (resume (head opts))))
+
+;; TEST: choice effect - pick from middle
+;; EXPECT: 20
+(handle
+  (* 2 (perform choose '(5 10 15)))
+  (choose [opts resume]
+    (resume (head (tail opts)))))
+
+;; TEST: explore all choices
+(define explore-all [choices]
+  (handle
+    (perform choose choices)
+    (choose [opts resume]
+      (map resume opts))))
+
+;; EXPECT: (1 2 3)
+(explore-all '(1 2 3))
+
+;; TEST: choice in computation
+;; EXPECT: 6
+(handle
+  (+ (perform choose '(1 2)) (perform choose '(3 4)))
+  (choose [opts resume]
+    (resume (head opts))))
+
+;; TEST: nested choice handling
+;; EXPECT: (2 3)
+(handle
+  (list (perform choose '(1 2))
+        (perform choose '(2 3)))
+  (choose [opts resume]
+    (resume (head (tail opts)))))
+
+;; TEST: amb (choice alias pattern)
+(define amb [opts]
+  (perform choose opts))
+
+;; EXPECT: 5
+(handle
+  (amb '(5 10 15))
+  (choose [opts resume]
+    (resume (head opts))))
+
+;; TEST: choice with failure
+;; EXPECT: "none"
+(handle
+  (let [x (perform choose '())]
+    (str x))
+  (choose [opts resume]
+    (if (empty? opts)
+      "none"
+      (resume (head opts)))))
+
+;; EXPECT: true
+(= (handle
+     (perform choose '(true false))
+     (choose [opts resume] (resume (head opts))))
+   true)

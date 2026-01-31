@@ -1,0 +1,119 @@
+// Test: Exploration System
+// Tests for non-deterministic search via HVM4 superposition
+
+// =============================================================================
+// Basic explore tests
+// =============================================================================
+
+// Test: explore creates superposition
+@test_explore_basic =
+  @explore(#CON{1, #CON{2, #CON{3, #NIL}}})
+  // Result: superposition of 1, 2, 3
+
+// Test: require filters based on condition
+@test_require_true =
+  @require(1)  // Should return #True{}
+
+@test_require_false =
+  @require(0)  // Should return #Noth{}
+
+// Test: guard with passing condition
+@test_guard_pass =
+  @guard(1)(42)  // Should return 42
+
+// Test: guard with failing condition
+@test_guard_fail =
+  @guard(0)(42)  // Should return #Noth{}
+
+// =============================================================================
+// Exploration with constraints
+// =============================================================================
+
+// Find pairs (x, y) where x + y = 4, x,y in {1,2,3}
+@test_explore_pairs =
+  !!&choices = #CON{1, #CON{2, #CON{3, #NIL}}};
+  !!&x = @explore(choices);
+  !!&y = @explore(choices);
+  @guard((x + y) == 4)(#CON{x, #CON{y, #NIL}})
+  // Result: superposition of [1,3], [2,2], [3,1] with #Noth for invalid pairs
+
+// =============================================================================
+// Range exploration
+// =============================================================================
+
+// Test: range generation
+@test_range =
+  @range(1)(5)  // Should be [1, 2, 3, 4]
+
+// Test: explore_range
+@test_explore_range =
+  @explore_range(1)(4)  // Superposition of 1, 2, 3
+
+// =============================================================================
+// Constraint helpers
+// =============================================================================
+
+// Test: member check
+@test_member_found =
+  @member(2)(#CON{1, #CON{2, #CON{3, #NIL}}})  // Should be #True{}
+
+@test_member_not_found =
+  @member(5)(#CON{1, #CON{2, #CON{3, #NIL}}})  // Should be #Fals{}
+
+// Test: not_member check
+@test_not_member =
+  @not_member(5)(#CON{1, #CON{2, #CON{3, #NIL}}})  // Should be #True{}
+
+// Test: all_different
+@test_all_different_yes =
+  @all_different(#CON{1, #CON{2, #CON{3, #NIL}}})  // Should be #True{}
+
+@test_all_different_no =
+  @all_different(#CON{1, #CON{2, #CON{1, #NIL}}})  // Should be #Fals{}
+
+// =============================================================================
+// Explore_all (eager, collects valid results)
+// =============================================================================
+
+// Test: explore_all collects valid results
+@test_explore_all =
+  @explore_all(#CON{1, #CON{2, #CON{3, #CON{4, #CON{5, #NIL}}}}})(
+    λ&x. @guard((x > 2))(x)
+  )
+  // Should be [3, 4, 5]
+
+// =============================================================================
+// Filter valid
+// =============================================================================
+
+// Test: filter_valid removes #Noth values
+@test_filter_valid =
+  @filter_valid(#CON{1, #CON{#Noth{}, #CON{2, #CON{#Noth{}, #CON{3, #NIL}}}}})
+  // Should be [1, 2, 3]
+
+// =============================================================================
+// Explore2 (Cartesian product)
+// =============================================================================
+
+// Test: explore2 creates cartesian product
+@test_explore2 =
+  @explore2(#CON{1, #CON{2, #NIL}})(#CON{10, #CON{20, #NIL}})(
+    λ&x. λ&y. (x + y)
+  )
+  // Superposition of 11, 21, 12, 22
+
+// =============================================================================
+// Main test runner
+// =============================================================================
+
+@main =
+  // Run basic tests
+  !!&t1 = @test_range;
+  !!&t2 = @test_member_found;
+  !!&t3 = @test_not_member;
+  !!&t4 = @test_all_different_yes;
+  !!&t5 = @test_filter_valid;
+  !!&t6 = @test_explore_all;
+  // Print results
+  #CON{#CON{97, #CON{108, #CON{108, #CON{32, #CON{116, #CON{101, #CON{115, #CON{116, #CON{115, #CON{32, #CON{112, #CON{97, #CON{115, #CON{115, #CON{101, #CON{100, #NIL}}}}}}}}}}}}}}}}, // "all tests passed"
+       #CON{t1, #CON{t2, #CON{t3, #CON{t4, #CON{t5, #CON{t6, #NIL}}}}}}}

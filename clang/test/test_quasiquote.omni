@@ -1,0 +1,57 @@
+;; test_quasiquote.lisp - Tests for quasiquote
+
+;; Basic quasiquote returns quoted form
+;; TEST: basic quasiquote
+;; EXPECT: (1 2 3)
+`(1 2 3)
+
+;; TEST: quasiquote with symbols
+;; EXPECT: (a b c)
+`(a b c)
+
+;; TEST: nested quasiquote structure
+;; EXPECT: ((1 2) (3 4))
+`((1 2) (3 4))
+
+;; Unquote inserts evaluated value
+;; TEST: unquote value
+;; EXPECT: (1 42 3)
+(let [x 42]
+  `(1 ,x 3))
+
+;; TEST: unquote expression
+;; EXPECT: (sum 15)
+`(sum ,(+ 5 10))
+
+;; TEST: multiple unquotes
+;; EXPECT: (3 7)
+(let [a 3] [b 7]
+  `(,a ,b))
+
+;; Unquote-splicing
+;; TEST: splice list
+;; EXPECT: (1 2 3 4 5)
+(let [middle '(2 3 4)]
+  `(1 ,@middle 5))
+
+;; TEST: splice at start
+;; EXPECT: (1 2 3 4)
+(let [start '(1 2)]
+  `(,@start 3 4))
+
+;; TEST: splice at end
+;; EXPECT: (1 2 3 4)
+(let [end '(3 4)]
+  `(1 2 ,@end))
+
+;; Combine unquote and splice
+;; TEST: mixed unquote operations
+;; EXPECT: (define foo (x y z))
+(let [name 'foo]
+      [args '(x y z)]
+  `(define ,name ,@args))
+
+;; Nested quasiquote
+;; TEST: nested quasiquote
+;; EXPECT: (a `(b ,c))
+`(a `(b ,c))

@@ -1,0 +1,53 @@
+;; test_lazy_strict.omni - Tests for lazy vs strict evaluation
+
+;; OmniLisp defaults to lazy evaluation; ^:strict forces eager evaluation
+
+;; TEST: lazy binding - not evaluated if unused
+;; (expensive computation is never run)
+;; EXPECT: 10
+(let [used 10]
+     [unused (+ 999999 888888)]
+  used)
+
+;; TEST: strict binding forces evaluation
+;; EXPECT: 20
+(let [^:strict x 20]
+  x)
+
+;; TEST: mixed strict and lazy
+;; EXPECT: 30
+(let [^:strict eager 10]
+     [lazy 20]
+  (+ eager lazy))
+
+;; TEST: strict sequential evaluation
+;; EXPECT: 4
+(let ^:strict ^:seq
+  [x 1]
+  [y (+ x 1)]
+  [z (+ y 1)]
+  [w (+ z 1)]
+  w)
+
+;; TEST: lazy allows infinite structures (conceptually)
+;; Only force what we need
+;; EXPECT: 5
+(let [infinite (fn [n] (cons n (infinite (+ n 1))))]
+  (head (tail (tail (tail (tail (infinite 1)))))))
+
+;; TEST: strict with computation
+;; EXPECT: 100
+(let [^:strict computed (* 10 10)]
+  computed)
+
+;; TEST: lazy in conditional - unused branch not evaluated
+;; EXPECT: 1
+(let [then-val 1]
+     [else-val (/ 1 0)]
+  (if true then-val else-val))
+
+;; EXPECT: 15
+(let ^:strict
+  [a 5]
+  [b 10]
+  (+ a b))

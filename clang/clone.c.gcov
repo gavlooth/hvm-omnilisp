@@ -1,0 +1,39 @@
+        -:    0:Source:../hvm4/clang/term/clone.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+ 17953530:    1:fn Copy term_clone_at(u32 loc, u32 lab) {
+ 17953530:    2:  return (Copy){ term_new_dp0(lab, loc), term_new_dp1(lab, loc) };
+        -:    3:}
+        -:    4:
+    35564:    5:fn Copy term_clone(u32 lab, Term val) {
+    35564:    6:  u64 loc   = heap_alloc(1);
+    35564:    7:  heap_write(loc, val);
+    35564:    8:  return term_clone_at(loc, lab);
+        -:    9:}
+        -:   10:
+    #####:   11:fn void term_clone2(u32 lab, Term a, Term b, Copy *A, Copy *B) {
+    #####:   12:  u64 loc = heap_alloc(2);
+    #####:   13:  heap_write(loc + 0, a);
+    #####:   14:  heap_write(loc + 1, b);
+    #####:   15:  *A = term_clone_at(loc + 0, lab);
+    #####:   16:  *B = term_clone_at(loc + 1, lab);
+    #####:   17:}
+        -:   18:
+        -:   19:fn void term_clone3(u32 lab, Term a, Term b, Term c, Copy *A, Copy *B, Copy *C) {
+        -:   20:  u64 loc = heap_alloc(3);
+        -:   21:  heap_write(loc + 0, a);
+        -:   22:  heap_write(loc + 1, b);
+        -:   23:  heap_write(loc + 2, c);
+        -:   24:  *A = term_clone_at(loc + 0, lab);
+        -:   25:  *B = term_clone_at(loc + 1, lab);
+        -:   26:  *C = term_clone_at(loc + 2, lab);
+        -:   27:}
+        -:   28:
+        -:   29:fn void term_clone_many(u32 lab, Term *src, u32 n, Term *dst0, Term *dst1) {
+        -:   30:  for (u32 i = 0; i < n; i++) {
+        -:   31:    Copy c  = term_clone(lab, src[i]);
+        -:   32:    dst0[i] = c.k0;
+        -:   33:    dst1[i] = c.k1;
+        -:   34:  }
+        -:   35:}

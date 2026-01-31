@@ -1,0 +1,69 @@
+;; test_effects_finally.omni - Tests for effect cleanup patterns
+
+;; Cleanup pattern using handle with early return
+;; TEST: handle returns result
+;; EXPECT: "result"
+(handle
+  "result"
+  (cleanup [msg resume] (resume msg)))
+
+;; TEST: cleanup after effect
+;; EXPECT: "cleaned"
+(handle
+  (do
+    (perform cleanup-needed "task")
+    "result")
+  (cleanup-needed [msg resume] (resume "cleaned")))
+
+;; TEST: nested handles for cleanup
+;; EXPECT: 42
+(handle
+  (handle
+    42
+    (inner [msg resume] (resume msg)))
+  (outer [msg resume] (resume msg)))
+
+;; TEST: finally-like pattern - return cleanup status
+;; EXPECT: "done"
+(handle
+  (let [result (perform work "task")]
+    result)
+  (work [task resume] (resume "done")))
+
+;; TEST: multiple cleanup operations
+;; EXPECT: true
+(handle
+  (do
+    (perform step1 "a")
+    (perform step2 "b")
+    true)
+  (step1 [msg resume] (resume msg))
+  (step2 [msg resume] (resume msg)))
+
+;; TEST: effect with resumption and cleanup value
+;; EXPECT: 42
+(handle
+  (+ (perform get-value "x") 2)
+  (get-value [key resume] (resume 40)))
+
+;; Resource pattern using effects
+(define with-resource [init] [body]
+  (handle
+    (let [r init]
+      (let [result (body r)]
+        (perform release r)
+        result))
+    (release [r resume] (resume nothing))))
+
+;; TEST: with-resource pattern
+;; EXPECT: 100
+(with-resource 10 (lambda [r] (* r 10)))
+
+;; EXPECT: true
+(handle
+  (do
+    (perform setup nothing)
+    (perform teardown nothing)
+    true)
+  (setup [_ resume] (resume nothing))
+  (teardown [_ resume] (resume nothing)))

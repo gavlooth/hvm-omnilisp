@@ -1,0 +1,13 @@
+        -:    0:Source:../hvm4/clang/term/new/eql.c
+        -:    0:Graph:main-cov-main.gcno
+        -:    0:Data:main-cov-main.gcda
+        -:    0:Runs:422
+        -:    1:// Eql(a, b): structural equality, strict on a first then b
+        -:    2:// Layout: heap_read(loc+0) = a, heap_read(loc+1) = b
+        -:    3:// Returns #1 if equal, #0 if not
+    #####:    4:fn Term term_new_eql(Term a, Term b) {
+    #####:    5:  u32 loc = heap_alloc(2);
+    #####:    6:  heap_write(loc + 0, a);
+    #####:    7:  heap_write(loc + 1, b);
+    #####:    8:  return term_new(0, EQL, 0, loc);
+        -:    9:}

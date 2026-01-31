@@ -1,0 +1,39 @@
+;; test_shift.omni - Tests for shift (alternative continuation capture)
+
+;; TEST: basic shift - capture and invoke continuation
+;; EXPECT: 11
+(reset
+  (+ 1 (shift k (k 10))))
+
+;; TEST: shift without invoking continuation
+;; EXPECT: 99
+(reset
+  (+ 1 (shift k 99)))
+
+;; TEST: shift - multi-shot continuation
+;; EXPECT: 12
+(reset
+  (+ 1 (shift k (k (k 10)))))
+
+;; TEST: shift with computation in body
+;; EXPECT: 15
+(reset
+  (+ 1 (shift k (+ 5 (k 9)))))
+
+;; TEST: nested shift/reset
+;; EXPECT: 6
+(reset
+  (+ 1
+    (shift k1
+      (reset
+        (+ 2 (shift k2 (k1 (k2 1))))))))
+
+;; TEST: shift capturing let bindings
+;; EXPECT: 25
+(reset
+  (let [base 20]
+    (+ base (shift k (k 5)))))
+
+;; EXPECT: 100
+(reset
+  (* 10 (shift k (k 10))))

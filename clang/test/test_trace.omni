@@ -1,0 +1,63 @@
+;; test_trace.lisp - Tests for tracing/debugging
+
+;; Trace logs function calls
+;; TEST: trace returns value
+;; EXPECT: 42
+(trace "label" 42)
+
+;; TEST: trace expression
+;; EXPECT: 6
+(trace "sum" (+ 1 2 3))
+
+;; Trace function calls
+;; TEST: trace function
+;; EXPECT: 120
+(define factorial [n]
+  (if (<= n 1)
+    1
+    (* n (factorial (- n 1)))))
+(with-trace factorial
+  (factorial 5))
+
+;; Debug macro shows expression and value
+;; TEST: debug returns value
+;; EXPECT: 10
+(debug (* 2 5))
+
+;; TEST: debug variable
+;; EXPECT: 42
+(let [x 42]
+  (debug x))
+
+;; Spy logs and returns
+;; TEST: spy returns value
+;; EXPECT: (1 2 3)
+(spy (list 1 2 3))
+
+;; TEST: spy in pipeline
+;; EXPECT: 30
+(let [nums '(1 2 3 4 5)]
+  (foldl + 0 (spy (map (lambda [x] (* x 2)) nums))))
+
+;; Timed measures execution
+;; TEST: timed returns value
+;; EXPECT: 42
+(timed "computation" 42)
+
+;; TEST: timed with real computation
+;; EXPECT: true
+(let [result (timed "fib" (fib 10))]
+  (= result 55))
+
+;; Breakpoint (simulated)
+;; TEST: breakpoint continues
+;; EXPECT: "after"
+(with-mock-debugger
+  "before"
+  (breakpoint)
+  "after")
+
+;; Inspect value
+;; TEST: inspect returns value
+;; EXPECT: #{"a" 1}
+(inspect #{"a" 1})

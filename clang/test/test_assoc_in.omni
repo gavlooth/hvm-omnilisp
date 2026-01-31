@@ -1,0 +1,45 @@
+;; test_assoc_in.lisp - Tests for nested path setting
+
+;; Assoc-in sets a value at a nested path, creating intermediate dicts
+(define assoc-in [coll] [path] [val]
+  (match path
+    ()       val
+    (k)      (dict-set coll k val)
+    (k .. rest)
+      (let [inner (dict-get coll k #{})]
+        (dict-set coll k (assoc-in inner rest val)))))
+
+;; TEST: assoc-in single level
+;; EXPECT: #{"a" 99}
+(assoc-in #{} '("a") 99)
+
+;; TEST: assoc-in two levels
+;; EXPECT: #{"outer" #{"inner" 42}}
+(assoc-in #{} '("outer" "inner") 42)
+
+;; TEST: assoc-in three levels
+;; EXPECT: #{"a" #{"b" #{"c" "deep"}}}
+(assoc-in #{} '("a" "b" "c") "deep")
+
+;; TEST: assoc-in updates existing
+;; EXPECT: #{"a" #{"b" 2}}
+(assoc-in #{"a" #{"b" 1}} '("a" "b") 2)
+
+;; TEST: assoc-in preserves siblings
+;; EXPECT: #{"a" #{"x" 1 "y" 2}}
+(assoc-in #{"a" #{"x" 1}} '("a" "y") 2)
+
+;; TEST: assoc-in creates intermediate
+;; EXPECT: #{"existing" 1 "new" #{"nested" "value"}}
+(assoc-in #{"existing" 1} '("new" "nested") "value")
+
+;; Complex structure
+(define base #{"user" #{"name" "Alice" "age" 30}})
+
+;; TEST: update nested field
+;; EXPECT: #{"user" #{"name" "Alice" "age" 31}}
+(assoc-in base '("user" "age") 31)
+
+;; TEST: add new nested field
+;; EXPECT: #{"user" #{"name" "Alice" "age" 30 "email" "a@b.com"}}
+(assoc-in base '("user" "email") "a@b.com")
