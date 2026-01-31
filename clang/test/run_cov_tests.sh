@@ -186,9 +186,9 @@ HVM4_COV="${SCRIPT_DIR}/../hvm4-cov"
 HVM4_TEST_DIR="${SCRIPT_DIR}/../../hvm4/test"
 
 if [[ -x "$HVM4_COV" && -d "$HVM4_TEST_DIR" ]]; then
-    # Run a selection of HVM4 tests that exercise different term types
+    # Comprehensive HVM4 tests for term.c coverage
     HVM4_TESTS=(
-        # Autodup tests (DUP terms)
+        # === Autodup tests (DUP terms, multi-char names) ===
         "autodup_1.hvm4"
         "autodup_2.hvm4"
         "autodup_3.hvm4"
@@ -198,20 +198,35 @@ if [[ -x "$HVM4_COV" && -d "$HVM4_TEST_DIR" ]]; then
         "autodup_many.hvm4"
         "autodup_mat_lam.hvm4"
         "autodup_nested_lam.hvm4"
-        # DUP terms
+        "autodup_nightmare.hvm4"
+        "autodup_mixed.hvm4"
+        "autodup_bound_vars.hvm4"
+        "autodup_strict.hvm4"
+
+        # === DUP terms ===
         "dup_affine_valid.hvm4"
         "dup_fresh.hvm4"
-        # Lambda tests (LAM/APP/VAR terms)
+
+        # === Lambda tests (LAM/APP/VAR terms) ===
         "lambda_eval.hvm4"
         "lam_dup_dyn.hvm4"
         "lam_dup_static.hvm4"
         "lam_dup_sup.hvm4"
-        # Match tests (MAT/SWI terms)
+
+        # === Match tests (MAT/SWI - print_mat_name) ===
         "match_0.hvm4"
         "match_1.hvm4"
         "match_2.hvm4"
         "match_3.hvm4"
-        # Collapse tests (SUP terms, print_alpha_name, print_lam_name)
+        "print_mat.hvm4"
+        "print_mat_default.hvm4"
+        "print_mat_lst.hvm4"
+        "print_mat_nat.hvm4"
+        "print_swi.hvm4"
+        "sugar_mat_lst.hvm4"
+        "sugar_mat_nat.hvm4"
+
+        # === Collapse tests (SUP terms, print_alpha_name, print_lam_name) ===
         "collapse_0.hvm4"
         "collapse_1.hvm4"
         "collapse_2.hvm4"
@@ -221,8 +236,92 @@ if [[ -x "$HVM4_COV" && -d "$HVM4_TEST_DIR" ]]; then
         "collapse_6.hvm4"
         "collapse_7.hvm4"
         "collapse_8.hvm4"
-        # Other
+
+        # === Sugar tests (print_ctr: nat, char, string, list) ===
+        "sugar_chr.hvm4"
+        "sugar_cons.hvm4"
+        "sugar_lst.hvm4"
+        "sugar_nat.hvm4"
+        "sugar_nat_plus.hvm4"
+        "sugar_nil.hvm4"
+        "sugar_str.hvm4"
+
+        # === Primitive ops (OP2 printing) ===
+        "prim_add.hvm4"
+        "prim_sub.hvm4"
+        "prim_mul.hvm4"
+        "prim_div.hvm4"
+        "prim_mod.hvm4"
+        "prim_and.hvm4"
+        "prim_or.hvm4"
+        "prim_xor.hvm4"
+        "prim_lsh.hvm4"
+        "prim_rsh.hvm4"
+        "prim_not.hvm4"
+        "prim_eq.hvm4"
+        "prim_ne.hvm4"
+        "prim_lt.hvm4"
+        "prim_le.hvm4"
+        "prim_gt.hvm4"
+        "prim_ge.hvm4"
+        "prim_sp0.hvm4"
+        "prim_sp1.hvm4"
+        "prim_sup.hvm4"
+
+        # === RED/AND/OR tests (comparison terms) ===
+        "red_add_stuck_a.hvm4"
+        "red_add_stuck_b.hvm4"
+        "red_and_ff.hvm4"
+        "red_and_tf.hvm4"
+        "red_and_tt.hvm4"
+        "red_and_stuck_a.hvm4"
+        "red_and_stuck_b.hvm4"
+        "red_dbl.hvm4"
+        "red_dbl_stuck.hvm4"
+        "red_dup.hvm4"
+        "red_foo.hvm4"
+        "red_foo2.hvm4"
+        "red_id.hvm4"
+        "red_not.hvm4"
+        "red_not2.hvm4"
+        "red_prd.hvm4"
+        "red_prd_direct.hvm4"
+        "red_simple.hvm4"
+        "red_sum.hvm4"
+        "red_sum_stuck.hvm4"
+
+        # === Unscoped tests (UNS term, unscoped vars) ===
         "unscoped.hvm4"
+        "unscoped_callcc.hvm4"
+        "unscoped_mut_ref.hvm4"
+        "unscoped_nested.hvm4"
+        "unscoped_queue.hvm4"
+        "unscoped_var.hvm4"
+        "scoped_var.hvm4"
+        "scoped_var_both.hvm4"
+        "snf_unscoped.hvm4"
+
+        # === Unicode tests (UTF-8 printing) ===
+        "unicode_char.hvm4"
+        "unicode_cjk.hvm4"
+        "unicode_emoji.hvm4"
+        "unicode_greek.hvm4"
+        "unicode_mixed.hvm4"
+        "unicode_string.hvm4"
+
+        # === Church numerals (multi-char names from deep lambdas) ===
+        "c2_not_t.hvm4"
+        "cadd_c1_c1_not.hvm4"
+        "cadd_c2_c2.hvm4"
+        "cadd_c4_c4.hvm4"
+        "cmul_c4_c2.hvm4"
+        "cmul_c4_c4.hvm4"
+        "cnot_not.hvm4"
+        "cnot_true.hvm4"
+        "snf_c2_k2.hvm4"
+
+        # === Misc tests ===
+        "sum_4.hvm4"
     )
 
     for test in "${HVM4_TESTS[@]}"; do
