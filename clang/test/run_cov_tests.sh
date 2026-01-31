@@ -192,18 +192,17 @@ if [[ -x "$HVM4_COV" && -d "$HVM4_TEST_DIR" ]]; then
         "autodup_1.hvm4"
         "autodup_2.hvm4"
         "autodup_3.hvm4"
-        "autodup_dup_dyn.hvm4"
-        "autodup_dup_static.hvm4"
+        "autodup_4.hvm4"
+        "autodup_deep.hvm4"
+        "autodup_let.hvm4"
+        "autodup_many.hvm4"
         "autodup_mat_lam.hvm4"
         "autodup_nested_lam.hvm4"
-        "autodup_sup_mix.hvm4"
         # DUP terms
         "dup_affine_valid.hvm4"
-        "dup_affine_bare.hvm4"
         "dup_fresh.hvm4"
-        # Lambda tests (LAM/APP terms)
+        # Lambda tests (LAM/APP/VAR terms)
         "lambda_eval.hvm4"
-        "lam_dup_auto.hvm4"
         "lam_dup_dyn.hvm4"
         "lam_dup_static.hvm4"
         "lam_dup_sup.hvm4"
@@ -212,15 +211,17 @@ if [[ -x "$HVM4_COV" && -d "$HVM4_TEST_DIR" ]]; then
         "match_1.hvm4"
         "match_2.hvm4"
         "match_3.hvm4"
-        # Collapse tests (SUP terms)
+        # Collapse tests (SUP terms, print_alpha_name, print_lam_name)
         "collapse_0.hvm4"
         "collapse_1.hvm4"
         "collapse_2.hvm4"
-        # Church numeral tests
-        "c2_not_t.hvm4"
-        "cadd_c1_c1_not.hvm4"
-        "cadd_c2_c2.hvm4"
-        # Unscoped/other
+        "collapse_3.hvm4"
+        "collapse_4.hvm4"
+        "collapse_5.hvm4"
+        "collapse_6.hvm4"
+        "collapse_7.hvm4"
+        "collapse_8.hvm4"
+        # Other
         "unscoped.hvm4"
     )
 
