@@ -470,13 +470,13 @@ fn int omni_load_runtime(void) {
   // Find and load prelude.hvm4
   char *prelude_path = omni_find_runtime_file("prelude.hvm4");
   if (!prelude_path) {
-    fprintf(stderr, "Warning: Could not find lib/prelude.hvm4, using C interpreter\n");
+    fprintf(stderr, "Error: Could not find lib/prelude.hvm4 (required for evaluation)\n");
     return 1;
   }
 
   char *prelude_src = sys_file_read(prelude_path);
   if (!prelude_src) {
-    fprintf(stderr, "Warning: Could not read %s, using C interpreter\n", prelude_path);
+    fprintf(stderr, "Error: Could not read %s\n", prelude_path);
     return 1;
   }
 
@@ -494,13 +494,13 @@ fn int omni_load_runtime(void) {
   // Find and load runtime.hvm4
   char *runtime_path = omni_find_runtime_file("runtime.hvm4");
   if (!runtime_path) {
-    fprintf(stderr, "Warning: Could not find lib/runtime.hvm4, using C interpreter\n");
+    fprintf(stderr, "Error: Could not find lib/runtime.hvm4 (required for evaluation)\n");
     return 1;
   }
 
   char *runtime_src = sys_file_read(runtime_path);
   if (!runtime_src) {
-    fprintf(stderr, "Warning: Could not read %s, using C interpreter\n", runtime_path);
+    fprintf(stderr, "Error: Could not read %s\n", runtime_path);
     return 1;
   }
 
@@ -520,7 +520,7 @@ fn int omni_load_runtime(void) {
   u32 menv_id = table_find("omni_menv_empty", 15);
 
   if (BOOK[eval_id] == 0 || BOOK[menv_id] == 0) {
-    fprintf(stderr, "Warning: runtime.hvm4 missing required definitions, using C interpreter\n");
+    fprintf(stderr, "Error: runtime.hvm4 missing required definitions (@omni_eval, @omni_menv_empty)\n");
     return 1;
   }
 
