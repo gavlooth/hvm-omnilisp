@@ -697,7 +697,7 @@ fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug
     // @omni_eval(@omni_menv_empty)(ast)
     Term eval_expr = term_new_app(eval_with_menv, ast);
 
-    // Evaluate to normal form
+    // Evaluate to strong normal form
     result = eval_normalize(eval_expr);
   } else {
     // Runtime is required - no fallback interpreter

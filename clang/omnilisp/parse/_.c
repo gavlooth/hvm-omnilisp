@@ -517,7 +517,13 @@ fn int omni_parse_number(PState *s, Term *out) {
 // =============================================================================
 
 fn Term parse_omni_string(PState *s) {
-  omni_expect_char(s, '"');
+  // Don't use omni_expect_char here - it skips whitespace after the quote,
+  // which would strip leading whitespace from the string content
+  omni_skip(s);
+  if (parse_peek(s) != '"') {
+    parse_error(s, "\"", parse_peek(s));
+  }
+  parse_advance(s);  // advance past opening quote, but DON'T skip whitespace after
 
   Term result = omni_nil();
   Term *tail = &result;
@@ -745,11 +751,139 @@ fn int parse_omni_slot(PState *s, OmniSlot *out) {
 }
 
 // =============================================================================
-// Macro Pattern and Template Parsing
+// Local Define Parsing (for do blocks)
 // =============================================================================
 
-// Forward declaration for expression parsing
+// Forward declaration for expression parsing (needed here)
 fn Term parse_omni_expr(PState *s);
+
+// Structure to hold local define result
+typedef struct {
+  u32 name_nick;    // Name of the defined binding
+  Term body;        // Body wrapped in lambdas
+  int success;      // 1 if parsed successfully
+} LocalDefine;
+
+// Parse a local define inside a do block
+// Assumes we've already matched `(define` and skipped past it
+// Returns the name and body without storing to BOOK
+// This allows (do (define x ...) ...) to be desugared to (let [x ...] ...)
+fn LocalDefine parse_local_define(PState *s) {
+  LocalDefine result = {0, 0, 0};
+
+  omni_skip(s);
+
+  // Check for type definitions - not supported as local defines
+  if (parse_peek(s) == '{') {
+    // Type definitions can't be local
+    return result;
+  }
+
+  // Parse name
+  u32 name_start, name_len;
+  if (!omni_parse_symbol_raw(s, &name_start, &name_len)) {
+    return result;
+  }
+  result.name_nick = omni_symbol_nick(s, name_start, name_len);
+
+  // Check for slots (function definition)
+  OmniSlot slots[64];
+  u32 slot_count = 0;
+  omni_skip(s);
+  while (parse_peek(s) == '[' && slot_count < 64) {
+    if (!parse_omni_slot(s, &slots[slot_count])) break;
+    slot_count++;
+  }
+
+  // Skip return type if present
+  omni_skip(s);
+  if (parse_peek(s) == '{') {
+    parse_omni_type(s);  // Consume but ignore for local define
+  }
+
+  // Skip metadata (^:pure, ^:effects, etc.) for local defines
+  // Just consume any ^ tokens until we hit the body
+  while (parse_peek(s) == '^') {
+    u32 saved = s->pos;
+    parse_advance(s);  // skip ^
+    if (parse_peek(s) == ':') {
+      parse_advance(s);  // skip :
+      u32 meta_start, meta_len;
+      if (omni_parse_symbol_raw(s, &meta_start, &meta_len)) {
+        omni_skip(s);
+        // Skip metadata value if any (for ^:effects [...], etc.)
+        if (parse_peek(s) == '[') {
+          // Skip balanced brackets
+          int depth = 1;
+          parse_advance(s);
+          while (depth > 0 && !parse_at_end(s)) {
+            char c = parse_peek(s);
+            if (c == '[') depth++;
+            else if (c == ']') depth--;
+            parse_advance(s);
+          }
+          omni_skip(s);
+        }
+        continue;
+      }
+    }
+    s->pos = saved;
+    break;
+  }
+
+  // Push parameter bindings for de Bruijn indexing
+  for (u32 i = 0; i < slot_count; i++) {
+    omni_bind_push(slots[i].name_nick);
+  }
+
+  // Parse body
+  Term body = parse_omni_expr(s);
+
+  omni_expect_char(s, ')');
+
+  // Pop bindings
+  omni_bind_pop(slot_count);
+
+  // Wrap body in lambdas (innermost first)
+  for (int i = (int)slot_count - 1; i >= 0; i--) {
+    body = omni_lam(body);
+  }
+
+  result.body = body;
+  result.success = 1;
+  return result;
+}
+
+// Check if the next expression is a `(define ...)` form
+// Returns 1 and advances past `(define` if true, else returns 0 and restores position
+fn int peek_is_define(PState *s) {
+  u32 saved = s->pos;
+  omni_skip(s);
+
+  if (parse_peek(s) != '(') {
+    s->pos = saved;
+    return 0;
+  }
+  parse_advance(s);  // skip (
+
+  u32 sym_start, sym_len;
+  if (!omni_parse_symbol_raw(s, &sym_start, &sym_len)) {
+    s->pos = saved;
+    return 0;
+  }
+
+  if (!omni_symbol_is(s, sym_start, sym_len, "define")) {
+    s->pos = saved;
+    return 0;
+  }
+
+  // Found (define, don't restore position - caller will parse the define
+  return 1;
+}
+
+// =============================================================================
+// Macro Pattern and Template Parsing
+// =============================================================================
 
 // Parse a macro pattern (the LHS of a macro rule)
 // Patterns can contain:
@@ -2909,17 +3043,13 @@ fn Term parse_omni_sexp(PState *s) {
       body = omni_lam(body);
     }
 
-    // Wrap with purity marker if ^:pure was specified
-    // #Pure{fn} indicates function has no side effects
-    if (is_pure) {
-      body = omni_ctr1(OMNI_NAM_PURE, body);
-    }
-
-    // Wrap with associativity marker if ^:associative was specified
-    // #Assc{fn} indicates function is associative (can use tree reduction)
-    if (is_associative) {
-      body = omni_ctr1(OMNI_NAM_ASSC, body);
-    }
+    // NOTE: ^:pure and ^:associative metadata are parsed but NOT wrapped around
+    // the function body anymore. HVM4 cannot apply constructors, so wrapping
+    // #Pure{fn} or #Assc{fn} would break function calls at runtime.
+    // TODO: Implement metadata registry for compile-time optimization.
+    // The is_pure and is_associative flags can be used for optimization passes.
+    (void)is_pure;
+    (void)is_associative;
 
     // Check if this is a typed function (for multiple dispatch)
     if (has_typed_params && slot_count > 0) {
@@ -4143,10 +4273,121 @@ fn Term parse_omni_sexp(PState *s) {
   }
 
   // begin/do: (begin e1 e2 ...) - sequencing
+  // Special handling: (define ...) inside do is desugared to (let [...] ...)
+  // This avoids BOOK storage issues with HVM4's lazy ALO expansion
+  //
+  // (do (define a 1) (define b 2) (+ a b))
+  // => (let [a 1] (let [b 2] (+ a b)))
+  //
+  // (do e1 (define a 1) e2)
+  // => (do e1 (let [a 1] e2))
   if (omni_symbol_is(s, sym_start, sym_len, "begin") ||
       omni_symbol_is(s, sym_start, sym_len, "do")) {
     Term result = omni_nothing();
+
     while (parse_peek(s) != ')') {
+      // Check if next expression is (define ...)
+      if (peek_is_define(s)) {
+        // Parse local define (doesn't store to BOOK)
+        LocalDefine local_def = parse_local_define(s);
+
+        if (local_def.success) {
+          // Push binding for the defined name
+          omni_bind_push(local_def.name_nick);
+
+          // Parse remaining expressions recursively as the let body
+          // This handles nested defines properly via recursive descent
+          Term let_body = omni_nothing();
+          while (parse_peek(s) != ')') {
+            // Check for nested define
+            if (peek_is_define(s)) {
+              LocalDefine nested_def = parse_local_define(s);
+              if (nested_def.success) {
+                // Push nested binding
+                omni_bind_push(nested_def.name_nick);
+
+                // Recursively parse remaining as inner let body
+                Term inner_body = omni_nothing();
+                while (parse_peek(s) != ')') {
+                  // Continue checking for more nested defines
+                  if (peek_is_define(s)) {
+                    LocalDefine inner_def = parse_local_define(s);
+                    if (inner_def.success) {
+                      omni_bind_push(inner_def.name_nick);
+
+                      // Parse rest as innermost body
+                      Term innermost = omni_nothing();
+                      while (parse_peek(s) != ')') {
+                        Term expr = parse_omni_expr(s);
+                        if (term_ext(innermost) == OMNI_NAM_NOTH) {
+                          innermost = expr;
+                        } else {
+                          innermost = omni_ctr2(OMNI_NAM_DO, innermost, expr);
+                        }
+                      }
+
+                      omni_bind_pop(1);
+
+                      if (term_ext(innermost) == OMNI_NAM_NOTH) {
+                        innermost = omni_nothing();
+                      }
+                      Term inner_let = omni_let(inner_def.body, innermost);
+                      if (term_ext(inner_body) == OMNI_NAM_NOTH) {
+                        inner_body = inner_let;
+                      } else {
+                        inner_body = omni_ctr2(OMNI_NAM_DO, inner_body, inner_let);
+                      }
+                      break;
+                    }
+                  }
+                  Term expr = parse_omni_expr(s);
+                  if (term_ext(inner_body) == OMNI_NAM_NOTH) {
+                    inner_body = expr;
+                  } else {
+                    inner_body = omni_ctr2(OMNI_NAM_DO, inner_body, expr);
+                  }
+                }
+
+                omni_bind_pop(1);
+
+                if (term_ext(inner_body) == OMNI_NAM_NOTH) {
+                  inner_body = omni_nothing();
+                }
+                Term nested_let = omni_let(nested_def.body, inner_body);
+                if (term_ext(let_body) == OMNI_NAM_NOTH) {
+                  let_body = nested_let;
+                } else {
+                  let_body = omni_ctr2(OMNI_NAM_DO, let_body, nested_let);
+                }
+                break;
+              }
+            }
+            Term expr = parse_omni_expr(s);
+            if (term_ext(let_body) == OMNI_NAM_NOTH) {
+              let_body = expr;
+            } else {
+              let_body = omni_ctr2(OMNI_NAM_DO, let_body, expr);
+            }
+          }
+
+          omni_bind_pop(1);
+
+          // Wrap in let: #Let{def_body, let_body}
+          if (term_ext(let_body) == OMNI_NAM_NOTH) {
+            let_body = omni_nothing();
+          }
+          Term let_expr = omni_let(local_def.body, let_body);
+
+          if (term_ext(result) == OMNI_NAM_NOTH) {
+            result = let_expr;
+          } else {
+            result = omni_ctr2(OMNI_NAM_DO, result, let_expr);
+          }
+          break;  // Consumed all remaining expressions via let body
+        }
+      }
+
+      // Normal expression
       Term expr = parse_omni_expr(s);
       if (term_ext(result) == OMNI_NAM_NOTH) {
         result = expr;
@@ -4154,6 +4395,7 @@ fn Term parse_omni_sexp(PState *s) {
         result = omni_ctr2(OMNI_NAM_DO, result, expr);
       }
     }
+
     omni_expect_char(s, ')');
     return result;
   }
@@ -5460,6 +5702,159 @@ fn Term parse_omni_sexp(PState *s) {
     Term ys = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr2(OMNI_NAM_CONC, xs, ys);
+  }
+
+  // ==========================================================================
+  // String Operations
+  // ==========================================================================
+
+  // str-length: (str-length str) -> #SLen{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-length")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SLEN, str);
+  }
+
+  // str-empty?: (str-empty? str) -> #SEmp{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-empty?")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SEMP, str);
+  }
+
+  // str-upper: (str-upper str) -> #SUpR{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-upper")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SUPR, str);
+  }
+
+  // str-lower: (str-lower str) -> #SLwR{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-lower")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SLWR, str);
+  }
+
+  // str-trim: (str-trim str) -> #STrm{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-trim")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_STRM, str);
+  }
+
+  // str-reverse: (str-reverse str) -> #SRev{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-reverse")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SREV, str);
+  }
+
+  // str-capitalize: (str-capitalize str) -> #SCap{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-capitalize")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SCAP, str);
+  }
+
+  // str-char-at: (str-char-at str idx) -> #SChc{str, idx}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-char-at")) {
+    Term str = parse_omni_expr(s);
+    Term idx = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SCHC, str, idx);
+  }
+
+  // str-split: (str-split str delim) -> #SSpl{str, delim}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-split")) {
+    Term str = parse_omni_expr(s);
+    Term delim = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SSPL, str, delim);
+  }
+
+  // str-join: (str-join strs delim) -> #SJoi{strs, delim}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-join")) {
+    Term strs = parse_omni_expr(s);
+    Term delim = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SJOI, strs, delim);
+  }
+
+  // str-index-of: (str-index-of str needle) -> #SInd{str, needle}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-index-of")) {
+    Term str = parse_omni_expr(s);
+    Term needle = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SIND, str, needle);
+  }
+
+  // str-starts?: (str-starts? str prefix) -> #SSta{str, prefix}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-starts?")) {
+    Term str = parse_omni_expr(s);
+    Term prefix = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SSTA, str, prefix);
+  }
+
+  // str-ends?: (str-ends? str suffix) -> #SEnd{str, suffix}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-ends?")) {
+    Term str = parse_omni_expr(s);
+    Term suffix = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SEND, str, suffix);
+  }
+
+  // str-contains?: (str-contains? str needle) -> #SCnt{str, needle}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-contains?")) {
+    Term str = parse_omni_expr(s);
+    Term needle = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SCNT, str, needle);
+  }
+
+  // str-repeat: (str-repeat str n) -> #SRep{str, n}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-repeat")) {
+    Term str = parse_omni_expr(s);
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SREP, str, n);
+  }
+
+  // str-compare: (str-compare str1 str2) -> #SCmp{str1, str2}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-compare")) {
+    Term str1 = parse_omni_expr(s);
+    Term str2 = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SCMP, str1, str2);
+  }
+
+  // str-replace: (str-replace str old new) -> #SRpl{str, old, new}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-replace")) {
+    Term str = parse_omni_expr(s);
+    Term old = parse_omni_expr(s);
+    Term new_str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_SRPL, str, old, new_str);
+  }
+
+  // str-slice: (str-slice str start len) -> #SSub{str, start, len}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-slice")) {
+    Term str = parse_omni_expr(s);
+    Term start = parse_omni_expr(s);
+    Term len = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_SSUB, str, start, len);
+  }
+
+  // str-pad: (str-pad str len chr side) -> #SPad{str, len, chr, side}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-pad")) {
+    Term str = parse_omni_expr(s);
+    Term len = parse_omni_expr(s);
+    Term chr = parse_omni_expr(s);
+    Term side = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr4(OMNI_NAM_SPAD, str, len, chr, side);
   }
 
   // Default: function application

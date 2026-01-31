@@ -408,6 +408,105 @@
       (λ&b. (λ&e. @omni_ipow(b)(e))(@omni_eval(menv)(exp)))(@omni_eval(menv)(base))
 
     // ==========================================================================
+    // String Operations
+    // ==========================================================================
+
+    // String length: (str-length str) -> int
+    #SLen: λ&str.
+      (λ&s. @omni_list_length(s))(@omni_eval(menv)(str))
+
+    // String empty?: (str-empty? str) -> bool
+    #SEmp: λ&str.
+      (λ&s.
+        λ{
+          #NIL: #True{}
+          #CON: λ&h. λ&t. #Fals{}
+          _: λ&u_. #True{}
+        }(s)
+      )(@omni_eval(menv)(str))
+
+    // String char-at: (str-char-at str idx) -> char or nothing
+    #SChc: λ&str. λ&idx.
+      (λ&s. (λ&i. @omni_str_char_at(s)(i))(@omni_eval(menv)(idx)))(@omni_eval(menv)(str))
+
+    // String uppercase: (str-upper str) -> str
+    #SUpR: λ&str.
+      (λ&s. @omni_str_upper(s))(@omni_eval(menv)(str))
+
+    // String lowercase: (str-lower str) -> str
+    #SLwR: λ&str.
+      (λ&s. @omni_str_lower(s))(@omni_eval(menv)(str))
+
+    // String trim: (str-trim str) -> str (removes leading/trailing whitespace)
+    #STrm: λ&str.
+      (λ&s. @omni_str_trim(s))(@omni_eval(menv)(str))
+
+    // String split: (str-split str delim) -> list of strings
+    #SSpl: λ&str. λ&delim.
+      (λ&s. (λ&d. @omni_str_split(s)(d))(@omni_eval(menv)(delim)))(@omni_eval(menv)(str))
+
+    // String join: (str-join strs delim) -> str
+    #SJoi: λ&strs. λ&delim.
+      (λ&ss. (λ&d. @omni_str_join(ss)(d))(@omni_eval(menv)(delim)))(@omni_eval(menv)(strs))
+
+    // String replace: (str-replace str old new) -> str
+    #SRpl: λ&str. λ&old. λ&new.
+      (λ&s. (λ&o. (λ&n.
+        @omni_str_replace(s)(o)(n)
+      )(@omni_eval(menv)(new)))(@omni_eval(menv)(old)))(@omni_eval(menv)(str))
+
+    // String substring: (str-slice str start len) -> str
+    #SSub: λ&str. λ&start. λ&len.
+      (λ&s. (λ&st. (λ&ln.
+        @omni_str_slice(s)(st)(ln)
+      )(@omni_eval(menv)(len)))(@omni_eval(menv)(start)))(@omni_eval(menv)(str))
+
+    // String index-of: (str-index-of str needle) -> int or nothing
+    #SInd: λ&str. λ&needle.
+      (λ&s. (λ&n. @omni_str_index_of(s)(n))(@omni_eval(menv)(needle)))(@omni_eval(menv)(str))
+
+    // String starts-with?: (str-starts? str prefix) -> bool
+    #SSta: λ&str. λ&prefix.
+      (λ&s. (λ&p. @omni_str_starts_with(s)(p))(@omni_eval(menv)(prefix)))(@omni_eval(menv)(str))
+
+    // String ends-with?: (str-ends? str suffix) -> bool
+    #SEnd: λ&str. λ&suffix.
+      (λ&s. (λ&x. @omni_str_ends_with(s)(x))(@omni_eval(menv)(suffix)))(@omni_eval(menv)(str))
+
+    // String contains?: (str-contains? str needle) -> bool
+    #SCnt: λ&str. λ&needle.
+      (λ&s. (λ&n.
+        λ{
+          #Noth: #Fals{}
+          #Cst: λ&i. #True{}
+          _: λ&u_. #Fals{}
+        }(@omni_str_index_of(s)(n))
+      )(@omni_eval(menv)(needle)))(@omni_eval(menv)(str))
+
+    // String reverse: (str-reverse str) -> str
+    #SRev: λ&str.
+      (λ&s. @omni_reverse(s))(@omni_eval(menv)(str))
+
+    // String pad: (str-pad str len char side) -> str
+    // side: 0 = left, 1 = right, 2 = both
+    #SPad: λ&str. λ&len. λ&chr. λ&side.
+      (λ&s. (λ&l. (λ&c. (λ&sd.
+        @omni_str_pad(s)(l)(c)(sd)
+      )(@omni_eval(menv)(side)))(@omni_eval(menv)(chr)))(@omni_eval(menv)(len)))(@omni_eval(menv)(str))
+
+    // String capitalize: (str-capitalize str) -> str (first char upper, rest unchanged)
+    #SCap: λ&str.
+      (λ&s. @omni_str_capitalize(s))(@omni_eval(menv)(str))
+
+    // String repeat: (str-repeat str n) -> str
+    #SRep: λ&str. λ&n.
+      (λ&s. (λ&count. @omni_str_repeat(s)(count))(@omni_eval(menv)(n)))(@omni_eval(menv)(str))
+
+    // String compare: (str-compare str1 str2) -> -1, 0, or 1
+    #SCmp: λ&str1. λ&str2.
+      (λ&s1. (λ&s2. @omni_str_compare(s1)(s2))(@omni_eval(menv)(str2)))(@omni_eval(menv)(str1))
+
+    // ==========================================================================
     // Tower / Meta-programming Operations
     // ==========================================================================
 
@@ -591,6 +690,19 @@
     #Cod: λ&inner.
       @omni_eval(menv)(inner)
 
+    // Curry wrapper: OmniLisp functions are already curried, so just return the function
+    // This makes (curry f) equivalent to f at runtime
+    #Cury: λ&fn. λ&arity.
+      @omni_eval(menv)(fn)
+
+    // Flip wrapper: swap first two arguments
+    // (flip f) returns a function that when called with x, returns another function
+    // waiting for y, then calls f(y)(x)
+    #Flip: λ&fn.
+      (λ&evaled_fn.
+        λ&x. λ&y. @omni_apply(menv)(@omni_apply(menv)(evaled_fn)(y))(x)
+      )(@omni_eval(menv)(fn))
+
     // Default: return as-is
     _: λ&u_. exp
   }(exp)
@@ -623,6 +735,21 @@
         )(@omni_env_extend(env)(self))
       )(#CloR{env, body})
 
+    // Lambda AST node (from BOOK reference) - convert to closure and apply
+    // When a define stores #Lam{body} in BOOK, we need to handle it like a closure
+    #Lam: λ&body.
+      (λ&new_env.
+        (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
+      )(@omni_env_extend(#NIL)(arg))
+
+    // Recursive lambda AST node (from BOOK reference)
+    #LamR: λ&body.
+      (λ&self.
+        (λ&new_env.
+          (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
+        )(@omni_env_extend(@omni_env_extend(#NIL)(self))(arg))
+      )(#LamR{body})
+
     // Generic function (multiple dispatch)
     #GFun: λ&name. λ&methods.
       (λ&arity.
@@ -644,6 +771,24 @@
             #GPrt{name, methods, new_args, (remaining - 1)}
         }(remaining)
       )(@omni_append(args)(#CON{arg, #NIL}))
+
+    // Metadata wrappers - unwrap and apply inner function
+    #Assc: λ&inner. @omni_apply(menv)(inner)(arg)
+    #Pure: λ&inner. @omni_apply(menv)(inner)(arg)
+    #Spec: λ&inner. @omni_apply(menv)(inner)(arg)
+    #Strc: λ&inner. @omni_apply(menv)(inner)(arg)
+
+    // Curry wrapper - apply inner function to argument
+    // #Cury{fn, arity} wraps a function to enable curried calling
+    #Cury: λ&fn. λ&arity. @omni_apply(menv)(fn)(arg)
+
+    // Flip wrapper - swap first two arguments
+    // #Flip{fn} when applied to x returns a function waiting for y, then calls fn(y)(x)
+    #Flip: λ&fn. #FlipPartial{fn, arg}
+
+    // Flip partial application - has first arg, waiting for second
+    #FlipPartial: λ&fn. λ&first_arg.
+      @omni_apply(menv)(@omni_apply(menv)(fn)(arg))(first_arg)
 
     // Native HVM4 lambda (compiled code)
     _: λ&u_. fn(arg)
@@ -2204,6 +2349,316 @@
           #CON{#CON{xh, #CON{yh, #NIL}}, @omni_zip_two(xt)(yt)}
       }(ys)
   }(xs)
+
+// =============================================================================
+// String Helpers
+// =============================================================================
+
+// Get character at index (0-based)
+@omni_str_char_at = λ&str. λ&idx.
+  λ{
+    #Cst: λ&i. @omni_str_char_at_iter(str)(i)
+    _: λ&u_. #Noth{}
+  }(idx)
+
+@omni_str_char_at_iter = λ&str. λ&idx.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        0: h
+        _: λ&u_. @omni_str_char_at_iter(t)((idx - 1))
+      }(idx)
+  }(str)
+
+// Convert character to uppercase
+@omni_char_upper = λ&c.
+  λ{
+    #CHR: λ&code.
+      // a-z (97-122) -> A-Z (65-90)
+      λ{
+        1: #CHR{(code - 32)}
+        _: λ&u_. c
+      }(((code >= 97) * (code <= 122)))
+    #Cst: λ&code.
+      λ{
+        1: #CHR{(code - 32)}
+        _: λ&u_. #CHR{code}
+      }(((code >= 97) * (code <= 122)))
+    _: λ&u_. c
+  }(c)
+
+// Convert character to lowercase
+@omni_char_lower = λ&c.
+  λ{
+    #CHR: λ&code.
+      // A-Z (65-90) -> a-z (97-122)
+      λ{
+        1: #CHR{(code + 32)}
+        _: λ&u_. c
+      }(((code >= 65) * (code <= 90)))
+    #Cst: λ&code.
+      λ{
+        1: #CHR{(code + 32)}
+        _: λ&u_. #CHR{code}
+      }(((code >= 65) * (code <= 90)))
+    _: λ&u_. c
+  }(c)
+
+// Convert string to uppercase
+@omni_str_upper = λ&str.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{@omni_char_upper(h), @omni_str_upper(t)}
+  }(str)
+
+// Convert string to lowercase
+@omni_str_lower = λ&str.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{@omni_char_lower(h), @omni_str_lower(t)}
+  }(str)
+
+// Check if character is whitespace (space, tab, newline, carriage return)
+@omni_char_whitespace = λ&c.
+  λ{
+    #CHR: λ&code.
+      ((code == 32) || ((code == 9) || ((code == 10) || (code == 13))))
+    #Cst: λ&code.
+      ((code == 32) || ((code == 9) || ((code == 10) || (code == 13))))
+    _: λ&u_. 0
+  }(c)
+
+// Trim leading whitespace
+@omni_str_trim_left = λ&str.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        1: @omni_str_trim_left(t)
+        _: λ&u_. str
+      }(@omni_char_whitespace(h))
+  }(str)
+
+// Trim trailing whitespace
+@omni_str_trim_right = λ&str.
+  @omni_reverse(@omni_str_trim_left(@omni_reverse(str)))
+
+// Trim both leading and trailing whitespace
+@omni_str_trim = λ&str.
+  @omni_str_trim_right(@omni_str_trim_left(str))
+
+// Split string by delimiter character or string
+@omni_str_split = λ&str. λ&delim.
+  @omni_str_split_iter(str)(delim)(#NIL)
+
+@omni_str_split_iter = λ&str. λ&delim. λ&current.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #NIL  // Empty current means no trailing element
+        _: λ&u_. #CON{@omni_reverse(current), #NIL}
+      }(current)
+    #CON: λ&h. λ&t.
+      λ{
+        #True: // Delimiter found at start
+          (λ&match_result.
+            λ{
+              #Fals: // This shouldn't happen if starts_with was true
+                @omni_str_split_iter(t)(delim)(#CON{h, current})
+              _: λ&u_.
+                // Delimiter matched, emit current string and continue
+                #CON{@omni_reverse(current), @omni_str_split_iter(match_result)(delim)(#NIL)}
+            }(match_result)
+          )(@omni_str_match_delim(str)(delim))
+        _: λ&u_. @omni_str_split_iter(t)(delim)(#CON{h, current})
+      }(@omni_str_starts_with(str)(delim))
+  }(str)
+
+// Try to match delimiter at start of string, return remaining string if match
+@omni_str_match_delim = λ&str. λ&delim.
+  λ{
+    #NIL: str  // Empty delimiter matches, return str as remaining
+    #CON: λ&dh. λ&dt.
+      λ{
+        #NIL: #Fals{}  // String shorter than delimiter
+        #CON: λ&sh. λ&st.
+          λ{
+            1: @omni_str_match_delim(st)(dt)
+            _: λ&u_. #Fals{}
+          }(@omni_char_eq(sh)(dh))
+      }(str)
+  }(delim)
+
+// Check if two characters are equal
+@omni_char_eq = λ&a. λ&b.
+  (λ&ca. (λ&cb. (ca == cb))(@omni_char_code(b)))(@omni_char_code(a))
+
+// Get character code
+@omni_char_code = λ&c.
+  λ{
+    #CHR: λ&code. code
+    #Cst: λ&code. code
+    _: λ&u_. 0
+  }(c)
+
+// Join list of strings with delimiter
+@omni_str_join = λ&strs. λ&delim.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: h  // Single element, no delimiter needed
+        _: λ&u_. @omni_append(h)(@omni_append(delim)(@omni_str_join(t)(delim)))
+      }(t)
+  }(strs)
+
+// Replace all occurrences of 'old' with 'new' in string
+@omni_str_replace = λ&str. λ&old. λ&new.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #True:
+          // Match found - insert replacement and continue after match
+          (λ&remaining.
+            @omni_append(new)(@omni_str_replace(remaining)(old)(new))
+          )(@omni_str_match_delim(str)(old))
+        _: λ&u_.
+          #CON{h, @omni_str_replace(t)(old)(new)}
+      }(@omni_str_starts_with(str)(old))
+  }(str)
+
+// Get substring: (str-slice str start len)
+@omni_str_slice = λ&str. λ&start. λ&len.
+  (λ&st. (λ&ln.
+    @omni_take(#Cst{ln})(@omni_drop(#Cst{st})(str))
+  )(@omni_unwrap_num(len)))(@omni_unwrap_num(start))
+
+// Unwrap numeric value
+@omni_unwrap_num = λ&n.
+  λ{
+    #Cst: λ&x. x
+    _: λ&u_. 0
+  }(n)
+
+// Find index of needle in string, returns #Cst{index} or #Noth{}
+@omni_str_index_of = λ&str. λ&needle.
+  @omni_str_index_of_iter(str)(needle)(0)
+
+@omni_str_index_of_iter = λ&str. λ&needle. λ&idx.
+  λ{
+    #NIL: #Noth{}
+    #CON: λ&h. λ&t.
+      λ{
+        #True: #Cst{idx}  // Found match
+        _: λ&u_. @omni_str_index_of_iter(t)(needle)((idx + 1))
+      }(@omni_str_starts_with(str)(needle))
+  }(str)
+
+// Check if string starts with prefix
+@omni_str_starts_with = λ&str. λ&prefix.
+  λ{
+    #NIL: #True{}  // Empty prefix matches anything
+    #CON: λ&ph. λ&pt.
+      λ{
+        #NIL: #Fals{}  // String shorter than prefix
+        #CON: λ&sh. λ&st.
+          λ{
+            1: @omni_str_starts_with(st)(pt)
+            _: λ&u_. #Fals{}
+          }(@omni_char_eq(sh)(ph))
+      }(str)
+  }(prefix)
+
+// Check if string ends with suffix
+@omni_str_ends_with = λ&str. λ&suffix.
+  @omni_str_starts_with(@omni_reverse(str))(@omni_reverse(suffix))
+
+// Pad string to length with character
+// side: 0 = left, 1 = right, 2 = both
+// Note: We compute all values upfront and pass them explicitly to avoid closure capture issues
+@omni_str_pad = λ&str. λ&len. λ&chr. λ&side.
+  @omni_str_pad_core(str)(chr)(@omni_unwrap_num(side))(@omni_unwrap_num(len))(@omni_list_length(str))
+
+// Core: receives str, chr, side (unwrapped), target_len, current_len
+@omni_str_pad_core = λ&str. λ&chr. λ&side. λ&target_len. λ&current_len.
+  λ{
+    0: str  // target_len <= current_len, no padding needed
+    _: λ&u_. @omni_str_pad_do(str)(chr)(side)((target_len - current_len))
+  }((target_len > current_len))
+
+// Do the actual padding (all args computed)
+@omni_str_pad_do = λ&str. λ&chr. λ&side. λ&pad_needed.
+  λ{
+    0: // Left pad
+      @omni_append(@omni_str_repeat_char(chr)(pad_needed))(str)
+    1: // Right pad
+      @omni_append(str)(@omni_str_repeat_char(chr)(pad_needed))
+    _: λ&u_. // Both (center) - pad_needed/2 on left, rest on right
+      @omni_str_pad_center(str)(chr)(pad_needed)
+  }(side)
+
+// Center padding helper
+@omni_str_pad_center = λ&str. λ&chr. λ&pad_needed.
+  (λ&left_pad.
+    @omni_append(@omni_str_repeat_char(chr)(left_pad))(
+      @omni_append(str)(@omni_str_repeat_char(chr)((pad_needed - left_pad)))
+    )
+  )((pad_needed / 2))
+
+// Repeat a single character n times
+@omni_str_repeat_char = λ&chr. λ&n.
+  λ{
+    0: #NIL
+    _: λ&u_. #CON{chr, @omni_str_repeat_char(chr)((n - 1))}
+  }(n)
+
+// Capitalize string (first char upper, rest unchanged)
+@omni_str_capitalize = λ&str.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t. #CON{@omni_char_upper(h), t}
+  }(str)
+
+// Repeat string n times
+@omni_str_repeat = λ&str. λ&n.
+  (λ&count. @omni_str_repeat_iter(str)(count))(@omni_unwrap_num(n))
+
+// Helper: iterate string repeat with raw count
+@omni_str_repeat_iter = λ&str. λ&count.
+  λ{
+    0: #NIL
+    _: λ&u_. @omni_append(str)(@omni_str_repeat_iter(str)((count - 1)))
+  }(count)
+
+// Compare two strings lexicographically: returns -1, 0, or 1
+@omni_str_compare = λ&str1. λ&str2.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #Cst{0}  // Both empty, equal
+        _: λ&u_. #Cst{(0 - 1)}  // str1 shorter
+      }(str2)
+    #CON: λ&h1. λ&t1.
+      λ{
+        #NIL: #Cst{1}  // str2 shorter
+        #CON: λ&h2. λ&t2.
+          (λ&c1. (λ&c2.
+            λ{
+              1: #Cst{(0 - 1)}
+              _: λ&u_.
+                λ{
+                  1: #Cst{1}
+                  _: λ&u_. @omni_str_compare(t1)(t2)
+                }((c1 > c2))
+            }((c1 < c2))
+          )(@omni_char_code(h2)))(@omni_char_code(h1))
+      }(str2)
+  }(str1)
+
+// String length (alias for @omni_list_length for clarity)
+@omni_str_length = λ&str. @omni_list_length(str)
 
 // Integer square root - find largest k where k*k <= n
 @omni_isqrt = λ&n.

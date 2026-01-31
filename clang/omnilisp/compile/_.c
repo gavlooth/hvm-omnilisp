@@ -545,12 +545,11 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       return;
     }
 
-    // Application
+    // Application - emit as native HVM4 function application
     if (nam == OMNI_NAM_APP && ari == 2) {
       fputc('(', e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));
-      fputc(')', e->out);
-      fputc('(', e->out);
+      fputs(")(", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));
       fputc(')', e->out);
       return;
@@ -771,18 +770,36 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
     }
 
     // Pure (purity marker from ^:pure metadata)
-    // Emits #Pure{fn} - can be used for static analysis and optimization
+    // IMPORTANT: We emit the inner function directly (metadata erasure) because
+    // HVM4 cannot apply constructors. The #Pure wrapper would break function calls.
+    // TODO: Implement proper metadata registry for runtime introspection
     if (nam == OMNI_NAM_PURE && ari == 1) {
-      fputs("#Pure{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));
-      fputc('}', e->out);
       return;
     }
 
     // Associative (associativity marker from ^:associative metadata)
-    // Emits #Assc{fn} - indicates function can use tree reduction for parallelism
+    // IMPORTANT: We emit the inner function directly (metadata erasure) because
+    // HVM4 cannot apply constructors. The #Assc wrapper would break function calls.
+    // TODO: Use metadata for tree reduction optimization at compile time
     if (nam == OMNI_NAM_ASSC && ari == 1) {
-      fputs("#Assc{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      return;
+    }
+
+    // Curry wrapper - emit inner function directly
+    // #Cury{fn, arity} - OmniLisp functions are already curried by default,
+    // so (curry fn) just returns fn. HVM4 can't apply constructors directly.
+    if (nam == OMNI_NAM_CURY && ari == 2) {
+      omni_emit_term(e, omni_ctr_arg(t, 0));  // emit the inner function
+      return;
+    }
+
+    // Flip wrapper - emit the inner function with flip semantics
+    // #Flip{fn} swaps first two arguments: (flip f) x y = f y x
+    // We emit a lambda that captures fn and flips the args
+    if (nam == OMNI_NAM_FLIP && ari == 1) {
+      fputs("#Flip{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));
       fputc('}', e->out);
       return;
