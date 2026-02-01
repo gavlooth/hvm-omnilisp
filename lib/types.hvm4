@@ -20,7 +20,7 @@
 @type_Bool     = #TDsc{7402444, @type_Any, #NIL}        // nick("Bool")
 @type_Char     = #TDsc{7635026, @type_Any, #NIL}        // nick("Char")
 @type_Symbol   = #TDsc{3417036, @type_Any, #NIL}        // nick("Symbol")
-@type_String   = #TDsc{4756359, @type_Any, #NIL}        // nick("String")
+@type_String   = #TDsc{11879561, @type_Any, #NIL}       // nick("Stri") - parser truncates to 4 chars
 @type_List     = #TDsc{9999572, @type_Any, #NIL}        // nick("List")
 @type_Function = #TDsc{5280718, @type_Any, #NIL}        // nick("Function")
 @type_Handle   = #TDsc{3687173, @type_Any, #NIL}        // nick("Handle")

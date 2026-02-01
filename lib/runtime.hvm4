@@ -236,6 +236,10 @@
     #FFI: λ&name. λ&args.
       (λ&arg_vals. #FFI{name, arg_vals})(@omni_eval_list(menv)(args))
 
+    // Type-of - get runtime type of value
+    #TyOf: λ&val.
+      @omni_infer_type_runtime(@omni_eval(menv)(val))
+
     // Cons
     #CON: λ&h. λ&t.
       #CON{@omni_eval(menv)(h), @omni_eval(menv)(t)}
@@ -1390,6 +1394,18 @@
       #CON{@omni_infer_type_runtime(h), @omni_infer_arg_types_runtime(t)}
   }(args)
 
+// Check if a list is a string (contains only #CHR elements)
+@omni_is_string_list = λ&lst.
+  λ{
+    #NIL: #True{}
+    #CON: λ&h. λ&t.
+      λ{
+        #CHR: λ&c. @omni_is_string_list(t)
+        _: λ&u_. #Fals{}
+      }(h)
+    _: λ&u_. #Fals{}
+  }(lst)
+
 // Infer runtime type of a value (returns type descriptor)
 @omni_infer_type_runtime = λ&val.
   λ{
@@ -1397,7 +1413,17 @@
     #Fix: λ&hi. λ&lo. λ&scale. @type_Float
     #CHR: λ&c. @type_Char
     #Sym: λ&s. @type_Symbol
-    #CON: λ&h. λ&t. @type_List
+    #CON: λ&h. λ&t.
+      // Check if head is a CHR - if so, might be a string
+      λ{
+        #CHR: λ&c.
+          // Head is CHR, check if rest is also all CHRs
+          λ{
+            #True: @type_String
+            #Fals: @type_List
+          }(@omni_is_string_list(t))
+        _: λ&u_. @type_List
+      }(h)
     #NIL: @type_List
     #Arr: λ&len. λ&data. @type_Array
     #Dict: λ&entries. @type_Dict
@@ -2910,7 +2936,7 @@
 @type_Bool     = #TDsc{7402444, @type_Any, #NIL}     // omni_nick("Bool")
 @type_Char     = #TDsc{7635026, @type_Any, #NIL}     // omni_nick("Char")
 @type_Symbol   = #TDsc{185933, @type_Any, #NIL}      // omni_nick("Sym")
-@type_String   = #TDsc{185618, @type_Any, #NIL}      // omni_nick("Str")
+@type_String   = #TDsc{11879561, @type_Any, #NIL}    // nick("Stri") - parser truncates "String" to 4 chars
 @type_Function = #TDsc{132430, @type_Any, #NIL}      // omni_nick("Fun")
 @type_Handle   = #TDsc{8970508, @type_Any, #NIL}     // omni_nick("Hndl")
 

@@ -9,11 +9,11 @@
     (+ x y))
   (add-nums 7 8))
 
-;; TEST: typed with string
-;; EXPECT: "Hello, world"
+;; TEST: typed with string - returns string length
+;; EXPECT: 12
 (do
   (define greet [name {String}]
-    (str-concat "Hello, " name))
+    (length (concat "Hello, " name)))
   (greet "world"))
 
 ;; TEST: max value function
