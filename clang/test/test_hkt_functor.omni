@@ -1,0 +1,111 @@
+;; test_hkt_functor.omni - Higher-Kinded Type tests for Functor pattern
+
+;; Functor represents types with kind (* -> *) that support mapping
+;; Examples: List, Maybe, IO, Either a
+
+;; TEST: list as functor - fmap is just map
+;; EXPECT: (2 4 6)
+(do
+  (define list-fmap [f] [xs] (map f xs))
+  (list-fmap (lambda [x] (* x 2)) '(1 2 3)))
+
+;; TEST: functor law - identity: fmap id == id
+;; EXPECT: (1 2 3)
+(do
+  (define id [x] x)
+  (define list-fmap [f] [xs] (map f xs))
+  (list-fmap id '(1 2 3)))
+
+;; TEST: functor law - composition: fmap (f . g) == fmap f . fmap g
+;; EXPECT: true
+(do
+  (define list-fmap [f] [xs] (map f xs))
+  (define inc [x] (+ x 1))
+  (define double [x] (* x 2))
+  (define compose [f] [g] [x] (f (g x)))
+  (define left (list-fmap (compose double inc) '(1 2 3)))
+  (define right ((compose (lambda [xs] (list-fmap double xs))
+                          (lambda [xs] (list-fmap inc xs))) '(1 2 3)))
+  (= left right))
+
+;; TEST: maybe as functor using dict representation
+;; EXPECT: 20
+(do
+  ;; Represent Maybe as: #{:tag :some :val x} or #{:tag :none}
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-fmap [f] [m]
+    (if (= (get m :tag) :some)
+        (some (f (get m :val)))
+        m))
+  (get (maybe-fmap (lambda [x] (* x 2)) (some 10)) :val))
+
+;; TEST: maybe functor - fmap over none
+;; EXPECT: :none
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-fmap [f] [m]
+    (if (= (get m :tag) :some)
+        (some (f (get m :val)))
+        m))
+  (get (maybe-fmap (lambda [x] (* x 2)) none) :tag))
+
+;; TEST: either as functor using dict representation
+;; EXPECT: 20
+(do
+  ;; Either: #{:tag :right :val x} or #{:tag :left :err e}
+  (define right [x] #{:tag :right :val x})
+  (define left [e] #{:tag :left :err e})
+  (define either-fmap [f] [e]
+    (if (= (get e :tag) :right)
+        (right (f (get e :val)))
+        e))
+  (get (either-fmap (lambda [x] (* x 2)) (right 10)) :val))
+
+;; TEST: either functor - fmap left (unchanged)
+;; EXPECT: -1
+(do
+  (define right [x] #{:tag :right :val x})
+  (define left [e] #{:tag :left :err e})
+  (define either-fmap [f] [e]
+    (if (= (get e :tag) :right)
+        (right (f (get e :val)))
+        e))
+  (get (either-fmap (lambda [x] (* x 2)) (left -1)) :err))
+
+;; TEST: nested list functor (list of lists)
+;; EXPECT: ((2 4) (6 8) (10 12))
+(do
+  (define list-fmap [f] [xs] (map f xs))
+  ;; fmap over outer list, with fmap as the function (fmap fmap)
+  (define fmap-fmap [f] [xss]
+    (list-fmap (lambda [xs] (list-fmap f xs)) xss))
+  (fmap-fmap (lambda [x] (* x 2)) '((1 2) (3 4) (5 6))))
+
+;; TEST: generic functor interface using dispatch
+;; EXPECT: 6
+(do
+  ;; Custom list predicate using pattern matching
+  (define is-list [x]
+    (match x
+      ()       true
+      (h .. t) true
+      _        false))
+  ;; Polymorphic fmap that dispatches based on container type
+  (define fmap [f] [container]
+    (if (is-list container)
+        (map f container)
+        container))  ;; Default: return unchanged
+  (foldl (lambda [a] [b] (+ a b)) 0 (fmap (lambda [x] (* x 2)) '(1 2))))
+
+;; TEST: applicative pattern - apply function in context
+;; EXPECT: (5 7 9)
+(do
+  ;; list-ap: apply list of functions to list of values
+  (define list-ap [fs] [xs]
+    (foldl (lambda [acc] [f]
+             (append acc (map f xs)))
+           '()
+           fs))
+  (list-ap (cons (lambda [x] (+ x 4)) '()) '(1 3 5)))

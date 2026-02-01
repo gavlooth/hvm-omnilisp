@@ -1,0 +1,193 @@
+;; test_hkt_monad.omni - Higher-Kinded Type tests for Monad pattern
+
+;; Monad represents types with kind (* -> *) that support:
+;; - return: a -> m a (put value in context)
+;; - bind: m a -> (a -> m b) -> m b (sequence computations)
+;; Examples: List, Maybe, Either, IO, State
+
+;; ============================================================================
+;; List Monad
+;; ============================================================================
+
+;; TEST: list return - wrap value in singleton list
+;; EXPECT: (42)
+(do
+  (define list-return [x] (cons x '()))
+  (list-return 42))
+
+;; TEST: list bind - flatMap operation
+;; EXPECT: (1 2 2 4 3 6)
+(do
+  (define list-bind [xs] [f]
+    (foldl (lambda [acc] [x] (append acc (f x))) '() xs))
+  (list-bind '(1 2 3) (lambda [x] (cons x (cons (* x 2) '())))))
+
+;; TEST: list monad - cartesian product
+;; EXPECT: ((1 4) (1 5) (2 4) (2 5) (3 4) (3 5))
+(do
+  (define list-bind [xs] [f]
+    (foldl (lambda [acc] [x] (append acc (f x))) '() xs))
+  (define pairs
+    (list-bind '(1 2 3) (lambda [a]
+      (list-bind '(4 5) (lambda [b]
+        (cons (cons a (cons b '())) '()))))))
+  pairs)
+
+;; TEST: list monad law - left identity: return a >>= f == f a
+;; EXPECT: true
+(do
+  (define list-return [x] (cons x '()))
+  (define list-bind [xs] [f]
+    (foldl (lambda [acc] [x] (append acc (f x))) '() xs))
+  (define f [x] (cons (* x 2) '()))
+  (define left (list-bind (list-return 5) f))
+  (define right (f 5))
+  (= left right))
+
+;; TEST: list monad law - right identity: m >>= return == m
+;; EXPECT: true
+(do
+  (define list-return [x] (cons x '()))
+  (define list-bind [xs] [f]
+    (foldl (lambda [acc] [x] (append acc (f x))) '() xs))
+  (define m '(1 2 3))
+  (define left (list-bind m list-return))
+  (= left m))
+
+;; ============================================================================
+;; Maybe Monad (using dict representation)
+;; ============================================================================
+
+;; TEST: maybe return - wrap in Some
+;; EXPECT: :some
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-return [x] (some x))
+  (get (maybe-return 42) :tag))
+
+;; TEST: maybe bind - sequence operations that may fail
+;; EXPECT: 20
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-bind [m] [f]
+    (if (= (get m :tag) :some)
+        (f (get m :val))
+        m))
+  (get (maybe-bind (some 10) (lambda [x] (some (* x 2)))) :val))
+
+;; TEST: maybe bind with none - short circuits
+;; EXPECT: :none
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-bind [m] [f]
+    (if (= (get m :tag) :some)
+        (f (get m :val))
+        m))
+  (get (maybe-bind none (lambda [x] (some (* x 2)))) :tag))
+
+;; TEST: maybe monad - chained operations
+;; EXPECT: 15
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-bind [m] [f]
+    (if (= (get m :tag) :some)
+        (f (get m :val))
+        m))
+  ;; (Just 5) >>= (\x -> Just (x + 5)) >>= (\y -> Just (y + 5))
+  (get (maybe-bind (maybe-bind (some 5)
+                               (lambda [x] (some (+ x 5))))
+                   (lambda [y] (some (+ y 5))))
+       :val))
+
+;; ============================================================================
+;; Either Monad
+;; ============================================================================
+
+;; TEST: either bind - success case
+;; EXPECT: 100
+(do
+  (define right [x] #{:tag :right :val x})
+  (define left [e] #{:tag :left :err e})
+  (define either-bind [m] [f]
+    (if (= (get m :tag) :right)
+        (f (get m :val))
+        m))
+  (get (either-bind (right 50) (lambda [x] (right (* x 2)))) :val))
+
+;; TEST: either bind - failure propagates
+;; EXPECT: error-msg
+(do
+  (define right [x] #{:tag :right :val x})
+  (define left [e] #{:tag :left :err e})
+  (define either-bind [m] [f]
+    (if (= (get m :tag) :right)
+        (f (get m :val))
+        m))
+  (get (either-bind (left :error-msg) (lambda [x] (right (* x 2)))) :err))
+
+;; ============================================================================
+;; State Monad (simple version)
+;; ============================================================================
+
+;; TEST: state monad - basic run-state
+;; EXPECT: 42
+(do
+  ;; State monad: functions from state -> (value, new-state)
+  (define run-state [computation] [initial-state]
+    (computation initial-state))
+
+  ;; state-return: wrap value in stateful context
+  (define state-return [x]
+    (lambda [s] #{:val x :state s}))
+
+  ;; Simple computation that returns 42 regardless of state
+  (get (run-state (state-return 42) 0) :val))
+
+;; TEST: state monad - get state
+;; EXPECT: 10
+(do
+  (define run-state [computation] [initial-state]
+    (computation initial-state))
+  (define get-state [s] #{:val s :state s})
+  (get (run-state get-state 10) :val))
+
+;; ============================================================================
+;; Do-notation simulation (chaining monadic operations)
+;; ============================================================================
+
+;; TEST: simulated do-notation for maybe
+;; EXPECT: 30
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-bind [m] [f]
+    (if (= (get m :tag) :some)
+        (f (get m :val))
+        m))
+
+  ;; Simulate: do { x <- Just 10; y <- Just 20; return (x + y) }
+  (define computation
+    (maybe-bind (some 10) (lambda [x]
+      (maybe-bind (some 20) (lambda [y]
+        (some (+ x y)))))))
+
+  (get computation :val))
+
+;; TEST: monad composition - kleisli chaining
+;; EXPECT: 20
+(do
+  (define some [x] #{:tag :some :val x})
+  (define maybe-bind [m] [f]
+    (if (= (get m :tag) :some)
+        (f (get m :val))
+        m))
+  (define double [x] (some (* x 2)))
+
+  ;; Kleisli chain: (some 5) >>= double >>= double
+  ;; = 5 * 2 = 10, 10 * 2 = 20
+  ;; Wait: let's verify
+  (get (maybe-bind (maybe-bind (some 5) double) double) :val))

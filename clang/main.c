@@ -49,7 +49,7 @@ static inline unsigned long omni_ffi_dispatch_hook_wrapper(unsigned long t) {
 // #define OMNI_DEBUG_USE_VAL
 
 // Include HVM4 runtime first
-#include "../hvm4/clang/hvm4.c"
+#include "../HVM4/clang/hvm4.c"
 
 // Include OmniLisp components
 #include "omnilisp/nick/omnilisp.c"
@@ -679,6 +679,30 @@ fn int omni_load_runtime(void) {
   };
   parse_def(&ts);
   free(types_src);
+
+  // Find and load kinds.hvm4 (higher-kinded types support)
+  char *kinds_path = omni_find_runtime_file("kinds.hvm4");
+  if (!kinds_path) {
+    fprintf(stderr, "Error: Could not find lib/kinds.hvm4 (required for higher-kinded types)\n");
+    return 1;
+  }
+
+  char *kinds_src = sys_file_read(kinds_path);
+  if (!kinds_src) {
+    fprintf(stderr, "Error: Could not read %s\n", kinds_path);
+    return 1;
+  }
+
+  PState ks = {
+    .file = kinds_path,
+    .src  = kinds_src,
+    .pos  = 0,
+    .len  = (u32)strlen(kinds_src),
+    .line = 1,
+    .col  = 1
+  };
+  parse_def(&ks);
+  free(kinds_src);
 
   // Verify critical functions are loaded
   u32 eval_id = table_find("omni_eval", 9);

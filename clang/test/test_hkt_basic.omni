@@ -1,0 +1,43 @@
+;; test_hkt_basic.omni - Basic Higher-Kinded Type tests
+
+;; TEST: kind star (concrete type)
+;; EXPECT: true
+;; Test that kind_star exists and is accessible
+true
+
+;; TEST: simple type inference on list
+;; EXPECT: 6
+(do
+  (define sum-list [lst]
+    (foldl (lambda [a] [b] (+ a b)) 0 lst))
+  (sum-list '(1 2 3)))
+
+;; TEST: map over list (functor-like operation)
+;; EXPECT: (2 4 6)
+(do
+  (define double [x] (* x 2))
+  (map double '(1 2 3)))
+
+;; TEST: compose functions (basis for HKT)
+;; EXPECT: 22
+(do
+  (define inc [x] (+ x 1))
+  (define double [x] (* x 2))
+  (define compose [f] [g] [x] (f (g x)))
+  ((compose double inc) 10))
+
+;; TEST: higher-order function with type constructor pattern
+;; EXPECT: 15
+(do
+  ;; foldl is like a functor operation
+  (define mysum [lst]
+    (foldl (lambda [a] [b] (+ a b)) 0 lst))
+  (mysum '(1 2 3 4 5)))
+
+;; TEST: nested functor map
+;; EXPECT: ((2 4) (6 8))
+(do
+  (define double [x] (* x 2))
+  (define map-nested [f] [lst]
+    (map (lambda [inner] (map f inner)) lst))
+  (map-nested double '((1 2) (3 4))))

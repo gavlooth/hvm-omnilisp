@@ -1,0 +1,328 @@
+// OmniLisp Kind System
+// Higher-kinded types support for type constructors as first-class citizens
+//
+// Kinds are "types of types":
+//   * (KStar)       - the kind of concrete types like Int, String
+//   * -> * (KFun)   - the kind of type constructors like List, Maybe
+//   (* -> *) -> *   - higher-kinded, like Fix (fixpoint of a functor)
+//
+// Examples:
+//   Int      : *
+//   List     : * -> *
+//   Map      : * -> * -> *
+//   Functor  : (* -> *) -> Constraint
+//   Monad    : (* -> *) -> Constraint
+
+// =============================================================================
+// Kind Representation
+// =============================================================================
+
+// Kind of concrete types (*)
+// #KStar{} represents the base kind
+@kind_star = #KStar{}
+
+// Kind of type constructor functions (* -> *)
+// #KFun{from_kind, to_kind}
+@kind_fun = λ&from. λ&to. #KFun{from, to}
+
+// Common kinds
+@kind_type = @kind_star                                    // * (alias for star)
+@kind_unary = @kind_fun(@kind_star)(@kind_star)           // * -> *
+@kind_binary = @kind_fun(@kind_star)(@kind_unary)         // * -> * -> *
+@kind_higher = @kind_fun(@kind_unary)(@kind_star)         // (* -> *) -> *
+
+// =============================================================================
+// Kind Checking
+// =============================================================================
+
+// Check if two kinds are equal
+@kinds_equal = λ&kind_a. λ&kind_b.
+  λ{
+    #KStar:
+      λ{
+        #KStar: #True{}
+        _: λ&u_. #Fals{}
+      }(kind_b)
+    #KFun: λ&from_a. λ&to_a.
+      λ{
+        #KFun: λ&from_b. λ&to_b.
+          λ{
+            #True: @kinds_equal(to_a)(to_b)
+            #Fals: #Fals{}
+          }(@kinds_equal(from_a)(from_b))
+        _: λ&u_. #Fals{}
+      }(kind_b)
+    _: λ&u_. #Fals{}
+  }(kind_a)
+
+// Unify two kinds, returning substitution or error
+// For now, kinds are not polymorphic, so this is just equality check
+@kinds_unify = λ&kind_a. λ&kind_b.
+  λ{
+    #True: #KOk{#NIL}
+    #Fals: #KErr{kind_a, kind_b}
+  }(@kinds_equal(kind_a)(kind_b))
+
+// =============================================================================
+// Type Constructor Variables with Kinds
+// =============================================================================
+
+// Type constructor variable: #TConVar{name_nick, kind}
+// Unlike #TVar which is always kind *, #TConVar can have any kind
+@type_con_var = λ&name. λ&kind. #TConVar{name, kind}
+
+// Check if a type is a type constructor variable
+@is_type_con_var = λ&type.
+  λ{
+    #TConVar: λ&n. λ&k. #True{}
+    _: λ&u_. #Fals{}
+  }(type)
+
+// Get the kind of a type constructor variable
+@type_con_var_kind = λ&tcv.
+  λ{
+    #TConVar: λ&name. λ&kind. kind
+    _: λ&u_. @kind_star  // Default to * for non-TConVar
+  }(tcv)
+
+// Get the name of a type constructor variable
+@type_con_var_name = λ&tcv.
+  λ{
+    #TConVar: λ&name. λ&kind. name
+    _: λ&u_. 0
+  }(tcv)
+
+// =============================================================================
+// Kind Inference
+// =============================================================================
+
+// Infer the kind of a type expression
+@infer_kind = λ&type.
+  λ{
+    // Concrete type descriptors have kind *
+    #TDsc: λ&name. λ&parent. λ&fields. @kind_star
+
+    // Type constructors - need to look up their kind
+    // For now, assume all TCon have kind * (will be extended)
+    #TCon: λ&name. @infer_tcon_kind(name)
+
+    // Type variables have kind *
+    #TVar: λ&name. @kind_star
+
+    // Type constructor variables carry their kind
+    #TConVar: λ&name. λ&kind. kind
+
+    // Type application: if f : k1 -> k2 and a : k1, then (f a) : k2
+    #TApp: λ&base. λ&params.
+      @apply_kind(@infer_kind(base))(params)
+
+    // Function types have kind *
+    #TFun: λ&args. λ&ret. @kind_star
+    #TFunE: λ&args. λ&ret. λ&eff. @kind_star
+
+    // Default: kind *
+    _: λ&u_. @kind_star
+  }(type)
+
+// Infer kind of a type constructor by name
+// Known type constructors and their kinds
+@infer_tcon_kind = λ&name.
+  // Common type constructors
+  // Int, String, Bool, Char, Float, Symbol = *
+  // List, Maybe, IO = * -> *
+  // Either, Map, Pair = * -> * -> *
+  // For now, use heuristic: if name is known, return its kind
+  // Otherwise default to * -> * (most common for generic containers)
+  λ{
+    // nick("List") truncated = nick("List") = 9999572
+    9999572: @kind_unary
+    // nick("Mayb") = Maybe truncated
+    8898406: @kind_unary
+    // nick("Opti") = Option truncated
+    9315161: @kind_unary
+    // nick("IO")
+    141: @kind_unary
+    // nick("Eith") = Either truncated
+    7826024: @kind_binary
+    // nick("Map")
+    8692: @kind_binary
+    // nick("Pair")
+    10114050: @kind_binary
+    // nick("Func") = Functor truncated - higher-kinded
+    8373611: @kind_higher
+    // nick("Mona") = Monad truncated - higher-kinded
+    8835937: @kind_higher
+    // nick("Appl") = Applicative truncated - higher-kinded
+    6824556: @kind_higher
+    // Default: concrete type (kind *)
+    _: λ&u_. @kind_star
+  }(name)
+
+// Apply a kind to type arguments
+// If kind is k1 -> k2 and we have one argument, result is k2
+// If kind is k1 -> k2 -> k3 and we have two arguments, result is k3
+@apply_kind = λ&kind. λ&args.
+  λ{
+    #NIL: kind  // No more arguments
+    #CON: λ&arg. λ&rest.
+      λ{
+        #KFun: λ&from. λ&to.
+          @apply_kind(to)(rest)
+        _: λ&u_.
+          // Error: trying to apply arguments to a non-function kind
+          #KErr{#sym_KindMismatch, kind}
+      }(kind)
+    _: λ&u_. kind
+  }(args)
+
+// =============================================================================
+// Kind-Aware Type Substitution
+// =============================================================================
+
+// Substitute type constructor variables in a type
+@subst_tcon_var = λ&subst. λ&type.
+  λ{
+    #TConVar: λ&name. λ&kind.
+      @lookup_tcon_subst(subst)(name)(type)
+
+    #TApp: λ&base. λ&params.
+      #TApp{@subst_tcon_var(subst)(base), @map(@subst_tcon_var(subst))(params)}
+
+    #TFun: λ&args. λ&ret.
+      #TFun{@map(@subst_tcon_var(subst))(args), @subst_tcon_var(subst)(ret)}
+
+    #TFunE: λ&args. λ&ret. λ&eff.
+      #TFunE{@map(@subst_tcon_var(subst))(args), @subst_tcon_var(subst)(ret), eff}
+
+    _: λ&u_. type  // Unchanged
+  }(type)
+
+// Lookup type constructor variable in substitution
+@lookup_tcon_subst = λ&subst. λ&name. λ&default.
+  λ{
+    #NIL: default
+    #CON: λ&pair. λ&rest.
+      λ{
+        #CON: λ&var_name. λ&var_type_cell.
+          λ{
+            1: λ{#CON: λ&h. λ&t. h}(var_type_cell)
+            _: @lookup_tcon_subst(rest)(name)(default)
+          }((var_name == name))
+      }(pair)
+  }(subst)
+
+// =============================================================================
+// Kind-Polymorphic Type Schemes
+// =============================================================================
+
+// Type scheme with kind-annotated variables
+// #TSchK{kind_vars, type_vars, body}
+// kind_vars: list of kind variable names (for kind polymorphism)
+// type_vars: list of #TConVar{name, kind} (type variables with their kinds)
+// body: the actual type
+@type_scheme_k = λ&kind_vars. λ&type_vars. λ&body.
+  #TSchK{kind_vars, type_vars, body}
+
+// Instantiate a kinded type scheme with concrete types
+@instantiate_scheme_k = λ&scheme. λ&type_args.
+  λ{
+    #TSchK: λ&kind_vars. λ&type_vars. λ&body.
+      (λ&subst. @subst_tcon_var(subst)(body))(@zip_subst(type_vars)(type_args))
+  }(scheme)
+
+// Create substitution from variable list and argument list
+@zip_subst = λ&vars. λ&args.
+  λ{
+    #NIL: #NIL
+    #CON: λ&var. λ&rest_vars.
+      λ{
+        #NIL: #NIL
+        #CON: λ&arg. λ&rest_args.
+          (λ&var_name.
+            #CON{#CON{var_name, #CON{arg, #NIL}}, @zip_subst(rest_vars)(rest_args)}
+          )(@type_con_var_name(var))
+      }(args)
+  }(vars)
+
+// =============================================================================
+// Functor and Monad Type Classes (Examples)
+// =============================================================================
+
+// Functor constraint: requires fmap :: (a -> b) -> f a -> f b
+// Represented as: #TClass{name, kind_constraint, methods}
+@functor_class = #TClass{
+  8373611,  // nick("Func")
+  @kind_unary,  // f : * -> *
+  #CON{
+    // fmap : (a -> b) -> f a -> f b
+    #TMeth{8470640, #TFun{  // nick("fmap")
+      #CON{#TFun{#CON{#TVar{1}, #NIL}, #TVar{2}}, #NIL},  // (a -> b)
+      #TFun{
+        #CON{#TApp{#TConVar{6, @kind_unary}, #CON{#TVar{1}, #NIL}}, #NIL},  // f a
+        #TApp{#TConVar{6, @kind_unary}, #CON{#TVar{2}, #NIL}}  // f b
+      }
+    }},
+    #NIL
+  }
+}
+
+// Monad constraint: requires return and bind
+@monad_class = #TClass{
+  8835937,  // nick("Mona")
+  @kind_unary,  // m : * -> *
+  #CON{
+    // return : a -> m a
+    #TMeth{3949709, #TFun{  // nick("retu")
+      #CON{#TVar{1}, #NIL},
+      #TApp{#TConVar{13, @kind_unary}, #CON{#TVar{1}, #NIL}}
+    }},
+    #CON{
+      // bind : m a -> (a -> m b) -> m b
+      #TMeth{6774332, #TFun{  // nick("bind")
+        #CON{#TApp{#TConVar{13, @kind_unary}, #CON{#TVar{1}, #NIL}}, #NIL},  // m a
+        #TFun{
+          #CON{#TFun{#CON{#TVar{1}, #NIL}, #TApp{#TConVar{13, @kind_unary}, #CON{#TVar{2}, #NIL}}}, #NIL},  // a -> m b
+          #TApp{#TConVar{13, @kind_unary}, #CON{#TVar{2}, #NIL}}  // m b
+        }
+      }},
+      #NIL
+    }
+  }
+}
+
+// =============================================================================
+// Kind Error Messages
+// =============================================================================
+
+@kind_error_msg = λ&err.
+  λ{
+    #KErr: λ&expected. λ&actual.
+      #CON{#sym_KindMismatch, #CON{expected, #CON{actual, #NIL}}}
+    #KOk: λ&subst. #NIL
+    _: λ&u_. #CON{#sym_UnknownKindError, #NIL}
+  }(err)
+
+// =============================================================================
+// Kind Pretty Printing
+// =============================================================================
+
+@kind_to_string = λ&kind.
+  λ{
+    #KStar: "*"
+    #KFun: λ&from. λ&to.
+      (λ&from_str. λ&to_str.
+        (λ&needs_parens.
+          λ{
+            #True: #CON{40, #CON{from_str, #CON{41, #CON{32, #CON{45, #CON{62, #CON{32, #CON{to_str, #NIL}}}}}}}}
+            #Fals: #CON{from_str, #CON{32, #CON{45, #CON{62, #CON{32, #CON{to_str, #NIL}}}}}}
+          }(needs_parens)
+        )(@is_kind_fun(from))
+      )(@kind_to_string(from))(@kind_to_string(to))
+    _: λ&u_. "?"
+  }(kind)
+
+@is_kind_fun = λ&kind.
+  λ{
+    #KFun: λ&f. λ&t. #True{}
+    _: λ&u_. #Fals{}
+  }(kind)
