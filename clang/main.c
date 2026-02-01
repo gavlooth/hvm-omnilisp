@@ -16,6 +16,35 @@
 #include <unistd.h>
 #include <poll.h>
 
+// FFI dispatch function pointer - set up after includes
+// Uses void* to avoid type dependency issues with include order
+static void* (*omni_ffi_dispatch_fn)(void*) = 0;
+
+// Counter for debugging
+static unsigned long omni_hook_calls = 0;
+static unsigned long omni_ffi_tag_counts[20] = {0};  // Count by tag C00-C16
+
+// FFI dispatch hook - called from wnf when encountering C02 constructors
+// Uses unsigned long (same size as Term/u64) to avoid type issues
+static inline unsigned long omni_ffi_dispatch_hook_wrapper(unsigned long t) {
+  omni_hook_calls++;
+
+  // Count by tag (C00-C16 are tags 24-40)
+  // Tag at bits 56-62, ext at bits 32-55
+  unsigned char tag = (t >> 56) & 0x7F;
+  if (tag >= 24 && tag <= 40) {
+    omni_ffi_tag_counts[tag - 24]++;
+  }
+
+  if (omni_ffi_dispatch_fn) {
+    return (unsigned long)omni_ffi_dispatch_fn((void*)t);
+  }
+  return t;
+}
+
+// Enable FFI dispatch hook in HVM4 wnf
+#define OMNI_FFI_DISPATCH_HOOK omni_ffi_dispatch_hook_wrapper
+
 // Include HVM4 runtime first
 #include "../hvm4/clang/hvm4.c"
 
@@ -25,6 +54,102 @@
 #include "omnilisp/ffi/thread_pool.c"
 #include "omnilisp/parse/_.c"
 #include "omnilisp/compile/_.c"
+
+// =============================================================================
+// FFI Dispatch Hook Implementation
+// =============================================================================
+
+// Debug flag for FFI dispatch
+static int omni_ffi_debug = 0;  // Disabled by default
+
+// Count how many C02 nodes we see
+static unsigned long omni_c02_count = 0;
+
+// Track unique ext values seen
+static u32 unique_exts[1000];
+static u32 unique_ext_counts[1000];
+static u32 unique_ext_count = 0;
+
+static void track_ext(u32 ext) {
+  for (u32 i = 0; i < unique_ext_count; i++) {
+    if (unique_exts[i] == ext) {
+      unique_ext_counts[i]++;
+      return;
+    }
+  }
+  if (unique_ext_count < 1000) {
+    unique_exts[unique_ext_count] = ext;
+    unique_ext_counts[unique_ext_count] = 1;
+    unique_ext_count++;
+  }
+}
+
+// Counter for all constructor entries
+static unsigned long omni_ctr_enter_count = 0;
+
+// Tag counts for all constructors
+static unsigned long omni_tag_counts[17] = {0};  // C00-C16
+static unsigned long omni_ext_per_tag[17][100];  // Up to 100 unique exts per tag
+static unsigned long omni_ext_count_per_tag[17][100];
+static unsigned int omni_unique_ext_per_tag[17];
+
+static void track_constructor(u8 tag, u32 ext) {
+  int idx = tag - C00;
+  if (idx < 0 || idx > 16) return;
+  omni_tag_counts[idx]++;
+
+  // Track unique exts for this tag
+  for (unsigned int i = 0; i < omni_unique_ext_per_tag[idx]; i++) {
+    if (omni_ext_per_tag[idx][i] == ext) {
+      omni_ext_count_per_tag[idx][i]++;
+      return;
+    }
+  }
+  if (omni_unique_ext_per_tag[idx] < 100) {
+    int n = omni_unique_ext_per_tag[idx]++;
+    omni_ext_per_tag[idx][n] = ext;
+    omni_ext_count_per_tag[idx][n] = 1;
+  }
+}
+
+// Actual FFI dispatch function (now that types are available)
+static void* omni_ffi_dispatch_impl(void* term_ptr) {
+  Term t = (Term)term_ptr;
+  u8 tag = term_tag(t);
+
+  // Track ALL constructor entries (C00-C16, tags 24-40)
+  if (tag >= C00 && tag <= C16) {
+    omni_ctr_enter_count++;
+    u32 ext = term_ext(t);
+    track_constructor(tag, ext);
+
+    // Track C02 specifically for unique ext summary
+    if (tag == C02) {
+      omni_c02_count++;
+      track_ext(ext);
+    }
+
+    // Log first 20 constructor entries
+    if (omni_ffi_debug && omni_ctr_enter_count <= 20) {
+      fprintf(stderr, "[CTR ENTER] C%02d ext=%u%s\n", tag - C00, ext,
+              ext == OMNI_NAM_FFI ? " <-- FFI!" : "");
+    }
+  }
+
+  // Check if this is an FFI node: C02 with ext == OMNI_NAM_FFI
+  if (tag == C02 && term_ext(t) == OMNI_NAM_FFI) {
+    if (omni_ffi_debug) {
+      fprintf(stderr, "[FFI] Dispatching FFI node\n");
+    }
+    return (void*)omni_ffi_dispatch(t);
+  }
+  return term_ptr;
+}
+
+// Initialize the FFI dispatch hook
+static void omni_ffi_hook_init(void) {
+  omni_ffi_dispatch_fn = omni_ffi_dispatch_impl;
+}
 
 // =============================================================================
 // Command Line Options
@@ -550,6 +675,9 @@ fn void omni_runtime_init(void) {
   // Initialize FFI
   omni_ffi_handle_init();
   omni_ffi_register_stdlib();
+
+  // Initialize FFI dispatch hook (must be after names init)
+  omni_ffi_hook_init();
 }
 
 fn void omni_runtime_cleanup(void) {
@@ -698,11 +826,42 @@ fn int run_evaluate(const char *source, int collapse_limit, int stats, int debug
     Term eval_expr = term_new_app(eval_with_menv, ast);
 
     // Evaluate to strong normal form
-    result = eval_normalize(eval_expr);
+    result = omni_normalize(eval_expr);
   } else {
     // Runtime is required - no fallback interpreter
     fprintf(stderr, "Error: runtime.hvm4 failed to load - cannot evaluate\n");
     return 1;
+  }
+
+  // Debug: show how many times the FFI hook was called
+  if (omni_ffi_debug) {
+    fprintf(stderr, "[DEBUG] FFI hook called %lu times\n", omni_hook_calls);
+    fprintf(stderr, "[DEBUG] Total constructor enters: %lu\n", omni_ctr_enter_count);
+    // Show tag distribution with ext breakdown
+    fprintf(stderr, "[DEBUG] Constructor tag breakdown:\n");
+    for (int i = 0; i <= 16; i++) {
+      if (omni_tag_counts[i] > 0) {
+        fprintf(stderr, "  C%02d: %lu entries, %u unique exts\n", i, omni_tag_counts[i], omni_unique_ext_per_tag[i]);
+        // Show top exts for this tag
+        for (unsigned int j = 0; j < omni_unique_ext_per_tag[i] && j < 5; j++) {
+          fprintf(stderr, "    ext=%lu (count=%lu)%s\n",
+                  (unsigned long)omni_ext_per_tag[i][j],
+                  (unsigned long)omni_ext_count_per_tag[i][j],
+                  omni_ext_per_tag[i][j] == OMNI_NAM_FFI ? " <-- FFI!" : "");
+        }
+      }
+    }
+    // Also check if FFI ext appears in C02
+    fprintf(stderr, "[DEBUG] Checking for FFI (ext=%u) in C02: ", OMNI_NAM_FFI);
+    int found = 0;
+    for (unsigned int j = 0; j < omni_unique_ext_per_tag[2]; j++) {
+      if (omni_ext_per_tag[2][j] == OMNI_NAM_FFI) {
+        fprintf(stderr, "FOUND! (count=%lu)\n", (unsigned long)omni_ext_count_per_tag[2][j]);
+        found = 1;
+        break;
+      }
+    }
+    if (!found) fprintf(stderr, "NOT FOUND\n");
   }
 
   printf("Result: ");
@@ -765,7 +924,7 @@ fn char* eval_to_string(const char *source, int debug) {
   Term menv_ref = term_new_ref(menv_id);
   Term eval_with_menv = term_new_app(eval_ref, menv_ref);
   Term eval_expr = term_new_app(eval_with_menv, ast);
-  result = eval_normalize(eval_expr);
+  result = omni_normalize(eval_expr);
 
   // Convert result to string using user-friendly printer
   char *buf = (char*)malloc(REPL_BUFFER_SIZE);
