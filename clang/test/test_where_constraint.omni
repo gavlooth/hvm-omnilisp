@@ -3,46 +3,56 @@
 ;; OmniLisp uses {Type} syntax in slots for type annotations
 
 ;; TEST: basic typed function
-(define add-nums [x {Int}] [y {Int}]
-  (+ x y))
-
 ;; EXPECT: 15
-(add-nums 7 8)
+(do
+  (define add-nums [x {Int}] [y {Int}]
+    (+ x y))
+  (add-nums 7 8))
 
 ;; TEST: typed with string
-(define greet [name {String}]
-  (str-concat "Hello, " name))
-
 ;; EXPECT: "Hello, world"
-(greet "world")
+(do
+  (define greet [name {String}]
+    (str-concat "Hello, " name))
+  (greet "world"))
 
 ;; TEST: max value function
-(define max-val [x] [y]
-  (if (> x y) x y))
-
 ;; EXPECT: 10
-(max-val 5 10)
+(do
+  (define max-val [x] [y]
+    (if (> x y) x y))
+  (max-val 5 10))
 
 ;; TEST: max of equal values
 ;; EXPECT: 7
-(max-val 7 7)
+(do
+  (define max-val [x] [y]
+    (if (> x y) x y))
+  (max-val 7 7))
 
 ;; TEST: function composition
-(define double [x] (* x 2))
-(define inc [x] (+ x 1))
-
 ;; EXPECT: 8
-(double (inc 3))
+(do
+  (define double [x] (* x 2))
+  (define inc [x] (+ x 1))
+  (double (inc 3)))
 
 ;; TEST: nested typed call
 ;; EXPECT: 22
-(add-nums (max-val 10 5) (double 6))
+(do
+  (define add-nums [x {Int}] [y {Int}] (+ x y))
+  (define max-val [x] [y] (if (> x y) x y))
+  (define double [x] (* x 2))
+  (add-nums (max-val 10 5) (double 6)))
 
 ;; TEST: identity function
-(define id [x] x)
-
 ;; EXPECT: 42
-(id 42)
+(do
+  (define id [x] x)
+  (id 42))
 
+;; TEST: typed function equals
 ;; EXPECT: true
-(= (add-nums 20 22) 42)
+(do
+  (define add-nums [x {Int}] [y {Int}] (+ x y))
+  (= (add-nums 20 22) 42))

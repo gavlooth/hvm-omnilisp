@@ -7,8 +7,8 @@
 
 ;; TEST: curried add function
 ;; EXPECT: 35
-(define add [x] [y] (+ x y))
-(add 30 5)
+(do (define add [x] [y] (+ x y))
+    (add 30 5))
 
 ;; TEST: add negative (subtract)
 ;; EXPECT: 10
@@ -27,19 +27,19 @@
 ;; EXPECT: 102
 (+ 97 5)
 
-;; Higher-order add
-(define add-n [n]
-  (lambda [x] (+ x n)))
-
 ;; TEST: add-n function
 ;; EXPECT: 15
-((add-n 5) 10)
+(do (define add-n [n]
+      (lambda [x] (+ x n)))
+    ((add-n 5) 10))
 
 ;; TEST: compose additions
 ;; EXPECT: 23
-(let [add3 (add-n 3)]
-  (let [add5 (add-n 5)]
-    (add5 (add3 15))))
+(do (define add-n [n]
+      (lambda [x] (+ x n)))
+    (let [add3 (add-n 3)]
+      (let [add5 (add-n 5)]
+        (add5 (add3 15)))))
 
 ;; EXPECT: true
 (let [result (+ (+ 1 2) 3)]

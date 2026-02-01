@@ -1,0 +1,67 @@
+;; test_type_check_pass.omni - Tests for compile-time type checking
+;; These tests should all pass type checking without warnings
+
+;; TEST: simple typed addition
+;; EXPECT: 5
+(+ 2 3)
+
+;; TEST: typed function definition and call
+;; EXPECT: 10
+(do (define add [x {Int}] [y {Int}] {Int} (+ x y))
+    (add 4 6))
+
+;; TEST: higher-order function with type annotations
+;; EXPECT: 25
+(do (define apply-fn [f {-> Int Int}] [x {Int}] {Int} (f x))
+    (define square [n {Int}] {Int} (* n n))
+    (apply-fn square 5))
+
+;; TEST: typed list operations (non-recursive)
+;; EXPECT: 1
+(do (define my-head [lst {List Int}] {Int}
+      (match lst
+        ()        0
+        (h .. t)  h))
+    (my-head '(1 2 3)))
+
+;; TEST: polymorphic identity function
+;; EXPECT: 42
+(do (define id [x {a}] {a} x)
+    (id 42))
+
+;; TEST: function composition with types
+;; EXPECT: 20
+(do (define double [x {Int}] {Int} (* x 2))
+    (define add-ten [x {Int}] {Int} (+ x 10))
+    (double (add-ten 0)))
+
+;; TEST: typed conditional
+;; EXPECT: 100
+(do (define my-abs [x {Int}] {Int}
+      (if (< x 0) (- 0 x) x))
+    (my-abs 100))
+
+;; TEST: let binding with typed value
+;; EXPECT: 15
+(let [x 5]
+  (let [y 10]
+    (+ x y)))
+
+;; TEST: deeply nested typed expressions
+;; EXPECT: 30
+(do (define f [x {Int}] {Int}
+      (let [y 15]
+        (let [z 10]
+          (+ x (+ y z)))))
+    (f 5))
+
+;; TEST: simple curried function
+;; EXPECT: 7
+(do (define add2 [a] [b] (+ a b))
+    (add2 3 4))
+
+;; TEST: partial application
+;; EXPECT: 15
+(do (define add3 [a] [b] (+ a b))
+    (define add-10 (add3 10))
+    (add-10 5))

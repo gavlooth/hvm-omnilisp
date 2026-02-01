@@ -11,28 +11,30 @@
 // - fields: list of field descriptors
 
 // Built-in type descriptors
-@type_Any     = #TDsc{#sym_Any, #NIL, #NIL}
-@type_Nothing = #TDsc{#sym_Nothing, @type_Any, #NIL}
-@type_Int     = #TDsc{#sym_Int, @type_Any, #NIL}
-@type_Float   = #TDsc{#sym_Float, @type_Any, #NIL}
-@type_Bool    = #TDsc{#sym_Bool, @type_Any, #NIL}
-@type_Char    = #TDsc{#sym_Char, @type_Any, #NIL}
-@type_Symbol  = #TDsc{#sym_Symbol, @type_Any, #NIL}
-@type_String  = #TDsc{#sym_String, @type_Any, #NIL}
-@type_List    = #TDsc{#sym_List, @type_Any, #NIL}
-@type_Function = #TDsc{#sym_Function, @type_Any, #NIL}
-@type_Handle  = #TDsc{#sym_Handle, @type_Any, #NIL}
+// Using nick-encoded numeric values instead of #sym_X to ensure NUM terms (not C00 constructors)
+// HVM4 nick encoding: _ = 0, a-z = 1-26, A-Z = 27-52, 0-9 = 53-62, $ = 63
+@type_Any      = #TDsc{111513, #NIL, #NIL}              // nick("Any")
+@type_Nothing  = #TDsc{2134919, @type_Any, #NIL}        // nick("Nothing")
+@type_Int      = #TDsc{144276, @type_Any, #NIL}         // nick("Int")
+@type_Float    = #TDsc{3207252, @type_Any, #NIL}        // nick("Float")
+@type_Bool     = #TDsc{7402444, @type_Any, #NIL}        // nick("Bool")
+@type_Char     = #TDsc{7635026, @type_Any, #NIL}        // nick("Char")
+@type_Symbol   = #TDsc{3417036, @type_Any, #NIL}        // nick("Symbol")
+@type_String   = #TDsc{4756359, @type_Any, #NIL}        // nick("String")
+@type_List     = #TDsc{9999572, @type_Any, #NIL}        // nick("List")
+@type_Function = #TDsc{5280718, @type_Any, #NIL}        // nick("Function")
+@type_Handle   = #TDsc{3687173, @type_Any, #NIL}        // nick("Handle")
 
 // =============================================================================
 // Type Hierarchy
 // =============================================================================
 
 // Check if type A is subtype of type B
-@subtype? = λtype_a. λtype_b.
+@subtype_check = λ&type_a. λ&type_b.
   λ{
-    #TDsc: λ&name_a. λ&parent_a. λ&fields_a.
+    #TDsc: λ&name_a. λ&parent_a. λ&fields_a_unused.
       λ{
-        #TDsc: λ&name_b. λ&parent_b. λ&fields_b.
+        #TDsc: λ&name_b. λ&parent_b_unused. λ&fields_b_unused.
           // Same type?
           λ{
             1: #True{}
@@ -40,7 +42,7 @@
               // Check parent
               λ{
                 #NIL: #Fals{}
-                _: @subtype?(parent_a)(type_b)
+                _: @subtype_check(parent_a)(type_b)
               }(parent_a)
           }((name_a == name_b))
       }(type_b)
@@ -90,9 +92,9 @@
   }(val)
 
 // Check if value has given type
-@has_type? = λval. λtype.
+@has_type_check = λval. λtype.
   !!&inferred = @infer_type(val);
-  @subtype?(inferred)(type)
+  @subtype_check(inferred)(type)
 
 // =============================================================================
 // Multiple Dispatch
@@ -107,16 +109,16 @@
 // For now, this is a stub that would be extended at runtime
 
 // Find most specific method for given types
-@dispatch_find = λname. λarg_types. λmethods.
+@dispatch_find = λ&name. λ&arg_types. λ&methods.
   λ{
     #NIL: #Noth{}  // No matching method
     #CON: λ&meth. λ&rest.
       λ{
-        #Meth: λ&mname. λ&msig. λ&mimpl.
+        #Meth: λ&mname. λ&msig. λ&mimpl_unused.
           λ{
             1:
               // Check if signature matches
-              !!&matches = @sig_matches?(arg_types)(msig);
+              !!&matches = @sig_matches_check(arg_types)(msig);
               λ{
                 #True:
                   // Found a match - check if it's more specific than rest
@@ -125,7 +127,7 @@
                     #Noth: meth
                     _:
                       // Compare specificity
-                      !!&more_specific = @more_specific?(msig)(λ{#Meth: λ&n. λ&s. λ&i. s}(rest_match));
+                      !!&more_specific = @more_specific_check(msig)(λ{#Meth: λ&n_. λ&s. λ&i_. s}(rest_match));
                       λ{
                         #True: meth
                         _: rest_match
@@ -139,7 +141,7 @@
   }(methods)
 
 // Check if argument types match signature
-@sig_matches? = λarg_types. λsig.
+@sig_matches_check = λ&arg_types. λ&sig.
   λ{
     #NIL:
       λ{
@@ -151,14 +153,14 @@
         #NIL: #Fals{}
         #CON: λ&sh. λ&st.
           λ{
-            #True: @sig_matches?(at)(st)
+            #True: @sig_matches_check(at)(st)
             _: #Fals{}
-          }(@subtype?(ah)(sh))
+          }(@subtype_check(ah)(sh))
       }(sig)
   }(arg_types)
 
 // Check if sig_a is more specific than sig_b
-@more_specific? = λsig_a. λsig_b.
+@more_specific_check = λ&sig_a. λ&sig_b.
   λ{
     #NIL: #Fals{}  // Empty signature - not more specific
     #CON: λ&ah. λ&at.
@@ -167,23 +169,23 @@
         #CON: λ&bh. λ&bt.
           λ{
             #True: #True{}  // ah is subtype of bh - more specific
-            _: @more_specific?(at)(bt)  // Check rest
-          }(@subtype?(ah)(bh))
+            _: @more_specific_check(at)(bt)  // Check rest
+          }(@subtype_check(ah)(bh))
       }(sig_b)
   }(sig_a)
 
 // Invoke a method by name with arguments
-@invoke_method = λname. λargs. λmethods.
+@invoke_method = λ&name. λ&args. λ&methods.
   !!&arg_types = @map(@infer_type)(args);
   !!&meth = @dispatch_find(name)(arg_types)(methods);
   λ{
     #Noth: #Err{#sym_nomethod, name}
-    #Meth: λ&mname. λ&msig. λ&impl.
+    #Meth: λ&mname_unused. λ&msig_unused. λ&impl.
       @apply_args(impl)(args)
   }(meth)
 
 // Apply function to list of arguments
-@apply_args = λf. λargs.
+@apply_args = λ&f. λ&args.
   λ{
     #NIL: f
     #CON: λ&h. λ&t. @apply_args(f(h))(t)
@@ -229,28 +231,28 @@
 
 // Main dispatch function (compiler entrypoint)
 // Takes a generic function and argument list, finds best method and invokes
-@omni_dispatch = λgfun. λargs.
+@omni_dispatch = λ&gfun. λ&args.
   λ{
     #GFun: λ&name. λ&methods.
       !!&arg_types = @omni_infer_arg_types(args);
       !!&meth = @dispatch_find(name)(arg_types)(methods);
       λ{
         #Noth: #Err{#sym_NoMethod, #CON{name, args}}
-        #Meth: λ&mname. λ&msig. λ&impl.
+        #Meth: λ&mname_u. λ&msig_u. λ&impl.
           @omni_apply_list(impl)(args)
       }(meth)
     _: #Err{#sym_NotGeneric, gfun}
   }(gfun)
 
 // Infer types of arguments (for dispatch)
-@omni_infer_arg_types = λargs.
+@omni_infer_arg_types = λ&args.
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t. #CON{@infer_type(h), @omni_infer_arg_types(t)}
   }(args)
 
 // Apply function to list of arguments
-@omni_apply_list = λf. λargs.
+@omni_apply_list = λ&f. λ&args.
   λ{
     #NIL: f
     #CON: λ&h. λ&t. @omni_apply_list(f(h))(t)
@@ -275,16 +277,16 @@
 // Used by compiler for dispatch optimization
 
 // Extract expression from annotation
-@tann_expr = λtann.
+@tann_expr = λ&tann.
   λ{
-    #TAnn: λ&expr. λ&type. expr
+    #TAnn: λ&expr. λ&type_u. expr
     _: tann
   }(tann)
 
 // Extract type from annotation
-@tann_type = λtann.
+@tann_type = λ&tann.
   λ{
-    #TAnn: λ&expr. λ&type. type
+    #TAnn: λ&expr_u. λ&type. type
     _: @type_Any
   }(tann)
 
@@ -298,15 +300,15 @@
 @make_type_app = λbase. λparams.
   #TApp{base, params}
 
-@type_app_base = λtapp.
+@type_app_base = λ&tapp.
   λ{
-    #TApp: λ&base. λ&params. base
+    #TApp: λ&base. λ&params_u. base
     _: tapp
   }(tapp)
 
-@type_app_params = λtapp.
+@type_app_params = λ&tapp.
   λ{
-    #TApp: λ&base. λ&params. params
+    #TApp: λ&base_u. λ&params. params
     _: #NIL
   }(tapp)
 
@@ -329,9 +331,9 @@
   }(tsup)
 
 // Check if type is a superposition type
-@sup_type? = λtype.
+@sup_type_check = λtype.
   λ{
-    #TSup: λ&_. #True{}
+    #TSup: λ&u_. #True{}
     _: #Fals{}
   }(type)
 
@@ -349,9 +351,9 @@
   }(tsup)
 
 // Check if type is a weighted superposition
-@weighted_sup_type? = λtype.
+@weighted_sup_type_check = λtype.
   λ{
-    #TWSup: λ&_. #True{}
+    #TWSup: λ&u_. #True{}
     _: #Fals{}
   }(type)
 
@@ -396,7 +398,7 @@
   }(tfun)
 
 // Check if function type is known pure
-@fun_type_pure? = λtfun.
+@fun_type_pure_check = λtfun.
   λ{
     #TFunE: λ&args. λ&ret. λ&eff.
       λ{
@@ -424,9 +426,9 @@
   }(tvar)
 
 // Check if type is a type variable
-@type_var? = λtype.
+@type_var_check = λtype.
   λ{
-    #TVar: λ&_. #True{}
+    #TVar: λ&u_. #True{}
     _: #Fals{}
   }(type)
 
@@ -435,7 +437,7 @@
 // =============================================================================
 
 // Apply type substitution: subst is list of #CON{tvar, type}
-@subst_type = λsubst. λtype.
+@subst_type = λ&subst. λ&type.
   λ{
     #TVar: λ&name.
       @lookup_subst(name)(subst)
@@ -458,14 +460,14 @@
     _: type
   }(type)
 
-@lookup_subst = λname. λsubst.
+@lookup_subst = λ&name. λ&subst.
   λ{
     #NIL: #TVar{name}  // Not found - return original var
     #CON: λ&h. λ&t.
       λ{
         #CON: λ&var. λ&rest.
           λ{
-            #CON: λ&type. λ&_.
+            #CON: λ&type. λ&u_l.
               λ{
                 1: type
                 _: @lookup_subst(name)(t)
@@ -486,42 +488,42 @@
   #Prot{name, methods}
 
 // Check if type implements protocol
-@implements? = λtype. λprotocol. λmethod_registry.
+@implements_check = λ&type. λ&protocol. λ&method_registry.
   λ{
-    #Prot: λ&pname. λ&pmethods.
-      @all_methods_present?(type)(pmethods)(method_registry)
+    #Prot: λ&pname_unused. λ&pmethods.
+      @all_methods_present_check(type)(pmethods)(method_registry)
   }(protocol)
 
-@all_methods_present? = λtype. λpmethods. λregistry.
+@all_methods_present_check = λ&type. λ&pmethods. λ&registry.
   λ{
     #NIL: #True{}
     #CON: λ&pm. λ&rest.
       λ{
-        #PMeth: λ&mname. λ&msig.
+        #PMeth: λ&mname. λ&msig_unused.
           !!&found = @find_method_for_type(mname)(type)(registry);
           λ{
             #Noth: #Fals{}
-            _: @all_methods_present?(type)(rest)(registry)
+            _: @all_methods_present_check(type)(rest)(registry)
           }(found)
       }(pm)
   }(pmethods)
 
-@find_method_for_type = λname. λtype. λmethods.
+@find_method_for_type = λ&name. λ&type. λ&methods.
   λ{
     #NIL: #Noth{}
     #CON: λ&meth. λ&rest.
       λ{
-        #Meth: λ&mname. λ&msig. λ&mimpl.
+        #Meth: λ&mname. λ&msig. λ&mimpl_u.
           λ{
             1:
               // Check if first param type matches
               λ{
                 #NIL: @find_method_for_type(name)(type)(rest)
-                #CON: λ&first_type. λ&_.
+                #CON: λ&first_type. λ&u_f.
                   λ{
                     #True: meth
                     _: @find_method_for_type(name)(type)(rest)
-                  }(@subtype?(type)(first_type))
+                  }(@subtype_check(type)(first_type))
               }(msig)
             _: @find_method_for_type(name)(type)(rest)
           }((mname == name))
@@ -538,20 +540,24 @@
 
 // Register an abstract type: (define {abstract Name}) or (define {abstract Name Parent})
 // Returns the type descriptor for use in type annotations
-@omni_register_abstract = λname. λparent.
-  !!&parent_type = λ{
-    #NIL: @type_Any
-    _: parent
-  }(parent);
+@omni_register_abstract = λ&name. λ&parent.
+  !!&parent_type = (λ&p.
+    λ{
+      #NIL: @type_Any
+      _: p
+    }(p)
+  )(parent);
   #TDsc{name, parent_type, #NIL}
 
 // Register a struct type: (define {struct Name} [field1 {Type1}] [field2 {Type2}] ...)
 // fields is a list of #TFld{name, type} descriptors
-@omni_register_struct = λname. λparent. λfields. λmutable.
-  !!&parent_type = λ{
-    #NIL: @type_Any
-    _: parent
-  }(parent);
+@omni_register_struct = λ&name. λ&parent. λ&fields. λ&mutable.
+  !!&parent_type = (λ&p.
+    λ{
+      #NIL: @type_Any
+      _: p
+    }(p)
+  )(parent);
   #TStr{name, parent_type, fields, mutable}
 
 // Register an enum type: (define {enum Name} Variant1 (Variant2 [field {Type}]) ...)
@@ -587,21 +593,21 @@
   }(field)
 
 // Find field by name in struct type
-@find_field = λstruct_type. λfield_name.
+@find_field = λ&struct_type. λ&field_name.
   λ{
-    #TStr: λ&name. λ&parent. λ&fields. λ&mutable.
+    #TStr: λ&name_u. λ&parent_u. λ&fields. λ&mutable_u.
       @find_in_fields(fields)(field_name)
-    #TDsc: λ&name. λ&parent. λ&fields.
+    #TDsc: λ&name_u. λ&parent_u. λ&fields.
       @find_in_fields(fields)(field_name)
     _: #Noth{}
   }(struct_type)
 
-@find_in_fields = λfields. λname.
+@find_in_fields = λ&fields. λ&name.
   λ{
     #NIL: #Noth{}
     #CON: λ&field. λ&rest.
       λ{
-        #TFld: λ&fname. λ&ftype.
+        #TFld: λ&fname. λ&ftype_u.
           λ{
             1: field
             _: @find_in_fields(rest)(name)
@@ -632,19 +638,19 @@
   }(variant)
 
 // Find variant by name in enum type
-@find_variant = λenum_type. λvariant_name.
+@find_variant = λ&enum_type. λ&variant_name.
   λ{
-    #TEnm: λ&name. λ&variants.
+    #TEnm: λ&name_u. λ&variants.
       @find_in_variants(variants)(variant_name)
     _: #Noth{}
   }(enum_type)
 
-@find_in_variants = λvariants. λname.
+@find_in_variants = λ&variants. λ&name.
   λ{
     #NIL: #Noth{}
     #CON: λ&variant. λ&rest.
       λ{
-        #TVrn: λ&vname. λ&vfields.
+        #TVrn: λ&vname. λ&vfields_u.
           λ{
             1: variant
             _: @find_in_variants(rest)(name)
@@ -657,21 +663,21 @@
 // =============================================================================
 
 // Check if value matches any type in union
-@union_matches? = λval. λunion_type.
+@union_matches_check = λ&val. λ&union_type.
   λ{
-    #TUni: λ&name. λ&types.
-      @any_type_matches?(val)(types)
+    #TUni: λ&name_u. λ&types.
+      @any_type_matches_check(val)(types)
     _: #Fals{}
   }(union_type)
 
-@any_type_matches? = λval. λtypes.
+@any_type_matches_check = λ&val. λ&types.
   λ{
     #NIL: #Fals{}
     #CON: λ&type. λ&rest.
       λ{
         #True: #True{}
-        _: @any_type_matches?(val)(rest)
-      }(@has_type?(val)(type))
+        _: @any_type_matches_check(val)(rest)
+      }(@has_type_check(val)(type))
   }(types)
 
 // =============================================================================
@@ -679,7 +685,7 @@
 // =============================================================================
 
 // Check if a type is an abstract type
-@abstract_type? = λtype.
+@abstract_type_check = λtype.
   λ{
     #TDsc: λ&name. λ&parent. λ&fields.
       λ{
@@ -690,28 +696,28 @@
   }(type)
 
 // Check if a type is a struct type
-@struct_type? = λtype.
+@struct_type_check = λtype.
   λ{
-    #TStr: λ&_. λ&_. λ&_. λ&_. #True{}
+    #TStr: λ&u1_. λ&u2_. λ&u3_. λ&u4_. #True{}
     _: #Fals{}
   }(type)
 
 // Check if a type is an enum type
-@enum_type? = λtype.
+@enum_type_check = λtype.
   λ{
-    #TEnm: λ&_. λ&_. #True{}
+    #TEnm: λ&u1_. λ&u2_. #True{}
     _: #Fals{}
   }(type)
 
 // Check if a type is a union type
-@union_type? = λtype.
+@union_type_check = λtype.
   λ{
-    #TUni: λ&_. λ&_. #True{}
+    #TUni: λ&u1_. λ&u2_. #True{}
     _: #Fals{}
   }(type)
 
 // Check if a struct type is mutable
-@mutable_struct? = λtype.
+@mutable_struct_check = λtype.
   λ{
     #TStr: λ&name. λ&parent. λ&fields. λ&mutable.
       λ{
@@ -727,11 +733,11 @@
 
 // Instantiate a parametric type with concrete type arguments
 // type_params is list of #TVar names, type_args is list of concrete types
-@instantiate_type = λbase_type. λtype_params. λtype_args.
+@instantiate_type = λ&base_type. λ&type_params. λ&type_args.
   !!&subst = @build_subst(type_params)(type_args);
   @subst_type_deep(subst)(base_type)
 
-@build_subst = λparams. λargs.
+@build_subst = λ&params. λ&args.
   λ{
     #NIL: #NIL
     #CON: λ&param. λ&rest_params.
@@ -743,7 +749,7 @@
   }(params)
 
 // Deep substitution in all nested types
-@subst_type_deep = λsubst. λtype.
+@subst_type_deep = λ&subst. λ&type.
   λ{
     #TVar: λ&name.
       @lookup_subst(name)(subst)
@@ -772,9 +778,475 @@
     _: type
   }(type)
 
-@subst_field = λsubst. λfield.
+@subst_field = λ&subst. λ&field.
   λ{
     #TFld: λ&name. λ&type.
       #TFld{name, @subst_type_deep(subst)(type)}
   }(field)
+
+// =============================================================================
+// Type Unification
+// =============================================================================
+
+// Unification result types:
+// #USuc{subst} - success with substitution (list of #CON{tvar, type})
+// #UFal{reason} - failure with reason
+
+// Main unification function
+// Returns #USuc{subst} or #UFal{reason}
+@unify = λ&type_a. λ&type_b.
+  @unify_with_subst(#NIL)(type_a)(type_b)
+
+// Unify with existing substitution
+@unify_with_subst = λ&subst. λ&type_a. λ&type_b.
+  // Skip apply_subst for now to debug
+  @unify_core(subst)(type_a)(type_b)
+
+// Core unification (types already have substitution applied)
+// Uses helper to handle nested pattern matching with linearity
+@unify_core = λ&subst. λ&type_a. λ&type_b.
+  // Clone all inputs for use in closures
+  !!&s = subst;
+  !!&ta = type_a;
+  !!&tb = type_b;
+  @unify_core_dispatch(s)(ta)(tb)
+
+// Dispatch based on type_a
+@unify_core_dispatch = λ&s. λ&ta. λ&tb.
+  λ{
+    // Type variable on left
+    #TVar: λ&name_a.
+      @unify_tvar_left(s)(name_a)(ta)(tb)
+
+    // Type constructor on left
+    #TCon: λ&name_a.
+      @unify_tcon_left(s)(name_a)(ta)(tb)
+
+    // Default: check equality
+    _: @unify_default(s)(ta)(tb)
+  }(ta)
+
+// Handle #TVar on left side
+@unify_tvar_left = λ&s. λ&name_a. λ&ta. λ&tb.
+  λ{
+    // Both type variables
+    #TVar: λ&name_b.
+      (λ&same.
+        λ{
+          1: #USuc{s}  // Same variable
+          0: // Different variables - bind name_a to name_b
+            #USuc{#CON{#CON{#TVar{name_a}, #CON{#TVar{name_b}, #NIL}}, s}}
+        }(same)
+      )((name_a == name_b))
+    // Type constructor on right - bind variable to it
+    #TCon: λ&n.
+      @bind_var(s)(name_a)(tb)
+    // Any other type on right - bind variable to it
+    _: @bind_var(s)(name_a)(tb)
+  }(tb)
+
+// Handle #TCon on left side
+@unify_tcon_left = λ&s. λ&name_a. λ&ta. λ&tb.
+  λ{
+    // Type variable on right - bind it to left
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+    // Type constructor on right - check names match
+    #TCon: λ&name_b.
+      (λ&same.
+        λ{
+          1: #USuc{s}  // Same type constructor
+          0: #UFal{#sym_TypeMismatch}  // Different constructors
+        }(same)
+      )((name_a == name_b))
+    // Any other type - mismatch
+    _: #UFal{#sym_TypeMismatch}
+  }(tb)
+
+// Default handler for other types
+@unify_default = λ&s. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+    _:
+      // Both concrete - check equality
+      (λ&same.
+        λ{
+          1: #USuc{s}
+          0: #UFal{#sym_TypeMismatch}
+        }(same)
+      )((ta == tb))
+  }(tb)
+
+// Bind type variable to a type with occurs check
+@bind_var = λ&subst. λ&var_name. λ&type.
+  λ{
+    #True: #UFal{#sym_OccursCheck}
+    #Fals: #USuc{#CON{#CON{#TVar{var_name}, #CON{type, #NIL}}, subst}}
+  }(@occurs_check(var_name)(type))
+
+// Occurs check: does type variable appear in type?
+// Each branch clones var_name as needed for linearity
+@occurs_check = λ&var_name. λ&type.
+  λ{
+    #TVar: λ&name.
+      !!&vn = var_name;  // Clone for this branch
+      (λ&same. λ{ 1: #True{} 0: #Fals{} }(same))((vn == name))
+
+    #TCon: λ&name.
+      #Fals{}  // Type constructors don't contain type variables
+
+    #TApp: λ&base. λ&params.
+      !!&vn1 = var_name;  // Clone for base check
+      !!&vn2 = var_name;  // Clone for params check
+      !!&in_base = @occurs_check(vn1)(base);
+      λ{
+        #True: #True{}
+        _: @occurs_in_list(vn2)(params)
+      }(in_base)
+
+    #TFun: λ&args. λ&ret.
+      !!&vn1 = var_name;  // Clone for args
+      !!&vn2 = var_name;  // Clone for ret
+      !!&in_args = @occurs_in_list(vn1)(args);
+      λ{
+        #True: #True{}
+        _: @occurs_check(vn2)(ret)
+      }(in_args)
+
+    #TFunE: λ&args. λ&ret. λ&eff_unused.
+      !!&vn1 = var_name;  // Clone for args
+      !!&vn2 = var_name;  // Clone for ret
+      !!&in_args = @occurs_in_list(vn1)(args);
+      λ{
+        #True: #True{}
+        _: @occurs_check(vn2)(ret)
+      }(in_args)
+
+    #TSup: λ&elem.
+      !!&vn = var_name;
+      @occurs_check(vn)(elem)
+
+    #TWSup: λ&elem.
+      !!&vn = var_name;
+      @occurs_check(vn)(elem)
+
+    _: #Fals{}
+  }(type)
+
+// Check if type variable occurs in any type in list
+@occurs_in_list = λ&var_name. λ&types.
+  λ{
+    #NIL: #Fals{}
+    #CON: λ&h. λ&t.
+      !!&vn1 = var_name;  // Clone for head
+      !!&vn2 = var_name;  // Clone for tail recursion
+      !!&in_head = @occurs_check(vn1)(h);
+      λ{
+        #True: #True{}
+        _: @occurs_in_list(vn2)(t)
+      }(in_head)
+  }(types)
+
+// Unify two lists of types pairwise
+@unify_lists = λ&subst. λ&types_a. λ&types_b.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #USuc{subst}
+        _: #UFal{#sym_ArityMismatch}
+      }(types_b)
+    #CON: λ&ha. λ&ta.
+      λ{
+        #NIL: #UFal{#sym_ArityMismatch}
+        #CON: λ&hb. λ&tb.
+          !!&head_result = @unify_with_subst(subst)(ha)(hb);
+          λ{
+            #USuc: λ&subst2.
+              @unify_lists(subst2)(ta)(tb)
+            _: head_result
+          }(head_result)
+      }(types_b)
+  }(types_a)
+
+// Unify effect rows (for now, simple equality)
+@unify_effects = λ&subst. λ&eff_a. λ&eff_b.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #USuc{subst}
+        _: #UFal{#sym_EffectMismatch}
+      }(eff_b)
+    #ERws: λ&effs_a.
+      λ{
+        #ERws: λ&effs_b.
+          // For now, require exact effect match
+          // TODO: effect row polymorphism
+          @unify_effect_lists(subst)(effs_a)(effs_b)
+        _: #UFal{#sym_EffectMismatch}
+      }(eff_b)
+    _:
+      λ{
+        #NIL: #UFal{#sym_EffectMismatch}
+        _: #USuc{subst}  // Both unknown - accept
+      }(eff_b)
+  }(eff_a)
+
+// Unify effect lists (simple equality for now)
+@unify_effect_lists = λ&subst. λ&effs_a. λ&effs_b.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #USuc{subst}
+        _: #UFal{#sym_EffectMismatch}
+      }(effs_b)
+    #CON: λ&ha. λ&ta.
+      λ{
+        #NIL: #UFal{#sym_EffectMismatch}
+        #CON: λ&hb. λ&tb.
+          λ{
+            1: @unify_effect_lists(subst)(ta)(tb)
+            _: #UFal{#sym_EffectMismatch}
+          }((ha == hb))
+      }(effs_b)
+  }(effs_a)
+
+// Apply substitution to a type (like subst_type but for unification)
+@apply_subst = λ&subst. λ&type.
+  λ{
+    #TVar: λ&name.
+      @apply_subst_var(subst)(name)(type)
+
+    #TCon: λ&name.
+      type  // Type constructors don't have substitutions
+
+    #TApp: λ&base. λ&params.
+      #TApp{@apply_subst(subst)(base), @map_apply_subst(subst)(params)}
+
+    #TFun: λ&args. λ&ret.
+      #TFun{@map_apply_subst(subst)(args), @apply_subst(subst)(ret)}
+
+    #TFunE: λ&args. λ&ret. λ&eff.
+      #TFunE{@map_apply_subst(subst)(args), @apply_subst(subst)(ret), eff}
+
+    #TSup: λ&elem.
+      #TSup{@apply_subst(subst)(elem)}
+
+    #TWSup: λ&elem.
+      #TWSup{@apply_subst(subst)(elem)}
+
+    _: type
+  }(type)
+
+// Look up type variable in substitution, recursively apply
+@apply_subst_var = λ&subst. λ&name. λ&original.
+  λ{
+    #NIL: original  // Not found
+    #CON: λ&h. λ&t.
+      λ{
+        #CON: λ&var. λ&rest.
+          λ{
+            #CON: λ&bound_type. λ&u_.
+              λ{
+                #TVar: λ&var_name.
+                  λ{
+                    1:
+                      // Found binding - apply subst to bound type too
+                      @apply_subst(subst)(bound_type)
+                    _: @apply_subst_var(t)(name)(original)
+                  }((var_name == name))
+                _: @apply_subst_var(t)(name)(original)
+              }(var)
+          }(rest)
+      }(h)
+  }(subst)
+
+// Map apply_subst over list
+@map_apply_subst = λ&subst. λ&types.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{@apply_subst(subst)(h), @map_apply_subst(subst)(t)}
+  }(types)
+
+// =============================================================================
+// Constraint Generation
+// =============================================================================
+
+// Constraint: #TCon{expected, actual, location}
+// - expected: expected type
+// - actual: inferred type
+// - location: source location for error reporting
+
+@make_constraint = λ&expected. λ&actual. λ&loc.
+  #TCon{expected, actual, loc}
+
+// Generate constraints from expression and expected type
+// Returns #CON{constraints, inferred_type}
+@generate_constraints = λ&expr. λ&expected. λ&env.
+  λ{
+    // Integer literal
+    #Cst: λ&n_unused.
+      #CON{#CON{@make_constraint(expected)(@type_Int)(expr), #NIL}, @type_Int}
+
+    // Symbol reference - look up in environment
+    #Sym: λ&s.
+      !!&type = @env_lookup_type(env)(s);
+      #CON{#CON{@make_constraint(expected)(type)(expr), #NIL}, type}
+
+    // Lambda expression
+    #Lam: λ&var. λ&body.
+      // Create fresh type variable for parameter
+      !!&param_type = #TVar{var};
+      // Extend environment
+      !!&env2 = @env_extend(env)(var)(param_type);
+      // Generate constraints for body with fresh return type
+      !!&ret_type = @fresh_type_var();
+      !!&body_result = @generate_constraints(body)(ret_type)(env2);
+      λ{
+        #CON: λ&body_cons. λ&rest.
+          λ{
+            #CON: λ&actual_ret. λ&u1_.
+              !!&fn_type = #TFun{#CON{param_type, #NIL}, actual_ret};
+              !!&cons = #CON{@make_constraint(expected)(fn_type)(expr), body_cons};
+              #CON{cons, fn_type}
+          }(rest)
+      }(body_result)
+
+    // Application
+    #App: λ&func. λ&arg.
+      // Generate fresh type variable for result
+      !!&result_type = @fresh_type_var();
+      // Generate constraints for function (expect it to be a function)
+      !!&arg_type = @fresh_type_var();
+      !!&fn_type = #TFun{#CON{arg_type, #NIL}, result_type};
+      !!&func_result = @generate_constraints(func)(fn_type)(env);
+      !!&arg_result = @generate_constraints(arg)(arg_type)(env);
+      λ{
+        #CON: λ&func_cons. λ&u2_.
+          λ{
+            #CON: λ&arg_cons. λ&u3_.
+              !!&all_cons = @append(func_cons)(arg_cons);
+              !!&all_cons2 = #CON{@make_constraint(expected)(result_type)(expr), all_cons};
+              #CON{all_cons2, result_type}
+          }(arg_result)
+      }(func_result)
+
+    // Let binding
+    #Let: λ&var. λ&val. λ&body.
+      !!&val_type = @fresh_type_var();
+      !!&val_result = @generate_constraints(val)(val_type)(env);
+      λ{
+        #CON: λ&val_cons. λ&rest.
+          λ{
+            #CON: λ&actual_val_type. λ&u4_.
+              !!&env2 = @env_extend(env)(var)(actual_val_type);
+              !!&body_result = @generate_constraints(body)(expected)(env2);
+              λ{
+                #CON: λ&body_cons. λ&rest2.
+                  λ{
+                    #CON: λ&actual_body_type. λ&u5_.
+                      !!&all_cons = @append(val_cons)(body_cons);
+                      #CON{all_cons, actual_body_type}
+                  }(rest2)
+              }(body_result)
+          }(rest)
+      }(val_result)
+
+    // Default - return Any type
+    _:
+      #CON{#CON{@make_constraint(expected)(@type_Any)(expr), #NIL}, @type_Any}
+  }(expr)
+
+// =============================================================================
+// Constraint Solving
+// =============================================================================
+
+// Solve constraints by unifying each pair
+// Returns #USuc{final_subst} or #UFal{reason}
+@solve_constraints = λconstraints.
+  @solve_constraints_with_subst(#NIL)(constraints)
+
+@solve_constraints_with_subst = λ&subst. λ&constraints.
+  λ{
+    #NIL: #USuc{subst}
+    #CON: λ&con. λ&rest.
+      λ{
+        #TCon: λ&expected. λ&actual. λ&loc_unused.
+          !!&result = @unify_with_subst(subst)(expected)(actual);
+          λ{
+            #USuc: λ&new_subst.
+              @solve_constraints_with_subst(new_subst)(rest)
+            _: result
+          }(result)
+      }(con)
+  }(constraints)
+
+// =============================================================================
+// Type Inference
+// =============================================================================
+
+// Infer type of expression
+// Returns #TRes{type, subst} or #TErr{reason}
+@infer_type_expr = λ&expr. λ&env.
+  !!&expected = @fresh_type_var();
+  !!&gen_result = @generate_constraints(expr)(expected)(env);
+  λ{
+    #CON: λ&constraints. λ&rest.
+      λ{
+        #CON: λ&inferred. λ&u6_.
+          !!&solve_result = @solve_constraints(constraints);
+          λ{
+            #USuc: λ&subst.
+              !!&final_type = @apply_subst(subst)(inferred);
+              #TRes{final_type, subst}
+            #UFal: λ&reason.
+              #TErr{reason}
+          }(solve_result)
+      }(rest)
+  }(gen_result)
+
+// =============================================================================
+// Type Environment
+// =============================================================================
+
+// Environment: list of #CON{name, type}
+@empty_type_env = #NIL
+
+@env_extend = λenv. λname. λtype.
+  #CON{#CON{name, type}, env}
+
+@env_lookup_type = λ&env. λ&name.
+  λ{
+    #NIL: @type_Any  // Not found - default to Any
+    #CON: λ&h. λ&t.
+      λ{
+        #CON: λ&n. λ&ty.
+          λ{
+            1: ty
+            _: @env_lookup_type(t)(name)
+          }((n == name))
+      }(h)
+  }(env)
+
+// =============================================================================
+// Fresh Type Variable Generation
+// =============================================================================
+
+// Counter for generating fresh type variables
+// In a real implementation, this would use a mutable ref or threading
+// For now, use a simple deterministic scheme based on expression hash
+@fresh_type_var_counter = 0
+
+@fresh_type_var =
+  // Generate a unique type variable name
+  // This is a placeholder - real implementation needs threading or mutation
+  #TVar{#sym_T}
+
+// Append two lists
+@append = λ&xs. λ&ys.
+  λ{
+    #NIL: ys
+    #CON: λ&h. λ&t. #CON{h, @append(t)(ys)}
+  }(xs)
 

@@ -1,40 +1,36 @@
-;; test_dict_remove.lisp - Tests for dict-remove (dissoc)
+;; test_dict_remove.lisp - Tests for dissoc (remove key from dict)
+;; Note: "dissoc" is the built-in function; "dict-remove" is internal
 
 ;; Remove single key
 ;; TEST: remove existing key
 ;; EXPECT: #{:a 1 :c 3}
-(dict-remove #{:a 1 :b 2 :c 3} :b)
+(dissoc #{:a 1 :b 2 :c 3} :b)
 
 ;; TEST: remove first key
 ;; EXPECT: #{:b 2 :c 3}
-(dict-remove #{:a 1 :b 2 :c 3} :a)
+(dissoc #{:a 1 :b 2 :c 3} :a)
 
 ;; TEST: remove last key
 ;; EXPECT: #{:a 1 :b 2}
-(dict-remove #{:a 1 :b 2 :c 3} :c)
+(dissoc #{:a 1 :b 2 :c 3} :c)
 
 ;; TEST: remove non-existent key (no change)
 ;; EXPECT: #{:a 1 :b 2}
-(dict-remove #{:a 1 :b 2} :z)
+(dissoc #{:a 1 :b 2} :z)
 
 ;; TEST: remove from empty dict
 ;; EXPECT: #{}
-(dict-remove #{} :a)
+(dissoc #{} :a)
 
 ;; Remove to empty
 ;; TEST: remove all keys
 ;; EXPECT: #{}
-(dict-remove (dict-remove (dict-remove #{:a 1 :b 2 :c 3} :a) :b) :c)
+(dissoc (dissoc (dissoc #{:a 1 :b 2 :c 3} :a) :b) :c)
 
-;; Dissoc is alias
-;; TEST: dissoc
-;; EXPECT: #{:a 1 :c 3}
-(dissoc #{:a 1 :b 2 :c 3} :b)
-
-;; Remove multiple keys
-(define dict-remove-keys [d] [keys]
-  (foldl (lambda [acc] [k] (dict-remove acc k)) d keys))
+;; Remove multiple keys helper using fold
+(define dissoc-keys [d] [keys]
+  (foldl (lambda [acc] [k] (dissoc acc k)) d keys))
 
 ;; TEST: remove multiple keys
 ;; EXPECT: #{:c 3}
-(dict-remove-keys #{:a 1 :b 2 :c 3} '(:a :b))
+(dissoc-keys #{:a 1 :b 2 :c 3} (list :a :b))

@@ -63,6 +63,7 @@ static u32 OMNI_NAM_NUMP;  // number?
 // Data structures
 static u32 OMNI_NAM_CON;   // Cons cell
 static u32 OMNI_NAM_NIL;   // Empty list
+static u32 OMNI_NAM_LST;   // List literal (quoted list)
 static u32 OMNI_NAM_CHR;   // Character
 static u32 OMNI_NAM_ARR;   // Array
 static u32 OMNI_NAM_AGE;   // Array get: #AGe{arr, idx}
@@ -182,6 +183,8 @@ static u32 OMNI_NAM_APFL;  // append-file: #ApFl{path, content}
 static u32 OMNI_NAM_RDLN;  // read-lines: #RdLn{path}
 static u32 OMNI_NAM_PRNT;  // print: #Prnt{val}
 static u32 OMNI_NAM_PRNL;  // println: #PrnL{val}
+static u32 OMNI_NAM_TPUT;  // test-putc: #TPut{val} - for debugging putc
+static u32 OMNI_NAM_DGMT;  // debug-match: #DgMt{val} - for debugging pattern match
 static u32 OMNI_NAM_RDLN2; // read-line (stdin): #RdL2{}
 static u32 OMNI_NAM_GTEV;  // getenv: #GtEv{name}
 static u32 OMNI_NAM_STEV;  // setenv: #StEv{name, val}
@@ -227,6 +230,8 @@ static u32 OMNI_NAM_STAG;  // stage: #Stag{level, expr} - staged expression
 static u32 OMNI_NAM_SPLI;  // splice: #Spli{expr} - splice into code
 static u32 OMNI_NAM_REFL;  // reflect: #Refl{val} - reflect value as code
 static u32 OMNI_NAM_REIF;  // reify: #Reif{code} - reify code as value
+static u32 OMNI_NAM_FREF;  // forward reference: #FRef{table_id} - lazy BOOK lookup
+static u32 OMNI_NAM_BKGT;  // book_get: FFI to retrieve term from BOOK[id]
 static u32 OMNI_NAM_MLVL;  // meta-level: #MLvl{level} - current meta-level
 static u32 OMNI_NAM_LPAR;  // lazy-parent: #LPar{thunk} - lazy parent reference
 
@@ -263,6 +268,7 @@ static u32 OMNI_NAM_PROF;  // profile: #Prof{expr} - profiling wrapper
 static u32 OMNI_NAM_TANN;  // Type annotation: #TAnn{expr, type}
 static u32 OMNI_NAM_TDSC;  // Type descriptor: #TDsc{name, parent, fields}
 static u32 OMNI_NAM_TVAR;  // Type variable: #TVar{name}
+static u32 OMNI_NAM_TCON;  // Type constructor: #TCon{name} - concrete types like Int, Bool
 static u32 OMNI_NAM_TFUN;  // Function type: #TFun{args, ret}
 static u32 OMNI_NAM_TFUNE; // Function type with effects: #TFunE{args, ret, effects}
 static u32 OMNI_NAM_TSUP;  // Superposition type: #TSup{elem}
@@ -281,6 +287,17 @@ static u32 OMNI_NAM_TEFF;  // Effect type: #TEff{name, operations}
                            // e.g., (define {effect Error} ...) → #TEff{Error, ops}
 static u32 OMNI_NAM_TEOP;  // Effect operation: #TEOp{name, params, ret_type}
                            // e.g., [raise [msg {String}] {bottom}] → #TEOp{raise, params, bottom}
+
+// Type unification operations
+static u32 OMNI_NAM_MKTV;  // make-type-var: #MkTV{name}
+static u32 OMNI_NAM_MKFT;  // make-fun-type: #MkFT{args, ret}
+static u32 OMNI_NAM_MKTA;  // make-type-app: #MkTA{base, params}
+static u32 OMNI_NAM_TUNF;  // unify-types: #TUnf{a, b}
+static u32 OMNI_NAM_TSUC;  // success?: #TSuc{result}
+static u32 OMNI_NAM_TGSB;  // get-subst: #TGSb{result}
+static u32 OMNI_NAM_TASB;  // apply-subst: #TASb{subst, type}
+static u32 OMNI_NAM_TVRP;  // type-var?: #TVrP{type}
+static u32 OMNI_NAM_TNAM;  // type-name: #TNam{type}
 
 // Metadata
 static u32 OMNI_NAM_META;  // Metadata: #Meta{key, value, target}
@@ -481,6 +498,8 @@ static u32 OMNI_NAM_CONT;  // Contains?: #Cont{coll, val} - generic dispatch
 static u32 OMNI_NAM_INDX;  // Index-of: #Indx{coll, val} - generic dispatch
 static u32 OMNI_NAM_NTH;   // Nth: #Nth{coll, n} - generic dispatch
 static u32 OMNI_NAM_SLCE;  // Slice: #Slce{coll, start, end} - generic dispatch
+static u32 OMNI_NAM_LAST;  // Last: #Last{coll} - get last element
+static u32 OMNI_NAM_INIT;  // Init: #Init{coll} - all but last element
 static u32 OMNI_NAM_FRNG;  // From range: #FRng{start, end, step}
 
 // String operations
@@ -504,6 +523,8 @@ static u32 OMNI_NAM_SLEN;  // String length: #SLen{str}
 static u32 OMNI_NAM_SEMP;  // String empty?: #SEmp{str}
 static u32 OMNI_NAM_SCMP;  // String compare: #SCmp{str1, str2}
 static u32 OMNI_NAM_SREP;  // String repeat: #SRep{str, n}
+static u32 OMNI_NAM_STOI;  // String to int: #SToi{str}
+static u32 OMNI_NAM_ITOS;  // Int to string: #ItoS{n}
 static u32 OMNI_NAM_FMTS;  // Format string: #Fmts{parts} - interpolated string
                            // parts is list of #Flit{str} and #Fexp{expr} alternating
 static u32 OMNI_NAM_FLIT;  // Format literal part: #Flit{chars}
@@ -585,6 +606,7 @@ fn void omni_names_init(void) {
   // Data structures
   OMNI_NAM_CON  = NAM_CON;  // Use HVM4's CON
   OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
+  OMNI_NAM_LST  = omni_nick("Lst");  // List literal
   OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
   OMNI_NAM_ARR  = omni_nick("Arr");
   OMNI_NAM_AGE  = omni_nick("AGe");
@@ -698,6 +720,8 @@ fn void omni_names_init(void) {
   OMNI_NAM_RDLN = omni_nick("RdLn");
   OMNI_NAM_PRNT = omni_nick("Prnt");
   OMNI_NAM_PRNL = omni_nick("PrnL");
+  OMNI_NAM_TPUT = omni_nick("TPut");
+  OMNI_NAM_DGMT = omni_nick("DgMt");
   OMNI_NAM_RDLN2 = omni_nick("RdL2");
   OMNI_NAM_GTEV = omni_nick("GtEv");
   OMNI_NAM_STEV = omni_nick("StEv");
@@ -743,6 +767,8 @@ fn void omni_names_init(void) {
   OMNI_NAM_SPLI = omni_nick("Spli");
   OMNI_NAM_REFL = omni_nick("Refl");
   OMNI_NAM_REIF = omni_nick("Reif");
+  OMNI_NAM_FREF = omni_nick("FRef");
+  OMNI_NAM_BKGT = omni_nick("BkGt");
   OMNI_NAM_MLVL = omni_nick("MLvl");
   OMNI_NAM_LPAR = omni_nick("LPar");
 
@@ -779,6 +805,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_TANN = omni_nick("TAnn");
   OMNI_NAM_TDSC = omni_nick("TDsc");
   OMNI_NAM_TVAR = omni_nick("TVar");
+  OMNI_NAM_TCON = omni_nick("TCon");
   OMNI_NAM_TFUN = omni_nick("TFun");
   OMNI_NAM_TFUNE = omni_nick("TFunE");
   OMNI_NAM_TSUP = omni_nick("TSup");
@@ -795,6 +822,17 @@ fn void omni_names_init(void) {
   OMNI_NAM_TVRN = omni_nick("TVrn");
   OMNI_NAM_TEFF = omni_nick("TEff");  // Effect type definition
   OMNI_NAM_TEOP = omni_nick("TEOp");  // Effect operation
+
+  // Type unification operations
+  OMNI_NAM_MKTV = omni_nick("MkTV");  // make-type-var
+  OMNI_NAM_MKFT = omni_nick("MkFT");  // make-fun-type
+  OMNI_NAM_MKTA = omni_nick("MkTA");  // make-type-app
+  OMNI_NAM_TUNF = omni_nick("TUnf");  // unify-types
+  OMNI_NAM_TSUC = omni_nick("TSuc");  // success?
+  OMNI_NAM_TGSB = omni_nick("TGSb");  // get-subst
+  OMNI_NAM_TASB = omni_nick("TASb");  // apply-subst
+  OMNI_NAM_TVRP = omni_nick("TVrP");  // type-var?
+  OMNI_NAM_TNAM = omni_nick("TNam");  // type-name
 
   // Metadata
   OMNI_NAM_META = omni_nick("Meta");
@@ -981,6 +1019,8 @@ fn void omni_names_init(void) {
   OMNI_NAM_INDX = omni_nick("Indx");
   OMNI_NAM_NTH  = omni_nick("Nth");
   OMNI_NAM_SLCE = omni_nick("Slce");
+  OMNI_NAM_LAST = omni_nick("Last");
+  OMNI_NAM_INIT = omni_nick("Init");
   OMNI_NAM_FRNG = omni_nick("FRng");
 
   // String operations
@@ -1004,6 +1044,8 @@ fn void omni_names_init(void) {
   OMNI_NAM_SEMP = omni_nick("SEmp");
   OMNI_NAM_SCMP = omni_nick("SCmp");
   OMNI_NAM_SREP = omni_nick("SRep");
+  OMNI_NAM_STOI = omni_nick("SToi");
+  OMNI_NAM_ITOS = omni_nick("ItoS");
   OMNI_NAM_FMTS = omni_nick("Fmts");
   OMNI_NAM_FLIT = omni_nick("Flit");
   OMNI_NAM_FEXP = omni_nick("Fexp");

@@ -725,15 +725,18 @@
     @alist_get(entries)(key)
   }(dict)
 
+// Rebind rest/key before inner switch to fix de Bruijn levels
 @alist_get = λ&entries. λ&key.
   λ{
     #NIL: #Noth{}
     #CON: λ&pair. λ&rest.
+      !&rest2 = rest;
+      !&key2 = key;
       λ{#CON: λ&k. λ&v_rest.
         λ{
           1: λ{#CON: λ&v. λ&u. v}(v_rest)
-          _: λ&u_. @alist_get(rest)(key)
-        }(@omni_values_equal(k)(key))
+          0: @alist_get(rest2)(key2)
+        }(@omni_values_equal(k)(key2))
       }(pair)
   }(entries)
 
@@ -743,15 +746,20 @@
     #Dict{@alist_set(entries)(key)(val)}
   }(dict)
 
+// Rebind rest/key/val/pair before inner switch to fix de Bruijn levels
 @alist_set = λ&entries. λ&key. λ&val.
   λ{
     #NIL: #CON{#CON{key, #CON{val, #NIL}}, #NIL}
     #CON: λ&pair. λ&rest.
+      !&rest2 = rest;
+      !&key2 = key;
+      !&val2 = val;
+      !&pair2 = pair;
       λ{#CON: λ&k. λ&v_rest.
         λ{
-          1: #CON{#CON{key, #CON{val, #NIL}}, rest}
-          _: λ&u_. #CON{pair, @alist_set(rest)(key)(val)}
-        }(@omni_values_equal(k)(key))
+          1: #CON{#CON{key2, #CON{val2, #NIL}}, rest2}
+          0: #CON{pair2, @alist_set(rest2)(key2)(val2)}
+        }(@omni_values_equal(k)(key2))
       }(pair)
   }(entries)
 
@@ -761,15 +769,19 @@
     #Dict{@alist_remove(entries)(key)}
   }(dict)
 
+// Rebind rest/key/pair before inner switch to fix de Bruijn levels
 @alist_remove = λ&entries. λ&key.
   λ{
     #NIL: #NIL
     #CON: λ&pair. λ&rest.
+      !&rest2 = rest;
+      !&key2 = key;
+      !&pair2 = pair;
       λ{#CON: λ&k. λ&u.
         λ{
-          1: rest
-          _: λ&u_. #CON{pair, @alist_remove(rest)(key)}
-        }(@omni_values_equal(k)(key))
+          1: rest2
+          0: #CON{pair2, @alist_remove(rest2)(key2)}
+        }(@omni_values_equal(k)(key2))
       }(pair)
   }(entries)
 

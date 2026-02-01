@@ -116,6 +116,286 @@ fn const char *omni_nick_to_name(u32 nick) {
 fn void omni_emit_term(OmniEmit *e, Term t);
 
 // =============================================================================
+// Compile-Time Type Checking
+// =============================================================================
+
+// Type context entry: maps variable index to its type
+typedef struct {
+  u32 var_nick;      // Variable name (nick)
+  Term type;         // Type annotation (or 0 if unknown)
+} TypeBinding;
+
+// Type checking state
+typedef struct {
+  TypeBinding bindings[256];
+  u32 binding_count;
+  int warnings_enabled;
+  int warning_count;
+} TypeChecker;
+
+// Global type registry for function signatures
+typedef struct {
+  u32 func_nick;     // Function name
+  Term signature;    // List of parameter types
+  Term return_type;  // Return type (or 0 if unknown)
+} FuncSig;
+
+static FuncSig FUNC_SIGS[512];
+static u32 FUNC_SIG_COUNT = 0;
+
+fn void tc_init(TypeChecker *tc) {
+  tc->binding_count = 0;
+  tc->warnings_enabled = 1;
+  tc->warning_count = 0;
+}
+
+fn void tc_push_binding(TypeChecker *tc, u32 nick, Term type) {
+  if (tc->binding_count < 256) {
+    tc->bindings[tc->binding_count].var_nick = nick;
+    tc->bindings[tc->binding_count].type = type;
+    tc->binding_count++;
+  }
+}
+
+fn void tc_pop_binding(TypeChecker *tc, u32 count) {
+  if (count <= tc->binding_count) {
+    tc->binding_count -= count;
+  }
+}
+
+fn Term tc_lookup_binding(TypeChecker *tc, u32 nick) {
+  // Search from most recent to oldest
+  for (int i = (int)tc->binding_count - 1; i >= 0; i--) {
+    if (tc->bindings[i].var_nick == nick) {
+      return tc->bindings[i].type;
+    }
+  }
+  return 0;  // Not found
+}
+
+fn void tc_register_func(u32 nick, Term sig, Term ret) {
+  if (FUNC_SIG_COUNT < 512) {
+    FUNC_SIGS[FUNC_SIG_COUNT].func_nick = nick;
+    FUNC_SIGS[FUNC_SIG_COUNT].signature = sig;
+    FUNC_SIGS[FUNC_SIG_COUNT].return_type = ret;
+    FUNC_SIG_COUNT++;
+  }
+}
+
+fn Term tc_lookup_func_sig(u32 nick) {
+  for (u32 i = 0; i < FUNC_SIG_COUNT; i++) {
+    if (FUNC_SIGS[i].func_nick == nick) {
+      return FUNC_SIGS[i].signature;
+    }
+  }
+  return 0;
+}
+
+// Check if two types are compatible (for compile-time checking)
+// Returns 1 if compatible, 0 if incompatible
+fn int tc_types_compatible(Term type_a, Term type_b) {
+  if (type_a == 0 || type_b == 0) return 1;  // Unknown types are compatible
+
+  u8 tag_a = term_tag(type_a);
+  u8 tag_b = term_tag(type_b);
+
+  // Both must be constructors
+  if (tag_a < C00 || tag_a > C16) return 1;
+  if (tag_b < C00 || tag_b > C16) return 1;
+
+  u32 nam_a = term_ext(type_a);
+  u32 nam_b = term_ext(type_b);
+
+  // Type variables are always compatible
+  if (nam_a == OMNI_NAM_TVAR || nam_b == OMNI_NAM_TVAR) return 1;
+
+  // Type constructors must match
+  if (nam_a == OMNI_NAM_TCON && nam_b == OMNI_NAM_TCON) {
+    Term nick_a = omni_ctr_arg(type_a, 0);
+    Term nick_b = omni_ctr_arg(type_b, 0);
+    if (term_tag(nick_a) == NUM && term_tag(nick_b) == NUM) {
+      return term_val(nick_a) == term_val(nick_b);
+    }
+  }
+
+  // Any type is compatible with anything
+  // (111513 is nick for "Any")
+  if (nam_a == OMNI_NAM_TCON) {
+    Term nick = omni_ctr_arg(type_a, 0);
+    if (term_tag(nick) == NUM && term_val(nick) == 111513) return 1;
+  }
+  if (nam_b == OMNI_NAM_TCON) {
+    Term nick = omni_ctr_arg(type_b, 0);
+    if (term_tag(nick) == NUM && term_val(nick) == 111513) return 1;
+  }
+
+  return 1;  // Default to compatible for other cases
+}
+
+fn void tc_warn(TypeChecker *tc, const char *msg, u32 nick) {
+  if (tc->warnings_enabled) {
+    fprintf(stderr, "TYPE_WARNING: %s", msg);
+    if (nick != 0) {
+      fprintf(stderr, " '%s'", omni_nick_to_name(nick));
+    }
+    fprintf(stderr, "\n");
+    tc->warning_count++;
+  }
+}
+
+// Forward declaration for recursive type checking
+fn Term tc_infer_type(TypeChecker *tc, Term t);
+
+// Infer the type of an expression
+fn Term tc_infer_type(TypeChecker *tc, Term t) {
+  u8 tag = term_tag(t);
+
+  // Numbers are Int
+  if (tag == NUM) {
+    return omni_ctr1(OMNI_NAM_TCON, term_new_num(144276));  // nick for "Int"
+  }
+
+  // Constructors
+  if (tag >= C00 && tag <= C16) {
+    u32 nam = term_ext(t);
+    u32 ari = (u32)(tag - C00);
+
+    // Literal integer
+    if (nam == OMNI_NAM_LIT && ari == 1) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(144276));  // Int
+    }
+
+    // Boolean literals
+    if (nam == OMNI_NAM_TRUE || nam == OMNI_NAM_FALS) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(7402444));  // Bool
+    }
+
+    // String literal
+    if (nam == OMNI_NAM_STR && ari == 1) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(185618));  // Str
+    }
+
+    // Comparison operators return Bool
+    if (nam == OMNI_NAM_EQL || nam == OMNI_NAM_NEQ ||
+        nam == OMNI_NAM_LT || nam == OMNI_NAM_GT ||
+        nam == OMNI_NAM_LE || nam == OMNI_NAM_GE) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(7402444));  // Bool
+    }
+
+    // Arithmetic operators return Int (simplified)
+    if (nam == OMNI_NAM_ADD || nam == OMNI_NAM_SUB ||
+        nam == OMNI_NAM_MUL || nam == OMNI_NAM_DIV ||
+        nam == OMNI_NAM_MOD) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(144276));  // Int
+    }
+
+    // List literal
+    if (nam == OMNI_NAM_LST) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(9999572));  // List
+    }
+
+    // Lambda - return function type (simplified)
+    if (nam == OMNI_NAM_LAM || nam == OMNI_NAM_LAMR) {
+      return omni_ctr1(OMNI_NAM_TCON, term_new_num(132430));  // Fun
+    }
+  }
+
+  return 0;  // Unknown type
+}
+
+// Check types in an expression, collecting and checking bindings
+fn void tc_check_expr(TypeChecker *tc, Term t) {
+  u8 tag = term_tag(t);
+
+  if (tag < C00 || tag > C16) return;
+
+  u32 nam = term_ext(t);
+  u32 ari = (u32)(tag - C00);
+
+  // Method definition - register signature
+  if (nam == OMNI_NAM_METH && ari >= 3) {
+    Term name = omni_ctr_arg(t, 0);
+    Term sig = omni_ctr_arg(t, 1);
+    if (term_tag(name) == NUM) {
+      tc_register_func(term_val(name), sig, 0);
+    }
+    // Check the implementation
+    tc_check_expr(tc, omni_ctr_arg(t, 2));
+    return;
+  }
+
+  // Generic function - register all methods
+  if (nam == OMNI_NAM_GFUN && ari == 2) {
+    Term methods = omni_ctr_arg(t, 1);
+    // Iterate through methods list
+    while (term_tag(methods) >= C00 && term_ext(methods) == OMNI_NAM_CON) {
+      Term meth = omni_ctr_arg(methods, 0);
+      tc_check_expr(tc, meth);
+      methods = omni_ctr_arg(methods, 1);
+    }
+    return;
+  }
+
+  // Let binding - add type to context
+  if ((nam == OMNI_NAM_LET || nam == OMNI_NAM_LETS) && ari == 2) {
+    Term val = omni_ctr_arg(t, 0);
+    Term body = omni_ctr_arg(t, 1);
+
+    // Infer type of value
+    Term val_type = tc_infer_type(tc, val);
+
+    // Check the value
+    tc_check_expr(tc, val);
+
+    // Add binding and check body
+    tc_push_binding(tc, 0, val_type);
+    tc_check_expr(tc, body);
+    tc_pop_binding(tc, 1);
+    return;
+  }
+
+  // Function application - check argument types
+  if (nam == OMNI_NAM_APP && ari == 2) {
+    Term func = omni_ctr_arg(t, 0);
+    Term arg = omni_ctr_arg(t, 1);
+
+    // Check both sub-expressions
+    tc_check_expr(tc, func);
+    tc_check_expr(tc, arg);
+
+    // If func is a known function, check argument type
+    if (term_tag(func) >= C00 && term_ext(func) == OMNI_NAM_SYM) {
+      Term nick_term = omni_ctr_arg(func, 0);
+      if (term_tag(nick_term) == NUM) {
+        u32 func_nick = term_val(nick_term);
+        Term sig = tc_lookup_func_sig(func_nick);
+        if (sig != 0 && term_tag(sig) >= C00 && term_ext(sig) == OMNI_NAM_CON) {
+          Term expected_type = omni_ctr_arg(sig, 0);
+          Term actual_type = tc_infer_type(tc, arg);
+          if (!tc_types_compatible(expected_type, actual_type)) {
+            tc_warn(tc, "possible type mismatch in argument to", func_nick);
+          }
+        }
+      }
+    }
+    return;
+  }
+
+  // Recursively check all sub-expressions
+  for (u32 i = 0; i < ari; i++) {
+    tc_check_expr(tc, omni_ctr_arg(t, i));
+  }
+}
+
+// Main type checking entry point
+fn int omni_type_check(Term ast) {
+  TypeChecker tc;
+  tc_init(&tc);
+  tc_check_expr(&tc, ast);
+  return tc.warning_count;
+}
+
+// =============================================================================
 // Free Variable Analysis (for Let Parallelization)
 // =============================================================================
 
@@ -475,7 +755,7 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
 
   // Reference
   if (tag == REF) {
-    u32 id = term_val(t);
+    u32 id = term_ext(t);  // REF stores name in ext field, not val
     const char *name = (id < BOOK_CAP) ? TABLE[id] : NULL;
     if (name) {
       fprintf(e->out, "@%s", name);
@@ -545,13 +825,16 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       return;
     }
 
-    // Application - emit as native HVM4 function application
+    // Application - emit as AST node for @omni_eval to handle
+    // Note: We can't use native HVM4 application (fn)(arg) because the function
+    // might be an AST node like #FRef{table_id} that needs interpretation.
+    // The @omni_eval #App handler evaluates both fn and arg, then uses @omni_apply.
     if (nam == OMNI_NAM_APP && ari == 2) {
-      fputc('(', e->out);
+      fputs("#App{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));
-      fputs(")(", e->out);
+      fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));
-      fputc(')', e->out);
+      fputc('}', e->out);
       return;
     }
 
@@ -567,14 +850,18 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
     }
 
     // Multiple dispatch: Method definition
-    // #Meth{name, sig, impl}
-    if (nam == OMNI_NAM_METH && ari == 3) {
+    // #Meth{name, sig, impl, constraints, effects}
+    if (nam == OMNI_NAM_METH && ari == 5) {
       fputs("#Meth{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));  // name
       fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));  // signature (type list)
       fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 2));  // implementation
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 3));  // constraints
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 4));  // effects
       fputc('}', e->out);
       return;
     }
@@ -1388,7 +1675,22 @@ fn void omni_compile_emit(FILE *out, Term ast) {
   omni_emit_term(&e, ast);
 }
 
+// Flag to control type checking (can be disabled via command line)
+static int OMNI_TYPE_CHECK_ENABLED = 0;
+
+fn void omni_enable_type_check(int enabled) {
+  OMNI_TYPE_CHECK_ENABLED = enabled;
+}
+
 fn int omni_compile_with_runtime(FILE *out, Term ast, const char *runtime_path) {
+  // Perform compile-time type checking if enabled
+  if (OMNI_TYPE_CHECK_ENABLED) {
+    int warnings = omni_type_check(ast);
+    if (warnings > 0) {
+      fprintf(stderr, "Type checking completed with %d warning(s)\n", warnings);
+    }
+  }
+
   // Read and emit runtime library
   char *runtime = sys_file_read(runtime_path);
   if (!runtime) {

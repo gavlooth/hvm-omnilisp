@@ -45,12 +45,18 @@ static inline unsigned long omni_ffi_dispatch_hook_wrapper(unsigned long t) {
 // Enable FFI dispatch hook in HVM4 wnf
 #define OMNI_FFI_DISPATCH_HOOK omni_ffi_dispatch_hook_wrapper
 
+// Debug tracing for USE-VAL and APP-LAM interactions (disabled by default)
+// #define OMNI_DEBUG_USE_VAL
+
 // Include HVM4 runtime first
 #include "../hvm4/clang/hvm4.c"
 
 // Include OmniLisp components
 #include "omnilisp/nick/omnilisp.c"
 #include "omnilisp/ffi/handle.c"
+#include "omnilisp/ffi/io.c"
+#include "omnilisp/ffi/datetime.c"
+#include "omnilisp/ffi/json.c"
 #include "omnilisp/ffi/thread_pool.c"
 #include "omnilisp/parse/_.c"
 #include "omnilisp/compile/_.c"
@@ -60,7 +66,7 @@ static inline unsigned long omni_ffi_dispatch_hook_wrapper(unsigned long t) {
 // =============================================================================
 
 // Debug flag for FFI dispatch
-static int omni_ffi_debug = 0;  // Disabled by default
+static int omni_ffi_debug = 0;  // Disabled
 
 // Count how many C02 nodes we see
 static unsigned long omni_c02_count = 0;
@@ -141,7 +147,12 @@ static void* omni_ffi_dispatch_impl(void* term_ptr) {
     if (omni_ffi_debug) {
       fprintf(stderr, "[FFI] Dispatching FFI node\n");
     }
-    return (void*)omni_ffi_dispatch(t);
+    Term result = omni_ffi_dispatch(t);
+    if (omni_ffi_debug) {
+      fprintf(stderr, "[FFI] Result tag=%d ext=%u val=%u\n",
+              term_tag(result), term_ext(result), term_val(result));
+    }
+    return (void*)result;
   }
   return term_ptr;
 }
@@ -167,6 +178,7 @@ typedef struct {
   int interactive;     // -i: Interactive REPL
   int server_port;     // -S: Socket server port (0 = disabled)
   int hvm4_print;      // -T: Use HVM4's print_term for output
+  int type_check;      // -t: Enable compile-time type checking
   const char *file;    // Input file
   const char *expr;    // Expression to evaluate
   const char *output;  // -o: Output file
@@ -200,6 +212,7 @@ fn void print_usage(const char *prog) {
   printf("  -d, --debug       Enable debug output\n");
   printf("  -s, --stats       Show execution statistics\n");
   printf("  -C, --collapse N  Set collapse limit (default: 10)\n");
+  printf("  -t, --typecheck   Enable compile-time type checking\n");
   printf("\n");
   printf("Examples:\n");
   printf("  %s program.ol           Run OmniLisp program\n", prog);
@@ -238,13 +251,14 @@ fn OmniOptions parse_options(int argc, char *argv[]) {
     {"stats",       no_argument,       0, 's'},
     {"collapse",    required_argument, 0, 'C'},
     {"term-print",  no_argument,       0, 'T'},
+    {"typecheck",   no_argument,       0, 't'},
     {0, 0, 0, 0}
   };
 
   int opt;
   int opt_index = 0;
 
-  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:T", long_options, &opt_index)) != -1) {
+  while ((opt = getopt_long(argc, argv, "hvpce:iS:o:dsC:Tt", long_options, &opt_index)) != -1) {
     switch (opt) {
       case 'h': opts.help = 1; break;
       case 'v': opts.version = 1; break;
@@ -258,6 +272,7 @@ fn OmniOptions parse_options(int argc, char *argv[]) {
       case 's': opts.stats = 1; break;
       case 'C': opts.collapse = atoi(optarg); break;
       case 'T': opts.hvm4_print = 1; break;
+      case 't': opts.type_check = 1; break;
       default: opts.help = 1; break;
     }
   }
@@ -511,6 +526,7 @@ fn void omni_print_value_to(FILE *out, Term t) {
     // Default: show as #Name{...}
     char name[16];
     nick_to_str(ext, name, sizeof(name));
+
     fprintf(out, "#%s", name);
     if (tag > C00) {
       fprintf(out, "{");
@@ -639,6 +655,30 @@ fn int omni_load_runtime(void) {
   };
   parse_def(&rs);
   free(runtime_src);
+
+  // Find and load types.hvm4
+  char *types_path = omni_find_runtime_file("types.hvm4");
+  if (!types_path) {
+    fprintf(stderr, "Error: Could not find lib/types.hvm4 (required for type system)\n");
+    return 1;
+  }
+
+  char *types_src = sys_file_read(types_path);
+  if (!types_src) {
+    fprintf(stderr, "Error: Could not read %s\n", types_path);
+    return 1;
+  }
+
+  PState ts = {
+    .file = types_path,
+    .src  = types_src,
+    .pos  = 0,
+    .len  = (u32)strlen(types_src),
+    .line = 1,
+    .col  = 1
+  };
+  parse_def(&ts);
+  free(types_src);
 
   // Verify critical functions are loaded
   u32 eval_id = table_find("omni_eval", 9);
@@ -1158,6 +1198,11 @@ int main(int argc, char *argv[]) {
 
   // Initialize runtime
   omni_runtime_init();
+
+  // Enable type checking if requested
+  if (opts.type_check) {
+    omni_enable_type_check(1);
+  }
 
   int result = 0;
 

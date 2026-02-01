@@ -1,9 +1,5 @@
 ;; test_dissoc.lisp - Tests for dissoc (remove key)
 
-;; Dissoc removes a key from a dict
-(define dissoc [d] [key]
-  (dict-remove d key))
-
 ;; TEST: dissoc from dict
 ;; EXPECT: #{"a" 1}
 (dissoc #{"a" 1 "b" 2} "b")
@@ -32,8 +28,8 @@
 
 ;; TEST: dissoc multiple keys
 ;; EXPECT: #{"c" 3}
-(dissoc-keys #{"a" 1 "b" 2 "c" 3} '("a" "b"))
+(dissoc-keys #{"a" 1 "b" 2 "c" 3} (list "a" "b"))
 
 ;; TEST: dissoc multiple with some missing
 ;; EXPECT: #{"a" 1}
-(dissoc-keys #{"a" 1 "b" 2} '("b" "z" "w"))
+(dissoc-keys #{"a" 1 "b" 2} (list "b" "z" "w"))

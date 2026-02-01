@@ -1,0 +1,51 @@
+;; TEST: unify - same type descriptors
+;; EXPECT: true
+(let [result (unify-types {Int} {Int})]
+  (success? result))
+
+;; TEST: unify - different type descriptors fail
+;; EXPECT: false
+(let [result (unify-types {Int} {Bool})]
+  (success? result))
+
+;; TEST: unify - type variable with concrete type
+;; EXPECT: true
+(let [t (make-type-var 'a)]
+  (let [result (unify-types t {Int})]
+    (success? result)))
+
+;; TEST: unify - two type variables
+;; EXPECT: true
+(let [t1 (make-type-var 'a)]
+  (let [t2 (make-type-var 'b)]
+    (success? (unify-types t1 t2))))
+
+;; TEST: unify - function types match
+;; EXPECT: true
+(let [fn1 (make-fun-type '({Int}) {Int})]
+  (let [fn2 (make-fun-type '({Int}) {Int})]
+    (success? (unify-types fn1 fn2))))
+
+;; TEST: unify - function types mismatch
+;; EXPECT: false
+(let [fn1 (make-fun-type '({Int}) {Int})]
+  (let [fn2 (make-fun-type '({Int}) {Bool})]
+    (success? (unify-types fn1 fn2))))
+
+;; TEST: occurs-check - variable in itself fails
+;; EXPECT: false
+(let [t (make-type-var 'a)]
+  (let [fn-type (make-fun-type (list t) t)]
+    (success? (unify-types t fn-type))))
+
+;; TEST: unify - type application
+;; EXPECT: true
+(let [list-int (make-type-app {List} (list {Int}))]
+  (let [list-int2 (make-type-app {List} (list {Int}))]
+    (success? (unify-types list-int list-int2))))
+
+;; TEST: unify - type application mismatch
+;; EXPECT: false
+(let [list-int (make-type-app {List} (list {Int}))]
+  (let [list-bool (make-type-app {List} (list {Bool}))]
+    (success? (unify-types list-int list-bool))))

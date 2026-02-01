@@ -273,6 +273,10 @@ fn Term omni_lamr(Term body) {
   return omni_ctr1(OMNI_NAM_LAMR, body);
 }
 
+fn Term omni_fref(u32 table_id) {
+  return omni_ctr1(OMNI_NAM_FREF, term_new_num(table_id));
+}
+
 fn Term omni_app(Term func, Term arg) {
   return omni_ctr2(OMNI_NAM_APP, func, arg);
 }
@@ -664,6 +668,10 @@ fn Term parse_omni_type(PState *s) {
       return omni_ctr1(OMNI_NAM_VTYP, omni_nothing());
     }
 
+    // Determine if this is a type constructor (uppercase) or type variable (lowercase)
+    char first_char = s->src[sym_start];
+    u32 type_tag = isupper(first_char) ? OMNI_NAM_TCON : OMNI_NAM_TVAR;
+
     // Type application: {List T}
     Term type_args = omni_nil();
     Term *tail = &type_args;
@@ -675,7 +683,10 @@ fn Term parse_omni_type(PState *s) {
         u32 arg_start, arg_len;
         if (omni_parse_symbol_raw(s, &arg_start, &arg_len)) {
           u32 arg_nick = omni_symbol_nick(s, arg_start, arg_len);
-          arg = omni_ctr1(OMNI_NAM_TVAR, term_new_num(arg_nick));
+          // Type arguments are typically type variables (lowercase) or type constructors (uppercase)
+          char arg_first = s->src[arg_start];
+          u32 arg_tag = isupper(arg_first) ? OMNI_NAM_TCON : OMNI_NAM_TVAR;
+          arg = omni_ctr1(arg_tag, term_new_num(arg_nick));
         } else {
           parse_error(s, "type argument", parse_peek(s));
           arg = omni_nil();
@@ -690,10 +701,10 @@ fn Term parse_omni_type(PState *s) {
 
     if (term_ext(type_args) == OMNI_NAM_NIL) {
       // Simple type
-      return omni_ctr1(OMNI_NAM_TVAR, term_new_num(nick));
+      return omni_ctr1(type_tag, term_new_num(nick));
     } else {
       // Type application
-      Term base = omni_ctr1(OMNI_NAM_TVAR, term_new_num(nick));
+      Term base = omni_ctr1(type_tag, term_new_num(nick));
       return omni_ctr2(OMNI_NAM_TAPP, base, type_args);
     }
   }
@@ -1819,13 +1830,13 @@ fn Term parse_omni_atom(PState *s) {
             if (omni_bind_lookup(sym_nick, &idx)) {
               var_ref = omni_var(idx);
             } else {
-              // Free variable - use table_id for runtime resolution
+              // Forward reference - use REF for runtime resolution
               char name_buf[256];
               u32 copy_len = sym_len < 255 ? sym_len : 255;
               memcpy(name_buf, s->src + sym_start, copy_len);
               name_buf[copy_len] = '\0';
               u32 ref_id = table_find(name_buf, copy_len);
-              var_ref = omni_sym(ref_id);
+              var_ref = term_new_ref(ref_id);
             }
             Term exp_part = omni_ctr1(OMNI_NAM_FEXP, var_ref);
             Term cell = omni_cons(exp_part, omni_nil());
@@ -2066,18 +2077,16 @@ fn Term parse_omni_atom(PState *s) {
     }
 
     // Check for reference (@name in book)
+    // Use #FRef{table_id} AST node instead of raw REF term.
+    // Raw REF terms cause HVM4 to immediately expand BOOK entries,
+    // leading to infinite recursion for recursive/mutually recursive functions.
+    // #FRef is handled lazily by @omni_eval at runtime.
     char name_buf[256];
     u32 copy_len = sym_len < 255 ? sym_len : 255;
     memcpy(name_buf, s->src + sym_start, copy_len);
     name_buf[copy_len] = '\0';
     u32 ref_id = table_find(name_buf, copy_len);
-    if (BOOK[ref_id] != 0) {
-      return term_new_ref(ref_id);
-    }
-
-    // Free variable - store table ID (not nick) for runtime resolution
-    // This handles forward references like mutual recursion (even?/odd?)
-    return omni_sym(ref_id);
+    return omni_fref(ref_id);
   }
 
   parse_error(s, "expression", c);
@@ -2945,6 +2954,16 @@ fn Term parse_omni_sexp(PState *s) {
       }
     }
 
+    // For recursive functions, push function name BEFORE parameters.
+    // This allows the body to reference the function via de Bruijn variable.
+    // When #CloR is applied, self is bound after the original env but before args,
+    // matching the binding order we create here: [params... name_nick ...]
+    // With params at indices 0..n-1 and function name at index n.
+    int is_function = (slot_count > 0);
+    if (is_function) {
+      omni_bind_push(name_nick);
+    }
+
     // Push parameter bindings
     for (u32 i = 0; i < slot_count; i++) {
       omni_bind_push(slots[i].name_nick);
@@ -2955,8 +2974,8 @@ fn Term parse_omni_sexp(PState *s) {
 
     omni_expect_char(s, ')');
 
-    // Pop bindings
-    omni_bind_pop(slot_count);
+    // Pop bindings (including function name if pushed)
+    omni_bind_pop(slot_count + (is_function ? 1 : 0));
 
     // Desugar ^:require and ^:ensure to effect calls
     // ^:require P1 ^:require P2 ... body
@@ -3039,8 +3058,14 @@ fn Term parse_omni_sexp(PState *s) {
     }
 
     // Wrap body in lambdas
+    // The outermost lambda (i == 0) uses omni_lamr to create a recursive closure.
+    // This enables self-reference via #CloR at runtime.
     for (int i = (int)slot_count - 1; i >= 0; i--) {
-      body = omni_lam(body);
+      if (i == 0) {
+        body = omni_lamr(body);  // Outermost: recursive closure
+      } else {
+        body = omni_lam(body);   // Inner: regular closure
+      }
     }
 
     // NOTE: ^:pure and ^:associative metadata are parsed but NOT wrapped around
@@ -3110,6 +3135,137 @@ fn Term parse_omni_sexp(PState *s) {
     BOOK[def_id] = (u32)loc;
 
     return body;
+  }
+
+  // generic: (generic name [param {Type}] ... {RetType}
+  //            ([param {Type1}] body1)
+  //            ([param {Type2}] body2) ...)
+  // Creates a generic function with type-based dispatch
+  if (omni_symbol_is(s, sym_start, sym_len, "generic")) {
+    omni_skip(s);
+
+    // Parse function name
+    u32 name_start, name_len;
+    if (!omni_parse_symbol_raw(s, &name_start, &name_len)) {
+      parse_error(s, "generic function name", parse_peek(s));
+      return omni_nil();
+    }
+    u32 name_nick = omni_symbol_nick(s, name_start, name_len);
+    char def_name[256];
+    u32 copy_len = name_len < 255 ? name_len : 255;
+    memcpy(def_name, s->src + name_start, copy_len);
+    def_name[copy_len] = '\0';
+
+    // Parse default signature slots [param {Type}] ...
+    OmniSlot default_slots[64];
+    u32 default_slot_count = 0;
+    omni_skip(s);
+    while (parse_peek(s) == '[' && default_slot_count < 64) {
+      if (!parse_omni_slot(s, &default_slots[default_slot_count])) break;
+      default_slot_count++;
+    }
+
+    // Parse return type {RetType}
+    Term return_type = omni_nil();
+    omni_skip(s);
+    if (parse_peek(s) == '{') {
+      return_type = parse_omni_type(s);
+    }
+
+    // Push default bindings for recursive calls
+    for (u32 i = 0; i < default_slot_count; i++) {
+      omni_bind_push(default_slots[i].name_nick);
+    }
+
+    // Parse methods: ([param {Type}] body) ...
+    Term methods = omni_nil();
+    omni_skip(s);
+    while (parse_peek(s) == '(' && !parse_at_end(s)) {
+      u32 saved_pos = s->pos;
+      omni_expect_char(s, '(');
+      omni_skip(s);
+
+      // Check if next char is '[' - this is a method clause
+      if (parse_peek(s) != '[') {
+        // Not a method clause, restore and break
+        s->pos = saved_pos;
+        break;
+      }
+
+      // Parse method slots
+      OmniSlot meth_slots[64];
+      u32 meth_slot_count = 0;
+      while (parse_peek(s) == '[' && meth_slot_count < 64) {
+        if (!parse_omni_slot(s, &meth_slots[meth_slot_count])) break;
+        meth_slot_count++;
+      }
+
+      // Push method-specific bindings
+      for (u32 i = 0; i < meth_slot_count; i++) {
+        omni_bind_push(meth_slots[i].name_nick);
+      }
+
+      // Parse method body
+      omni_skip(s);
+      Term meth_body = parse_omni_expr(s);
+      omni_expect_char(s, ')');
+
+      // Pop method bindings
+      for (u32 i = 0; i < meth_slot_count; i++) {
+        omni_bind_pop(1);
+      }
+
+      // Wrap body in lambdas (innermost to outermost)
+      // Use recursive closure for outermost
+      for (int i = (int)meth_slot_count - 1; i >= 0; i--) {
+        if (i == 0) {
+          meth_body = omni_lamr(meth_body);
+        } else {
+          meth_body = omni_lam(meth_body);
+        }
+      }
+
+      // Build method signature (list of types)
+      Term meth_sig = omni_nil();
+      for (int i = (int)meth_slot_count - 1; i >= 0; i--) {
+        Term slot_type = meth_slots[i].type;
+        // If no type annotation, default to Any
+        if (term_ext(slot_type) == OMNI_NAM_NIL) {
+          slot_type = omni_sym(omni_nick("Any"));
+        }
+        meth_sig = omni_cons(slot_type, meth_sig);
+      }
+
+      // Create method: #Meth{name, sig, impl, constraints, effects}
+      Term meth = omni_ctr5(OMNI_NAM_METH,
+                            term_new_num(name_nick),
+                            meth_sig,
+                            meth_body,
+                            omni_nil(),  // constraints
+                            omni_nil()); // effects
+
+      // Prepend to methods list
+      methods = omni_cons(meth, methods);
+      omni_skip(s);
+    }
+
+    // Pop default bindings
+    for (u32 i = 0; i < default_slot_count; i++) {
+      omni_bind_pop(1);
+    }
+
+    omni_expect_char(s, ')');
+
+    // Create generic function: #GFun{name, methods}
+    Term gfun = omni_ctr2(OMNI_NAM_GFUN, term_new_num(name_nick), methods);
+
+    // Register in book
+    u32 def_id = table_find(def_name, copy_len);
+    u64 loc = heap_alloc(1);
+    HEAP[loc] = gfun;
+    BOOK[def_id] = (u32)loc;
+
+    return gfun;
   }
 
   // module: (module Name (export sym1 sym2 ...) body...)
@@ -3968,13 +4124,15 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_cons(h, t);
   }
   if (omni_symbol_is(s, sym_start, sym_len, "first") ||
-      omni_symbol_is(s, sym_start, sym_len, "car")) {
+      omni_symbol_is(s, sym_start, sym_len, "car") ||
+      omni_symbol_is(s, sym_start, sym_len, "head")) {
     Term lst = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_FST, lst);
   }
   if (omni_symbol_is(s, sym_start, sym_len, "rest") ||
-      omni_symbol_is(s, sym_start, sym_len, "cdr")) {
+      omni_symbol_is(s, sym_start, sym_len, "cdr") ||
+      omni_symbol_is(s, sym_start, sym_len, "tail")) {
     Term lst = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_SND, lst);
@@ -4557,7 +4715,94 @@ fn Term parse_omni_sexp(PState *s) {
     Term key = parse_omni_expr(s);
     omni_expect_char(s, ')');
     // Use PUT with nothing as value to represent removal
-    return omni_ctr3(OMNI_NAM_PUT, coll, key, omni_ctr1(OMNI_NAM_NOTH, omni_lit(1)));
+    return omni_ctr3(OMNI_NAM_PUT, coll, key, omni_nothing());
+  }
+
+  // keys: (keys coll) - get list of keys from collection
+  if (omni_symbol_is(s, sym_start, sym_len, "keys")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_KEYS, coll);
+  }
+
+  // vals: (vals coll) - get list of values from collection
+  if (omni_symbol_is(s, sym_start, sym_len, "vals") ||
+      omni_symbol_is(s, sym_start, sym_len, "values")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_VALS, coll);
+  }
+
+  // last: (last coll) - get last element
+  if (omni_symbol_is(s, sym_start, sym_len, "last")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_LAST, coll);
+  }
+
+  // init: (init coll) - get all but last element
+  if (omni_symbol_is(s, sym_start, sym_len, "init") ||
+      omni_symbol_is(s, sym_start, sym_len, "butlast")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_INIT, coll);
+  }
+
+  // flatten: (flatten nested) - flatten nested list one level
+  if (omni_symbol_is(s, sym_start, sym_len, "flatten")) {
+    Term nested = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_FLAT, nested);
+  }
+
+  // sort: (sort coll) or (sort coll cmp) - sort collection
+  if (omni_symbol_is(s, sym_start, sym_len, "sort")) {
+    Term coll = parse_omni_expr(s);
+    Term cmp;
+    if (parse_peek(s) != ')') {
+      cmp = parse_omni_expr(s);
+    } else {
+      // Default comparator: (lambda [a] [b] (< a b))
+      cmp = omni_ctr2(OMNI_NAM_LAM, omni_ctr2(OMNI_NAM_LAM, omni_ctr2(OMNI_NAM_LT, omni_var(1), omni_var(0)), omni_nothing()), omni_nothing());
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_SORT, coll, cmp);
+  }
+
+  // slice: (slice coll start end) - get sub-sequence
+  if (omni_symbol_is(s, sym_start, sym_len, "slice")) {
+    Term coll = parse_omni_expr(s);
+    Term start = parse_omni_expr(s);
+    Term end = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_SLCE, coll, start, end);
+  }
+
+  // arr-get: (arr-get arr idx) - get element at index
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-get") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-get")) {
+    Term arr = parse_omni_expr(s);
+    Term idx = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_AGE, arr, idx);
+  }
+
+  // arr-set: (arr-set arr idx val) - set element at index
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-set") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-set")) {
+    Term arr = parse_omni_expr(s);
+    Term idx = parse_omni_expr(s);
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_ASE, arr, idx, val);
+  }
+
+  // arr-len: (arr-len arr) - get array length
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-len") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-length")) {
+    Term arr = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_ALE, arr);
   }
 
   // range: (range end) or (range start end) or (range start end step)
@@ -4935,6 +5180,16 @@ fn Term parse_omni_sexp(PState *s) {
     Term val = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_PRNL, val);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "test-putc")) {
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_TPUT, val);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "debug-match")) {
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_DGMT, val);
   }
   if (omni_symbol_is(s, sym_start, sym_len, "read-line")) {
     omni_expect_char(s, ')');
@@ -5402,6 +5657,74 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_ctr1(OMNI_NAM_STPR, code);
   }
 
+  // Type unification operations
+  // make-type-var: (make-type-var name) - create type variable
+  if (omni_symbol_is(s, sym_start, sym_len, "make-type-var")) {
+    Term name = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_MKTV, name);
+  }
+
+  // make-fun-type: (make-fun-type args ret) - create function type
+  if (omni_symbol_is(s, sym_start, sym_len, "make-fun-type")) {
+    Term args = parse_omni_expr(s);
+    Term ret = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_MKFT, args, ret);
+  }
+
+  // make-type-app: (make-type-app base params) - create type application
+  if (omni_symbol_is(s, sym_start, sym_len, "make-type-app")) {
+    Term base = parse_omni_expr(s);
+    Term params = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_MKTA, base, params);
+  }
+
+  // unify-types: (unify-types a b) - unify two types
+  if (omni_symbol_is(s, sym_start, sym_len, "unify-types")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_TUNF, a, b);
+  }
+
+  // success?: (success? result) - check if unification succeeded
+  if (omni_symbol_is(s, sym_start, sym_len, "success?")) {
+    Term result = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_TSUC, result);
+  }
+
+  // get-subst: (get-subst result) - get substitution from unification result
+  if (omni_symbol_is(s, sym_start, sym_len, "get-subst")) {
+    Term result = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_TGSB, result);
+  }
+
+  // apply-subst: (apply-subst subst type) - apply substitution to type
+  if (omni_symbol_is(s, sym_start, sym_len, "apply-subst")) {
+    Term subst = parse_omni_expr(s);
+    Term type = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_TASB, subst, type);
+  }
+
+  // type-var?: (type-var? type) - check if type is a type variable
+  if (omni_symbol_is(s, sym_start, sym_len, "type-var?")) {
+    Term type = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_TVRP, type);
+  }
+
+  // type-name: (type-name type) - get name from type descriptor
+  if (omni_symbol_is(s, sym_start, sym_len, "type-name")) {
+    Term type = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_TNAM, type);
+  }
+
   // map-chunks: (map-chunks f xs chunk-size) - chunked parallel map
   if (omni_symbol_is(s, sym_start, sym_len, "map-chunks")) {
     Term f = parse_omni_expr(s);
@@ -5857,6 +6180,20 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_ctr4(OMNI_NAM_SPAD, str, len, chr, side);
   }
 
+  // str-to-int: (str-to-int str) -> #SToi{str}
+  if (omni_symbol_is(s, sym_start, sym_len, "str-to-int")) {
+    Term str = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_STOI, str);
+  }
+
+  // int-to-str: (int-to-str n) -> #ItoS{n}
+  if (omni_symbol_is(s, sym_start, sym_len, "int-to-str")) {
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_ITOS, n);
+  }
+
   // Default: function application
   u32 fn_nick = omni_symbol_nick(s, sym_start, sym_len);
 
@@ -5868,17 +6205,15 @@ fn Term parse_omni_sexp(PState *s) {
 
   Term func;
   u32 fn_id = table_find(fn_name, fn_len);
-  if (BOOK[fn_id] != 0) {
-    func = term_new_ref(fn_id);
+  // First check if bound as a local variable (lambda parameter, let binding, etc.)
+  u32 idx;
+  if (omni_bind_lookup(fn_nick, &idx)) {
+    func = omni_var(idx);
   } else {
-    // Check if bound variable
-    u32 idx;
-    if (omni_bind_lookup(fn_nick, &idx)) {
-      func = omni_var(idx);
-    } else {
-      // Unknown - use table_id for runtime resolution (handles forward refs)
-      func = omni_sym(fn_id);
-    }
+    // Use #FRef for all BOOK references (defined or forward).
+    // Raw REF terms cause infinite expansion during HVM4 evaluation.
+    // #FRef is handled lazily by @omni_eval at runtime.
+    func = omni_fref(fn_id);
   }
 
   // Parse arguments

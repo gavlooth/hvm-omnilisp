@@ -1,0 +1,71 @@
+;; test_dispatch_static.omni - Tests for static type dispatch
+;; Tests that type-based method dispatch works at compile time
+
+;; TEST: simple generic function with Int
+;; EXPECT: 100
+(do (generic show [x {Any}] {Str}
+      ([x {Int}]  "int")
+      ([x {Str}]  "str")
+      ([x {Bool}] "bool"))
+    (if (= (show 42) "int") 100 0))
+
+;; TEST: numeric dispatch
+;; EXPECT: 6
+(do (generic double [x {Any}] {Any}
+      ([x {Int}]  (* x 2))
+      ([x {Str}]  (str-concat x x)))
+    (double 3))
+
+;; TEST: list dispatch for length
+;; EXPECT: 3
+(do (generic my-length [x {Any}] {Int}
+      ([x {List Any}]  (match x
+                         ()        0
+                         (_ .. t)  (+ 1 (my-length t))))
+      ([x {Str}]       (str-len x)))
+    (my-length '(1 2 3)))
+
+;; TEST: recursive generic with type dispatch
+;; EXPECT: 10
+(do (generic my-sum [x {Any}] {Int}
+      ([x {Int}]        x)
+      ([x {List Int}]   (match x
+                          ()       0
+                          (h .. t) (+ (my-sum h) (my-sum t)))))
+    (my-sum '(1 2 3 4)))
+
+;; TEST: nested generic calls
+;; EXPECT: 2
+(do (generic process [x {Any}] {Int}
+      ([x {Int}]  (+ x 1))
+      ([x {Str}]  (str-len x)))
+    (generic apply-process [x {Any}] {Int}
+      ([x {Int}]  (process x))
+      ([x {Str}]  (process x)))
+    (apply-process 1))
+
+;; TEST: type-specific behavior
+;; EXPECT: 50
+(do (generic mult-or-len [x {Any}] [y {Int}] {Int}
+      ([x {Int}]  [y {Int}] (* x y))
+      ([x {Str}]  [y {Int}] (* (str-len x) y)))
+    (mult-or-len 10 5))
+
+;; TEST: default fallback dispatch
+;; EXPECT: 999
+(do (generic classify [x {Any}] {Int}
+      ([x {Int}]  1)
+      ([x {Str}]  2)
+      ([x {Bool}] 3)
+      ([x {Any}]  999))
+    ;; Symbol should hit the Any fallback
+    (classify 'unknown))
+
+;; TEST: compile-time specialization
+;; EXPECT: 20
+(do (generic double2 [x {Any}] {Any}
+      ([x {Int}]  (* x 2))
+      ([x {Str}]  (str-concat x x)))
+    (define specialized [x {Int}] {Int}
+      (double2 x))
+    (specialized 10))

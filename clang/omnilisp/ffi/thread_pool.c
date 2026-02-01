@@ -454,8 +454,33 @@ fn Term omni_ffi_dispatch(Term ffi_node) {
   if (term_ext(ffi_node) != OMNI_NAM_FFI) return ffi_node;
 
   u32 loc = term_val(ffi_node);
-  u32 name_nick = term_val(HEAP[loc]);
-  Term args_list = HEAP[loc + 1];
+
+  // CRITICAL: Reduce the name term to resolve ALO markers to actual values
+  Term name_term = wnf(HEAP[loc]);
+
+  // The name should be a NUM with the nick
+  u32 name_nick = term_val(name_term);
+
+  // Reduce args list too
+  Term args_list = wnf(HEAP[loc + 1]);
+
+  // Try IO dispatch first (omni_ffi_io_dispatch is defined in io.c)
+  Term io_result = omni_ffi_io_dispatch(name_nick, args_list);
+  if (io_result != 0) {
+    return io_result;
+  }
+
+  // Try DateTime dispatch (omni_ffi_dt_dispatch is defined in datetime.c)
+  Term dt_result = omni_ffi_dt_dispatch(name_nick, args_list);
+  if (dt_result != 0) {
+    return dt_result;
+  }
+
+  // Try JSON dispatch (omni_ffi_json_dispatch is defined in json.c)
+  Term json_result = omni_ffi_json_dispatch(name_nick, args_list);
+  if (json_result != 0) {
+    return json_result;
+  }
 
   OmniFFIEntry *entry = omni_ffi_lookup(name_nick);
   if (!entry) {
@@ -470,14 +495,17 @@ fn Term omni_ffi_dispatch(Term ffi_node) {
   // #CON{h, t} is C02 (2 args)
   while (term_tag(cur) == C02 && term_ext(cur) == NAM_CON && arg_count < 8) {
     u32 aloc = term_val(cur);
-    Term head = HEAP[aloc];
-    cur = HEAP[aloc + 1];
+    // Reduce each element before reading
+    Term head = wnf(HEAP[aloc]);
+    cur = wnf(HEAP[aloc + 1]);
 
     // Convert Term to intptr_t
     if (term_tag(head) == C01) {
       // 1-arg constructors: #Cst{n}, #Hndl{packed}
       if (term_ext(head) == OMNI_NAM_CST) {
-        args[arg_count++] = (intptr_t)term_val(HEAP[term_val(head)]);
+        // Reduce the inner value too
+        Term inner = wnf(HEAP[term_val(head)]);
+        args[arg_count++] = (intptr_t)term_val(inner);
       } else if (term_ext(head) == OMNI_NAM_HNDL) {
         void *ptr = omni_ffi_handle_borrow(head);
         args[arg_count++] = (intptr_t)ptr;

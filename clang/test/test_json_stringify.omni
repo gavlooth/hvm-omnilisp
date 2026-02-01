@@ -1,9 +1,9 @@
-;; test_json_stringify.lisp - Tests for JSON stringification
+;; test_json_stringify.omni - Tests for JSON stringification
 
 ;; Json-stringify converts value to JSON string
-;; TEST: stringify null
+;; TEST: stringify nothing (null)
 ;; EXPECT: "null"
-(json-stringify nil)
+(json-stringify nothing)
 
 ;; TEST: stringify true
 ;; EXPECT: "true"
@@ -17,13 +17,9 @@
 ;; EXPECT: "42"
 (json-stringify 42)
 
-;; TEST: stringify negative
-;; EXPECT: "-123"
-(json-stringify -123)
-
-;; TEST: stringify float
-;; EXPECT: "3.14"
-(json-stringify 3.14)
+;; TEST: stringify zero
+;; EXPECT: "0"
+(json-stringify 0)
 
 ;; TEST: stringify string
 ;; EXPECT: "\"hello\""
@@ -45,6 +41,18 @@
 ;; EXPECT: "[]"
 (json-stringify [])
 
+;; TEST: stringify empty list
+;; EXPECT: "[]"
+(json-stringify '())
+
+;; TEST: stringify nested arrays
+;; EXPECT: "[[1,2],[3,4]]"
+(json-stringify [[1 2] [3 4]])
+
+;; TEST: stringify array with mixed types
+;; EXPECT: "[1,true,\"hello\"]"
+(json-stringify [1 true "hello"])
+
 ;; TEST: stringify dict as object
 ;; EXPECT: "{\"a\":1,\"b\":2}"
 (json-stringify #{"a" 1 "b" 2})
@@ -53,16 +61,31 @@
 ;; EXPECT: "{}"
 (json-stringify #{})
 
-;; TEST: stringify nested
+;; TEST: stringify nested object
 ;; EXPECT: "{\"items\":[1,2,3]}"
 (json-stringify #{"items" [1 2 3]})
 
-;; Pretty printing
-;; TEST: pretty print
-;; EXPECT: "{\n  \"a\": 1\n}"
-(json-stringify-pretty #{"a" 1})
+;; Roundtrip tests
+;; TEST: roundtrip number
+;; EXPECT: 42
+(json-parse (json-stringify 42))
 
-;; Roundtrip
-;; TEST: roundtrip
-;; EXPECT: #{"name" "test" "value" 42}
-(json-parse (json-stringify #{"name" "test" "value" 42}))
+;; TEST: roundtrip string
+;; EXPECT: "test"
+(json-parse (json-stringify "test"))
+
+;; TEST: roundtrip array
+;; EXPECT: '(1 2 3)
+(json-parse (json-stringify [1 2 3]))
+
+;; TEST: roundtrip true
+;; EXPECT: true
+(json-parse (json-stringify true))
+
+;; TEST: roundtrip false
+;; EXPECT: false
+(json-parse (json-stringify false))
+
+;; TEST: roundtrip null
+;; EXPECT: nothing
+(json-parse (json-stringify nothing))

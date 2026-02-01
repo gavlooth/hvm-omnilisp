@@ -1,27 +1,28 @@
-;; test_associative.lisp - Tests for ^:associative metadata
+;; test_associative.omni - Tests for ^:associative metadata
 
 ;; TEST: basic associative function
 ;; EXPECT: 10
-(define my_add [x] [y] ^:associative (+ x y))
-(my_add 3 7)
+(do (define my_add [x] [y] ^:associative (+ x y))
+    (my_add 3 7))
 
 ;; TEST: associative with pure (both metadata)
 ;; EXPECT: 6
-(define safe_mul [a] [b] ^:pure ^:associative (* a b))
-(safe_mul 2 3)
+(do (define safe_mul [a] [b] ^:pure ^:associative (* a b))
+    (safe_mul 2 3))
 
 ;; TEST: associative function call
 ;; EXPECT: 15
-(define sum2 [a] [b] ^:associative (+ a b))
-(sum2 (sum2 5 5) 5)
+(do (define sum2 [a] [b] ^:associative (+ a b))
+    (sum2 (sum2 5 5) 5))
 
 ;; TEST: regular function (no associative) still works
 ;; EXPECT: 20
-(define regular_add [x] [y] (+ x y))
-(regular_add 8 12)
+(do (define regular_add [x] [y] (+ x y))
+    (regular_add 8 12))
 
+;; TEST: associative nested
 ;; EXPECT: 36
-(define combine [a] [b] ^:associative (+ a b))
-(combine (combine (combine 1 2) (combine 3 4))
-         (combine (combine 5 6) (combine 7 8)))
+(do (define combine [a] [b] ^:associative (+ a b))
+    (combine (combine (combine 1 2) (combine 3 4))
+             (combine (combine 5 6) (combine 7 8))))
 ;; 1+2+3+4+5+6+7+8 = 36
