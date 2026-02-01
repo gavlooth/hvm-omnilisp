@@ -1250,3 +1250,403 @@
     #CON: λ&h. λ&t. #CON{h, @append(t)(ys)}
   }(xs)
 
+// =============================================================================
+// Kind-Checked Type Unification
+// =============================================================================
+
+// Unify with kind checking enabled
+// Returns #USuc{subst} or #UFal{reason}
+@unify_with_kinds = λ&type_a. λ&type_b.
+  @unify_with_kinds_subst(#NIL)(type_a)(type_b)
+
+// Unify with existing substitution and kind checking
+@unify_with_kinds_subst = λ&subst. λ&type_a. λ&type_b.
+  // First check that kinds are compatible
+  !!&kind_a = @infer_kind(type_a);
+  !!&kind_b = @infer_kind(type_b);
+  !!&kinds_ok = @kinds_equal(kind_a)(kind_b);
+  λ{
+    #True: @unify_core_with_kinds(subst)(type_a)(type_b)
+    #Fals: #UFal{#KMis{kind_a, kind_b}}
+  }(kinds_ok)
+
+// Core kind-checked unification
+@unify_core_with_kinds = λ&subst. λ&type_a. λ&type_b.
+  !!&s = subst;
+  !!&ta = type_a;
+  !!&tb = type_b;
+  @unify_dispatch_with_kinds(s)(ta)(tb)
+
+// Dispatch based on type_a with kind checking
+@unify_dispatch_with_kinds = λ&s. λ&ta. λ&tb.
+  λ{
+    // Type variable on left
+    #TVar: λ&name_a.
+      @unify_tvar_left_with_kinds(s)(name_a)(ta)(tb)
+
+    // Type constructor variable on left (kind-aware)
+    #TConVar: λ&name_a. λ&kind_a.
+      @unify_tconvar_left(s)(name_a)(kind_a)(ta)(tb)
+
+    // Type constructor on left
+    #TCon: λ&name_a.
+      @unify_tcon_left_with_kinds(s)(name_a)(ta)(tb)
+
+    // Type application on left
+    #TApp: λ&base_a. λ&params_a.
+      @unify_tapp_left(s)(base_a)(params_a)(ta)(tb)
+
+    // Function type on left
+    #TFun: λ&args_a. λ&ret_a.
+      @unify_tfun_left(s)(args_a)(ret_a)(ta)(tb)
+
+    // Function type with effects on left
+    #TFunE: λ&args_a. λ&ret_a. λ&eff_a.
+      @unify_tfune_left(s)(args_a)(ret_a)(eff_a)(ta)(tb)
+
+    // Default: check equality
+    _: @unify_default_with_kinds(s)(ta)(tb)
+  }(ta)
+
+// Handle #TVar on left side with kind checking
+@unify_tvar_left_with_kinds = λ&s. λ&name_a. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      (λ&same.
+        λ{
+          1: #USuc{s}
+          0: #USuc{#CON{#CON{#TVar{name_a}, #CON{#TVar{name_b}, #NIL}}, s}}
+        }(same)
+      )((name_a == name_b))
+
+    #TConVar: λ&name_b. λ&kind_b.
+      // TVar has kind *, so TConVar must also have kind *
+      λ{
+        #True: @bind_var(s)(name_a)(tb)
+        #Fals: #UFal{#KMis{@kind_star, kind_b}}
+      }(@kinds_equal(@kind_star)(kind_b))
+
+    _: @bind_var(s)(name_a)(tb)
+  }(tb)
+
+// Handle #TConVar on left side
+@unify_tconvar_left = λ&s. λ&name_a. λ&kind_a. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      // TVar has kind *, so kind_a must be *
+      λ{
+        #True: @bind_var(s)(name_b)(ta)
+        #Fals: #UFal{#KMis{kind_a, @kind_star}}
+      }(@kinds_equal(kind_a)(@kind_star))
+
+    #TConVar: λ&name_b. λ&kind_b.
+      // Both are TConVar - check kinds match
+      λ{
+        #True:
+          (λ&same.
+            λ{
+              1: #USuc{s}
+              0: @bind_tcon_var(s)(name_a)(kind_a)(tb)
+            }(same)
+          )((name_a == name_b))
+        #Fals: #UFal{#KMis{kind_a, kind_b}}
+      }(@kinds_equal(kind_a)(kind_b))
+
+    #TCon: λ&name_b.
+      // Check that TCon's kind matches kind_a
+      !!&tcon_kind = @infer_tcon_kind(name_b);
+      λ{
+        #True: @bind_tcon_var(s)(name_a)(kind_a)(tb)
+        #Fals: #UFal{#KMis{kind_a, tcon_kind}}
+      }(@kinds_equal(kind_a)(tcon_kind))
+
+    _: @bind_tcon_var(s)(name_a)(kind_a)(tb)
+  }(tb)
+
+// Handle #TCon on left side with kind checking
+@unify_tcon_left_with_kinds = λ&s. λ&name_a. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+
+    #TConVar: λ&name_b. λ&kind_b.
+      !!&tcon_kind = @infer_tcon_kind(name_a);
+      λ{
+        #True: @bind_tcon_var(s)(name_b)(kind_b)(ta)
+        #Fals: #UFal{#KMis{tcon_kind, kind_b}}
+      }(@kinds_equal(tcon_kind)(kind_b))
+
+    #TCon: λ&name_b.
+      (λ&same.
+        λ{
+          1: #USuc{s}
+          0: #UFal{#sym_TypeMismatch}
+        }(same)
+      )((name_a == name_b))
+
+    _: #UFal{#sym_TypeMismatch}
+  }(tb)
+
+// Handle #TApp on left side
+@unify_tapp_left = λ&s. λ&base_a. λ&params_a. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+
+    #TApp: λ&base_b. λ&params_b.
+      // Unify bases first, then unify params
+      !!&base_result = @unify_with_kinds_subst(s)(base_a)(base_b);
+      λ{
+        #USuc: λ&subst2.
+          @unify_lists_with_kinds(subst2)(params_a)(params_b)
+        _: base_result
+      }(base_result)
+
+    _: #UFal{#sym_TypeMismatch}
+  }(tb)
+
+// Handle #TFun on left side
+@unify_tfun_left = λ&s. λ&args_a. λ&ret_a. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+
+    #TFun: λ&args_b. λ&ret_b.
+      !!&args_result = @unify_lists_with_kinds(s)(args_a)(args_b);
+      λ{
+        #USuc: λ&subst2.
+          @unify_with_kinds_subst(subst2)(ret_a)(ret_b)
+        _: args_result
+      }(args_result)
+
+    #TFunE: λ&args_b. λ&ret_b. λ&eff_b.
+      // TFun can unify with TFunE if effects are unknown
+      !!&args_result = @unify_lists_with_kinds(s)(args_a)(args_b);
+      λ{
+        #USuc: λ&subst2.
+          @unify_with_kinds_subst(subst2)(ret_a)(ret_b)
+        _: args_result
+      }(args_result)
+
+    _: #UFal{#sym_TypeMismatch}
+  }(tb)
+
+// Handle #TFunE on left side
+@unify_tfune_left = λ&s. λ&args_a. λ&ret_a. λ&eff_a. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+
+    #TFun: λ&args_b. λ&ret_b.
+      !!&args_result = @unify_lists_with_kinds(s)(args_a)(args_b);
+      λ{
+        #USuc: λ&subst2.
+          @unify_with_kinds_subst(subst2)(ret_a)(ret_b)
+        _: args_result
+      }(args_result)
+
+    #TFunE: λ&args_b. λ&ret_b. λ&eff_b.
+      !!&args_result = @unify_lists_with_kinds(s)(args_a)(args_b);
+      λ{
+        #USuc: λ&subst2.
+          !!&ret_result = @unify_with_kinds_subst(subst2)(ret_a)(ret_b);
+          λ{
+            #USuc: λ&subst3.
+              @unify_effects(subst3)(eff_a)(eff_b)
+            _: ret_result
+          }(ret_result)
+        _: args_result
+      }(args_result)
+
+    _: #UFal{#sym_TypeMismatch}
+  }(tb)
+
+// Default handler with kind checking
+@unify_default_with_kinds = λ&s. λ&ta. λ&tb.
+  λ{
+    #TVar: λ&name_b.
+      @bind_var(s)(name_b)(ta)
+
+    #TConVar: λ&name_b. λ&kind_b.
+      !!&kind_a = @infer_kind(ta);
+      λ{
+        #True: @bind_tcon_var(s)(name_b)(kind_b)(ta)
+        #Fals: #UFal{#KMis{kind_a, kind_b}}
+      }(@kinds_equal(kind_a)(kind_b))
+
+    _:
+      (λ&same.
+        λ{
+          1: #USuc{s}
+          0: #UFal{#sym_TypeMismatch}
+        }(same)
+      )((ta == tb))
+  }(tb)
+
+// Unify two lists with kind checking
+@unify_lists_with_kinds = λ&subst. λ&types_a. λ&types_b.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #USuc{subst}
+        _: #UFal{#sym_ArityMismatch}
+      }(types_b)
+    #CON: λ&ha. λ&ta.
+      λ{
+        #NIL: #UFal{#sym_ArityMismatch}
+        #CON: λ&hb. λ&tb.
+          !!&head_result = @unify_with_kinds_subst(subst)(ha)(hb);
+          λ{
+            #USuc: λ&subst2.
+              @unify_lists_with_kinds(subst2)(ta)(tb)
+            _: head_result
+          }(head_result)
+      }(types_b)
+  }(types_a)
+
+// Bind type constructor variable to a type with kind and occurs check
+@bind_tcon_var = λ&subst. λ&var_name. λ&var_kind. λ&type.
+  // Check kind of type matches var_kind
+  !!&type_kind = @infer_kind(type);
+  λ{
+    #True:
+      // Kinds match, perform occurs check
+      λ{
+        #True: #UFal{#sym_OccursCheck}
+        #Fals: #USuc{#CON{#CON{#TConVar{var_name, var_kind}, #CON{type, #NIL}}, subst}}
+      }(@occurs_check_tcon(var_name)(type))
+    #Fals: #UFal{#KMis{var_kind, type_kind}}
+  }(@kinds_equal(var_kind)(type_kind))
+
+// Occurs check for type constructor variables
+@occurs_check_tcon = λ&var_name. λ&type.
+  λ{
+    #TConVar: λ&name. λ&kind.
+      !!&vn = var_name;
+      (λ&same. λ{ 1: #True{} 0: #Fals{} }(same))((vn == name))
+
+    #TCon: λ&name.
+      #Fals{}
+
+    #TVar: λ&name.
+      #Fals{}
+
+    #TApp: λ&base. λ&params.
+      !!&vn1 = var_name;
+      !!&vn2 = var_name;
+      !!&in_base = @occurs_check_tcon(vn1)(base);
+      λ{
+        #True: #True{}
+        _: @occurs_in_list_tcon(vn2)(params)
+      }(in_base)
+
+    #TFun: λ&args. λ&ret.
+      !!&vn1 = var_name;
+      !!&vn2 = var_name;
+      !!&in_args = @occurs_in_list_tcon(vn1)(args);
+      λ{
+        #True: #True{}
+        _: @occurs_check_tcon(vn2)(ret)
+      }(in_args)
+
+    #TFunE: λ&args. λ&ret. λ&eff_unused.
+      !!&vn1 = var_name;
+      !!&vn2 = var_name;
+      !!&in_args = @occurs_in_list_tcon(vn1)(args);
+      λ{
+        #True: #True{}
+        _: @occurs_check_tcon(vn2)(ret)
+      }(in_args)
+
+    _: #Fals{}
+  }(type)
+
+// Check if type constructor variable occurs in any type in list
+@occurs_in_list_tcon = λ&var_name. λ&types.
+  λ{
+    #NIL: #Fals{}
+    #CON: λ&h. λ&t.
+      !!&vn1 = var_name;
+      !!&vn2 = var_name;
+      !!&in_head = @occurs_check_tcon(vn1)(h);
+      λ{
+        #True: #True{}
+        _: @occurs_in_list_tcon(vn2)(t)
+      }(in_head)
+  }(types)
+
+// =============================================================================
+// Kind-Checked Constraint Solving
+// =============================================================================
+
+// Solve constraints with kind checking
+@solve_constraints_with_kinds = λconstraints.
+  @solve_constraints_with_kinds_subst(#NIL)(constraints)
+
+@solve_constraints_with_kinds_subst = λ&subst. λ&constraints.
+  λ{
+    #NIL: #USuc{subst}
+    #CON: λ&con. λ&rest.
+      λ{
+        #TCon: λ&expected. λ&actual. λ&loc_unused.
+          !!&result = @unify_with_kinds_subst(subst)(expected)(actual);
+          λ{
+            #USuc: λ&new_subst.
+              @solve_constraints_with_kinds_subst(new_subst)(rest)
+            _: result
+          }(result)
+      }(con)
+  }(constraints)
+
+// =============================================================================
+// Kind-Checked Type Inference
+// =============================================================================
+
+// Infer type of expression with kind checking
+@infer_type_expr_with_kinds = λ&expr. λ&env.
+  !!&expected = @fresh_type_var();
+  !!&gen_result = @generate_constraints(expr)(expected)(env);
+  λ{
+    #CON: λ&constraints. λ&rest.
+      λ{
+        #CON: λ&inferred. λ&u6_.
+          !!&solve_result = @solve_constraints_with_kinds(constraints);
+          λ{
+            #USuc: λ&subst.
+              !!&final_type = @apply_subst(subst)(inferred);
+              // Verify final type has valid kind
+              !!&final_kind = @infer_kind(final_type);
+              #TRes{final_type, subst, final_kind}
+            #UFal: λ&reason.
+              #TErr{reason}
+          }(solve_result)
+      }(rest)
+  }(gen_result)
+
+// =============================================================================
+// Kind Error Helpers
+// =============================================================================
+
+// Check if unification result is a kind error
+@is_kind_error = λ&result.
+  λ{
+    #UFal: λ&reason.
+      λ{
+        #KMis: λ&k1. λ&k2. #True{}
+        _: #Fals{}
+      }(reason)
+    _: #Fals{}
+  }(result)
+
+// Extract kind mismatch info from error
+@get_kind_error_info = λ&result.
+  λ{
+    #UFal: λ&reason.
+      λ{
+        #KMis: λ&expected. λ&actual.
+          #CON{expected, #CON{actual, #NIL}}
+        _: #NIL
+      }(reason)
+    _: #NIL
+  }(result)
+

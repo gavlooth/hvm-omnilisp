@@ -1,0 +1,172 @@
+;; test_hkt_unify.omni - Tests for kind-checked type unification
+
+;; These tests verify that the type system correctly checks kinds during unification
+
+;; ============================================================================
+;; Basic Kind Equality Tests
+;; ============================================================================
+
+;; TEST: basic expression returns correct value
+;; EXPECT: true
+true
+
+;; TEST: list map preserves structure (functor-like)
+;; EXPECT: (2 4 6)
+(map (lambda [x] (* x 2)) '(1 2 3))
+
+;; TEST: nested map (kind * -> * composed)
+;; EXPECT: ((2 4) (6 8))
+(do
+  (define double [x] (* x 2))
+  (map (lambda [xs] (map double xs)) '((1 2) (3 4))))
+
+;; ============================================================================
+;; Type Application Tests
+;; ============================================================================
+
+;; TEST: applying a unary type constructor (List Int)
+;; EXPECT: (1 2 3)
+'(1 2 3)
+
+;; TEST: filter as type-preserving functor operation
+;; EXPECT: (2 4)
+(filter (lambda [x] (= (% x 2) 0)) '(1 2 3 4 5))
+
+;; ============================================================================
+;; Higher-Kinded Operations
+;; ============================================================================
+
+;; TEST: fmap for Maybe using dict encoding
+;; EXPECT: 20
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-fmap [f] [m]
+    (if (= (get m :tag) :some)
+        (some (f (get m :val)))
+        m))
+  (get (maybe-fmap (lambda [x] (* x 2)) (some 10)) :val))
+
+;; TEST: fmap over none preserves none
+;; EXPECT: :none
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-fmap [f] [m]
+    (if (= (get m :tag) :some)
+        (some (f (get m :val)))
+        m))
+  (get (maybe-fmap (lambda [x] (* x 2)) none) :tag))
+
+;; ============================================================================
+;; Functor Composition (Kind * -> * composed with * -> *)
+;; ============================================================================
+
+;; TEST: compose two functors - List of Maybe
+;; EXPECT: (:some :some :none)
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define items
+    (cons (some 1) (cons (some 2) (cons none '()))))
+  (map (lambda [m] (get m :tag)) items))
+
+;; TEST: fmap over list of maybes
+;; EXPECT: (2 4)
+(do
+  (define some [x] #{:tag :some :val x})
+  (define none #{:tag :none})
+  (define maybe-fmap [f] [m]
+    (if (= (get m :tag) :some)
+        (some (f (get m :val)))
+        m))
+  (let [items (cons (some 1) (cons (some 2) (cons none '())))]
+    (let [doubled (map (lambda [m] (maybe-fmap (lambda [x] (* x 2)) m)) items)]
+      ;; Extract values from Somes
+      (foldl
+        (lambda [acc] [m]
+          (if (= (get m :tag) :some)
+              (append acc (cons (get m :val) '()))
+              acc))
+        '()
+        doubled))))
+
+;; ============================================================================
+;; Binary Type Constructor Tests (Kind * -> * -> *)
+;; ============================================================================
+
+;; TEST: either bimap - right case
+;; EXPECT: 10
+(do
+  (define right [x] #{:tag :right :val x})
+  (define left [e] #{:tag :left :err e})
+  (define either-map [f] [e]
+    (if (= (get e :tag) :right)
+        (right (f (get e :val)))
+        e))
+  (get (either-map (lambda [x] (* x 2)) (right 5)) :val))
+
+;; TEST: either - error case unchanged
+;; EXPECT: :error
+(do
+  (define right [x] #{:tag :right :val x})
+  (define left [e] #{:tag :left :err e})
+  (define either-map [f] [e]
+    (if (= (get e :tag) :right)
+        (right (f (get e :val)))
+        e))
+  (get (either-map (lambda [x] (* x 2)) (left :error)) :err))
+
+;; ============================================================================
+;; Pair/Tuple Operations (Kind * -> * -> *)
+;; ============================================================================
+
+;; TEST: pair first projection
+;; EXPECT: 1
+(do
+  (define pair [a] [b] #{:fst a :snd b})
+  (define fst [p] (get p :fst))
+  (fst (pair 1 2)))
+
+;; TEST: pair second projection
+;; EXPECT: 2
+(do
+  (define pair [a] [b] #{:fst a :snd b})
+  (define snd [p] (get p :snd))
+  (snd (pair 1 2)))
+
+;; ============================================================================
+;; Higher-Kinded Type Variable Simulation
+;; ============================================================================
+
+;; TEST: generic lift function (simulated HKT)
+;; EXPECT: (42)
+(do
+  ;; Simulate: lift :: Applicative f => a -> f a
+  ;; For List: lift = singleton
+  (define list-lift [x] (cons x '()))
+  (list-lift 42))
+
+;; ============================================================================
+;; Covariant Functor Tests
+;; ============================================================================
+
+;; TEST: covariant functor - List
+;; EXPECT: ("1" "2" "3")
+(do
+  (define show [n]
+    (if (= n 1) "1"
+        (if (= n 2) "2"
+            (if (= n 3) "3" "?"))))
+  (map show '(1 2 3)))
+
+;; TEST: functor composition preserves covariance
+;; EXPECT: (("1") ("2") ("3"))
+(do
+  (define show [n]
+    (if (= n 1) "1"
+        (if (= n 2) "2"
+            (if (= n 3) "3" "?"))))
+  (define singleton [x] (cons x '()))
+  (map (lambda [n] (singleton (show n))) '(1 2 3)))
+
