@@ -1,0 +1,32 @@
+// Simplified Effect Type System Test
+
+// =============================================================================
+// Core Types
+// =============================================================================
+
+// #ERow{effects_list, rest}
+// #ENil - empty/closed
+// #EVar{id} - variable/open
+
+@effect_empty = #ERow{[], #ENil{}}
+
+@effect_single = λ&name. #ERow{[name], #ENil{}}
+
+@effect_union = λ&e1. λ&e2.
+  λ{
+    #ERow: λ&effs1. λ&rest1.
+      λ{
+        #ERow: λ&effs2. λ&rest2.
+          #ERow{[effs1, effs2], #ENil{}}
+      }(e2)
+  }(e1)
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+@test1 = @effect_empty
+@test2 = @effect_single(#Sym{7522834})
+@test3 = @effect_union(@test1)(@test2)
+
+@main = #Tests{@test1, @test2, @test3}

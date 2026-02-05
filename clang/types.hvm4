@@ -227,9 +227,10 @@
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
+      !!&removed_tail = @list_remove(t)(item);
       λ{
-        1: @list_remove(t)(item)
-        _: λ&u_. #CON{h, @list_remove(t)(item)}
+        1: removed_tail
+        _: λ&u_. #CON{h, removed_tail}
       }((h == item))
   }(lst)
 
@@ -237,9 +238,10 @@
   λ{
     #NIL: #NIL
     #CON: λ&h. λ&t.
+      !!&unique_tail = @list_unique(t);
       λ{
-        1: @list_unique(t)
-        _: λ&u_. #CON{h, @list_unique(t)}
+        1: unique_tail
+        _: λ&u_. #CON{h, unique_tail}
       }(@list_contains(t)(h))
   }(lst)
 
