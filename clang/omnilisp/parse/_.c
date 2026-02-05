@@ -323,7 +323,10 @@ fn Term omni_lamr(Term body) {
 }
 
 fn Term omni_fref(u32 table_id) {
-  return omni_ctr1(OMNI_NAM_FREF, term_new_num(table_id));
+  // Use HVM4's native REF term for direct BOOK lookup
+  // This bypasses the broken #FRef + FFI mechanism
+  // Note: for recursive functions, the body should use #LamR which creates #CloR
+  return term_new_ref(table_id);
 }
 
 fn Term omni_app(Term func, Term arg) {
@@ -4775,7 +4778,59 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_match(cond_expr, cases);
   }
 
-  // NOTE: cond/case removed - use match or nested if
+  // cond: multi-way conditional
+  // (cond (test1 result1) (test2 result2) ... (else result))
+  // Creates #Cond{clauses} where clauses is list of #CCls{test, body}
+  if (omni_symbol_is(s, sym_start, sym_len, "cond")) {
+    Term clauses = omni_nil();
+    Term *clause_tail = &clauses;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      omni_skip(s);
+      if (parse_peek(s) == ')') break;
+      omni_expect_char(s, '(');
+      Term test = parse_omni_expr(s);
+      Term body = parse_omni_expr(s);
+      omni_expect_char(s, ')');
+      // Create #CCls{test, body}
+      Term clause = omni_ctr2(OMNI_NAM_CCLS, test, body);
+      Term cell = omni_cons(clause, omni_nil());
+      *clause_tail = cell;
+      clause_tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_COND, clauses);
+  }
+
+  // case: dispatch on value
+  // (case expr val1 result1 val2 result2 ... _ default)
+  // Desugars to match
+  if (omni_symbol_is(s, sym_start, sym_len, "case")) {
+    Term scrutinee = parse_omni_expr(s);
+    Term cases = omni_nil();
+    Term *case_tail = &cases;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      omni_skip(s);
+      if (parse_peek(s) == ')') break;
+      // Parse pattern (literal or _)
+      Term pat;
+      if (parse_peek(s) == '_') {
+        parse_advance(s);
+        pat = omni_pat_wildcard();
+      } else {
+        Term val = parse_omni_expr(s);
+        pat = omni_pat_lit(val);
+      }
+      // Parse result
+      Term body = parse_omni_expr(s);
+      // Create case clause
+      Term clause = omni_case(pat, omni_nil(), body);
+      Term cell = omni_cons(clause, omni_nil());
+      *case_tail = cell;
+      case_tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_match(scrutinee, cases);
+  }
 
   // get: (get coll key) or (get coll key default)
   if (omni_symbol_is(s, sym_start, sym_len, "get")) {
@@ -6446,7 +6501,8 @@ fn Term parse_omni_sexp(PState *s) {
   // ==========================================================================
 
   // str-length: (str-length str) -> #SLen{str}
-  if (omni_symbol_is(s, sym_start, sym_len, "str-length")) {
+  if (omni_symbol_is(s, sym_start, sym_len, "str-length") ||
+      omni_symbol_is(s, sym_start, sym_len, "string-length")) {
     Term str = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_SLEN, str);
@@ -6700,8 +6756,23 @@ fn Term parse_omnilisp(PState *s) {
     }
   }
 
-  // Multiple expressions: wrap in begin
-  return result;
+  // Multiple expressions: wrap in #Do chain for sequential evaluation
+  {
+    Term exprs[4096];
+    u32 count = 0;
+    Term cur = result;
+    while (term_tag(cur) >= C00 && term_ext(cur) == OMNI_NAM_CON && count < 4096) {
+      exprs[count++] = HEAP[term_val(cur)];
+      cur = HEAP[term_val(cur) + 1];
+    }
+    if (count == 0) return omni_nil();
+    if (count == 1) return exprs[0];
+    Term chain = exprs[count - 1];
+    for (int i = (int)count - 2; i >= 0; i--) {
+      chain = omni_ctr2(OMNI_NAM_DO, exprs[i], chain);
+    }
+    return chain;
+  }
 }
 
 // =============================================================================
