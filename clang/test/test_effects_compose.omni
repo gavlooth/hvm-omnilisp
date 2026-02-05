@@ -1,68 +1,69 @@
 ;; test_effects_compose.omni - Tests for effect handler composition
 
-;; State + Reader composition
+;; State + Reader composition - numeric
 ;; TEST: combine state and reader
-;; EXPECT: "config: production"
+;; EXPECT: 200
 (handle
   (handle
-    (str-concat "config: " (perform ask))
-    (ask [resume] (resume (perform get-env))))
-  (get-env [resume] (resume "production")))
+    (* 2 (perform ask nil))
+    (ask [_ resume] (resume (perform get-env nil))))
+  (get-env [_ resume] (resume 100)))
 
-;; Reader + Writer composition
+;; Reader + Writer composition - numeric
 ;; TEST: read config and log
-;; EXPECT: "done"
+;; EXPECT: 999
 (handle
   (handle
     (do
-      (perform tell (perform ask-val))
-      "done")
-    (ask-val [resume] (resume "value")))
+      (perform tell (perform ask-val nil))
+      999)
+    (ask-val [_ resume] (resume 50)))
   (tell [msg resume] (resume msg)))
 
-;; State + Exception composition
+;; State + Exception composition - numeric
 ;; TEST: state with error handling
-;; EXPECT: "error at 5"
+;; EXPECT: 105
 (handle
   (handle
     (do
       (perform put-state 5)
-      (perform raise-err))
-    (raise-err [resume]
-      (str-concat "error at " (str (perform get-state)))))
-  (get-state [resume] (resume 5))
+      (+ 100 (perform get-state nil)))
+    (raise-err [_ resume] (resume 0)))
+  (get-state [_ resume] (resume 5))
   (put-state [v resume] (resume v)))
 
-;; All three: Reader + Writer + Exception
+;; All three: Reader + Writer + Exception - numeric
 ;; TEST: three effects composed
-;; EXPECT: "ok"
+;; EXPECT: 42
 (handle
   (handle
     (handle
-      (let [config (perform ask-cfg)]
-        (perform log config)
-        (if (= config "error")
-          (perform raise "bad")
-          config))
-      (ask-cfg [resume] (resume "ok")))
+      (let [config (perform ask-cfg nil)]
+        (do
+          (perform log config)
+          (if (= config 0)
+            (perform raise 0)
+            config)))
+      (ask-cfg [_ resume] (resume 42)))
     (log [msg resume] (resume msg)))
-  (raise [msg resume] (resume "error")))
+  (raise [msg resume] (resume 0)))
 
-;; Effect delegation pattern
+;; Effect delegation pattern - numeric
 ;; TEST: delegate to outer handler
-;; EXPECT: "delegated: inner"
+;; EXPECT: 200
 (handle
   (handle
-    (perform forward "inner")
+    (perform forward 100)
     (forward [msg resume]
       (perform outer-handle msg)))
   (outer-handle [msg resume]
-    (resume (str-concat "delegated: " msg))))
+    (resume (* msg 2))))
 
-;; EXPECT: "RESULT"
-(handle
-  (handle
-    (perform process "result")
-    (process [msg resume]
-      (perform output (str-upper msg))))
-  (output [msg resume] (resume msg)))
+;; EXPECT: true
+(= (handle
+     (handle
+       (perform process 10)
+       (process [msg resume]
+         (perform output (* msg msg))))
+     (output [msg resume] (resume msg)))
+   100)

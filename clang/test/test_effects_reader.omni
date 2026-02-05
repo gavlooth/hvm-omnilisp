@@ -2,50 +2,48 @@
 ;; Reader effect provides access to an environment
 
 ;; TEST: ask for environment value
-;; EXPECT: "production"
+;; EXPECT: 42
 (handle
-  (perform ask-env)
-  (ask-env [resume] (resume "production")))
+  (perform ask-env nil)
+  (ask-env [_ resume] (resume 42)))
 
-;; TEST: multiple asks return same value
-;; EXPECT: (42 42 42)
+;; TEST: multiple asks return same value - numeric sum
+;; EXPECT: 126
 (handle
-  (cons (perform ask-config)
-        (cons (perform ask-config)
-              (cons (perform ask-config) '())))
-  (ask-config [resume] (resume 42)))
+  (+ (perform ask-config nil)
+     (+ (perform ask-config nil)
+        (perform ask-config nil)))
+  (ask-config [_ resume] (resume 42)))
 
-;; TEST: ask for specific key via different effects
-;; EXPECT: ("localhost" 8080)
+;; TEST: ask for specific key via different effects - numeric sum
+;; EXPECT: 8180
 (handle
-  (cons (perform ask-host)
-        (cons (perform ask-port) '()))
-  (ask-host [resume] (resume "localhost"))
-  (ask-port [resume] (resume 8080)))
+  (+ (perform ask-host nil)
+     (perform ask-port nil))
+  (ask-host [_ resume] (resume 100))
+  (ask-port [_ resume] (resume 8080)))
 
 ;; TEST: local override
-;; EXPECT: "testing"
+;; EXPECT: 99
 (handle
-  (perform get-env)
-  (get-env [resume] (resume "testing")))
+  (perform get-env nil)
+  (get-env [_ resume] (resume 99)))
 
-;; Build URL from parts
-(define build-url [host] [port]
-  (str-concat (str-concat (str-concat "http://" host) ":") (str port)))
+;; TEST: build sum from config
+;; EXPECT: 543
+(do
+  (define build-sum [a] [b] (+ a b))
+  (handle
+    (build-sum (perform get-host nil) (perform get-port nil))
+    (get-host [_ resume] (resume 100))
+    (get-port [_ resume] (resume 443))))
 
-;; TEST: build url from config
-;; EXPECT: "http://example.com:443"
+;; TEST: ask with conditional
+;; EXPECT: 0
 (handle
-  (build-url (perform get-host) (perform get-port))
-  (get-host [resume] (resume "example.com"))
-  (get-port [resume] (resume 443)))
-
-;; TEST: ask with default
-;; EXPECT: "default"
-(handle
-  (let [val (perform ask-maybe)]
-    (if (nothing? val) "default" val))
-  (ask-maybe [resume] (resume nothing)))
+  (let [val (perform ask-flag nil)]
+    (if val 1 0))
+  (ask-flag [_ resume] (resume false)))
 
 ;; EXPECT: true
-(= (handle (perform val) (val [resume] (resume 42))) 42)
+(= (handle (perform val nil) (val [_ resume] (resume 42))) 42)

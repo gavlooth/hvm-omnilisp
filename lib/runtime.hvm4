@@ -95,14 +95,17 @@
 // =============================================================================
 
 // Get value at de Bruijn index
+// Helper to avoid HVM4 closure capture bug in nested pattern matches
+@omni_env_get_idx = λ&h. λ&t. λ&idx.
+  λ{
+    0: h
+    _: λ&u_. @omni_env_get(t)((idx - 1))
+  }(idx)
+
 @omni_env_get = λ&env. λ&idx.
   λ{
     #NIL: #Err{#sym_unbound}
-    #CON: λ&h. λ&t.
-      λ{
-        0: h
-        _: λ&u_. @omni_env_get(t)((idx - 1))
-      }(idx)
+    #CON: λ&h. λ&t. @omni_env_get_idx(h)(t)(idx)
   }(env)
 
 // Extend environment with new binding
@@ -122,7 +125,12 @@
 // =============================================================================
 
 @omni_eval = λ&menv. λ&exp.
-  !!&env = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. e})(menv);
+  // Extract all menv components upfront to avoid HVM4 linear type issues
+  !!&menv_parts = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #E4{e, h, p, l}; _: λ&u_. #E4{#NIL, #NIL, #Noth, #Cst{0}}})(menv);
+  !!&env = (λ{#E4: λ&e. λ&h. λ&p. λ&l. e})(menv_parts);
+  !!&cur_handlers = (λ{#E4: λ&e. λ&h. λ&p. λ&l. h})(menv_parts);
+  !!&cur_parent = (λ{#E4: λ&e. λ&h. λ&p. λ&l. p})(menv_parts);
+  !!&cur_level = (λ{#E4: λ&e. λ&h. λ&p. λ&l. l})(menv_parts);
   λ{
     // Literal - wrap in #Cst for consistency
     #Lit: λ&n. #Cst{n}
@@ -221,11 +229,12 @@
     // (handle body (effect-tag (fn [payload resume] ...)) ...)
     #Hdle: λ&handlers. λ&body.
       // Install handlers and evaluate body in CPS mode
-      @omni_handle_cps(menv)(handlers)(body)(λ&v. v)
+      // Use reconstructed menv to avoid linear type issues
+      @omni_handle_cps(#MEnv{env, cur_handlers, cur_parent, cur_level})(handlers)(body)(#KId)
 
     // Reset (prompt) - enters CPS mode for delimited continuations
     #Prmt: λ&body.
-      @omni_eval_cps(menv)(body)(λ&v. v)
+      @omni_eval_cps(#MEnv{env, cur_handlers, cur_parent, cur_level})(#KId)(body)
 
     // Control - only valid inside reset (CPS mode)
     // In direct mode, this is an error
@@ -316,6 +325,22 @@
     // Boolean NOT
     #Not: λ&a.
       (λ&av. @omni_not(av))(@omni_eval(menv)(a))
+
+    // Bitwise operations
+    #BAnd: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_band(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
+
+    #BOr: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_bor(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
+
+    #BXor: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_bxor(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
+
+    #BNot: λ&a.
+      (λ&av. @omni_bnot(av))(@omni_eval(menv)(a))
+
+    #BShl: λ&a. λ&b.
+      (λ&av. (λ&va. (λ&bv. @omni_bshift(va)(bv))(@omni_eval(menv)(b)))(av))(@omni_eval(menv)(a))
 
     // Array literal - evaluate elements and compute length
     #Arr: λ&elems.
@@ -438,6 +463,73 @@
         @omni_slice(c)(s)(e)
       )(@omni_eval(menv)(end)))(@omni_eval(menv)(start)))(@omni_eval(menv)(coll))
 
+    // Array last index: #ALix{arr} -> (length - 1)
+    #ALix: λ&arr.
+      (λ&a.
+        λ{
+          #Arr: λ&len. λ&data. #Cst{(len - 1)}
+          #CON: λ&h. λ&t. #Cst{(@omni_list_length(a) - 1)}
+          #NIL: #Cst{(0 - 1)}  // -1 for empty
+          _: λ&u_. #Cst{(0 - 1)}
+        }(a)
+      )(@omni_eval(menv)(arr))
+
+    // Array take: #ATak{arr, n} -> first n elements
+    #ATak: λ&arr. λ&n.
+      (λ&a. (λ&count.
+        λ{
+          #Arr: λ&len. λ&data.
+            (λ&c. (λ&taken. #Arr{@omni_list_length(taken), taken})(@omni_take(#Cst{c})(data)))(@omni_unwrap_num(count))
+          #CON: λ&h. λ&t.
+            (λ&c. @omni_take(#Cst{c})(a))(@omni_unwrap_num(count))
+          #NIL: #NIL
+          _: λ&u_. #NIL
+        }(a)
+      )(@omni_eval(menv)(n)))(@omni_eval(menv)(arr))
+
+    // Array drop: #ADrp{arr, n} -> all but first n elements
+    #ADrp: λ&arr. λ&n.
+      (λ&a. (λ&count.
+        λ{
+          #Arr: λ&len. λ&data.
+            (λ&c. (λ&dropped. #Arr{(len - c), dropped})(@omni_drop(#Cst{c})(data)))(@omni_unwrap_num(count))
+          #CON: λ&h. λ&t.
+            (λ&c. @omni_drop(#Cst{c})(a))(@omni_unwrap_num(count))
+          #NIL: #NIL
+          _: λ&u_. #NIL
+        }(a)
+      )(@omni_eval(menv)(n)))(@omni_eval(menv)(arr))
+
+    // Array split-at: #ASpA{arr, n} -> pair of (take n, drop n)
+    #ASpA: λ&arr. λ&n.
+      (λ&a. (λ&count.
+        λ{
+          #Arr: λ&len. λ&data.
+            (λ&c.
+              (λ&taken. (λ&dropped.
+                #CON{#Arr{@omni_list_length(taken), taken}, #CON{#Arr{(len - c), dropped}, #NIL}}
+              )(@omni_drop(#Cst{c})(data)))(@omni_take(#Cst{c})(data))
+            )(@omni_unwrap_num(count))
+          #CON: λ&h. λ&t.
+            (λ&c.
+              #CON{@omni_take(#Cst{c})(a), #CON{@omni_drop(#Cst{c})(a), #NIL}}
+            )(@omni_unwrap_num(count))
+          #NIL: #CON{#NIL, #CON{#NIL, #NIL}}
+          _: λ&u_. #NIL
+        }(a)
+      )(@omni_eval(menv)(n)))(@omni_eval(menv)(arr))
+
+    // Array sum: #ASum{arr} -> sum of all elements
+    #ASum: λ&arr.
+      (λ&a.
+        λ{
+          #Arr: λ&len. λ&data. @omni_list_sum(data)
+          #CON: λ&h. λ&t. @omni_list_sum(a)
+          #NIL: #Cst{0}
+          _: λ&u_. #Cst{0}
+        }(a)
+      )(@omni_eval(menv)(arr))
+
     // Dict get: #DGe{dict, key} -> value or nothing
     #DGe: λ&dict. λ&key.
       (λ&d. (λ&k.
@@ -480,6 +572,28 @@
         }(c)
       )(@omni_eval(menv)(coll))
 
+    // Dict merge: #DMrg{d1, d2} -> merged dict (d2 wins on conflict)
+    #DMrg: λ&d1. λ&d2.
+      (λ&dict1. (λ&dict2.
+        λ{
+          #Dict: λ&entries1.
+            λ{
+              #Dict: λ&entries2. #Dict{@omni_dict_merge(entries1)(entries2)}
+              _: λ&u_. dict1
+            }(dict2)
+          _: λ&u_. dict2
+        }(dict1)
+      )(@omni_eval(menv)(d2)))(@omni_eval(menv)(d1))
+
+    // Dict entries: #DEnt{dict} -> list of (key . value) pairs
+    #DEnt: λ&dict.
+      (λ&d.
+        λ{
+          #Dict: λ&entries. entries
+          _: λ&u_. #NIL
+        }(d)
+      )(@omni_eval(menv)(dict))
+
     // Nth: #Nth{coll, n} -> element at index n
     #Nth: λ&coll. λ&n.
       (λ&c. (λ&idx.
@@ -516,6 +630,30 @@
     // Flatten: #Flat{nested} -> flattened list
     #Flat: λ&nested.
       (λ&n. @omni_flatten(n))(@omni_eval(menv)(nested))
+
+    // Distinct: #Dist{coll} -> collection with duplicates removed
+    #Dist: λ&coll.
+      (λ&c. @omni_distinct(c))(@omni_eval(menv)(coll))
+
+    // Partition: #Part{n, coll} -> list of groups of n elements
+    #Part: λ&n. λ&coll.
+      (λ&size. (λ&c. @omni_partition(size)(c))(@omni_eval(menv)(coll)))(@omni_eval(menv)(n))
+
+    // Interleave: #Intl{colls} -> interleaved collection
+    #Intl: λ&colls.
+      (λ&cs. @omni_interleave(menv)(cs))(@omni_eval(menv)(colls))
+
+    // Interpose: #Inps{sep, coll} -> collection with separator between elements
+    #Inps: λ&sep. λ&coll.
+      (λ&s. (λ&c. @omni_interpose(s)(c))(@omni_eval(menv)(coll)))(@omni_eval(menv)(sep))
+
+    // Group-by: #GrBy{fn, coll} -> dict mapping keys to lists of elements
+    #GrBy: λ&fn. λ&coll.
+      (λ&f. (λ&c. @omni_group_by(menv)(f)(c))(@omni_eval(menv)(coll)))(@omni_eval(menv)(fn))
+
+    // Frequencies: #Freq{coll} -> dict mapping elements to counts
+    #Freq: λ&coll.
+      (λ&c. @omni_frequencies(c))(@omni_eval(menv)(coll))
 
     // Sort: #Sort{list, cmp} -> sorted list using comparator
     #Sort: λ&list. λ&cmp.
@@ -657,17 +795,141 @@
         }(n)
       )(@omni_eval(menv)(x))
 
-    // Floor (for integers, this is identity)
+    // Floor (round toward negative infinity)
     #Flor: λ&x.
-      @omni_eval(menv)(x)
+      (λ&v.
+        λ{
+          #Cst: λ&n. v  // Integer: identity
+          #Fix: λ&hi. λ&lo. λ&scale.
+            // Get divisor based on scale (10^scale)
+            (λ&divisor. (λ&isneg.
+              λ{
+                1: // Negative number
+                  // lo is in two's complement, convert to positive absolute value
+                  (λ&negval. (λ&intpart. (λ&rem.
+                    // Floor: for negative, if remainder != 0, go more negative
+                    // Return as #Fix with scale=0 to preserve negative sign
+                    λ{
+                      0: #Fix{4294967295, (4294967296 - intpart), 0}
+                      _: λ&u_. #Fix{4294967295, (4294967296 - intpart - 1), 0}
+                    }(rem)
+                  )((negval % divisor)))((negval / divisor)))((4294967296 - lo))
+                0: // Positive number: just divide (floor is easy)
+                  #Cst{(lo / divisor)}
+              }(isneg)
+            )((hi >= 2147483648)))(@omni_pow10(scale))
+          _: λ&u_. v
+        }(v)
+      )(@omni_eval(menv)(x))
 
-    // Ceil (for integers, this is identity)
+    // Ceil (round toward positive infinity)
     #MCei: λ&x.
-      @omni_eval(menv)(x)
+      (λ&v.
+        λ{
+          #Cst: λ&n. v  // Integer: identity
+          #Fix: λ&hi. λ&lo. λ&scale.
+            (λ&divisor. (λ&isneg.
+              λ{
+                1: // Negative number: ceil goes toward zero
+                  (λ&negval. (λ&intpart.
+                    λ{
+                      0: #Cst{0}  // Result is zero
+                      _: λ&u_. #Fix{4294967295, (4294967296 - intpart), 0}
+                    }(intpart)
+                  )((negval / divisor)))((4294967296 - lo))
+                0: // Positive number: if remainder != 0, go up
+                  (λ&intpart. (λ&rem.
+                    λ{
+                      0: #Cst{intpart}
+                      _: λ&u_. #Cst{(intpart + 1)}
+                    }(rem)
+                  )((lo % divisor)))((lo / divisor))
+              }(isneg)
+            )((hi >= 2147483648)))(@omni_pow10(scale))
+          _: λ&u_. v
+        }(v)
+      )(@omni_eval(menv)(x))
 
-    // Round (for integers, this is identity)
+    // Round (round to nearest integer, half rounds up)
     #Rond: λ&x.
-      @omni_eval(menv)(x)
+      (λ&v.
+        λ{
+          #Cst: λ&n. v  // Integer: identity
+          #Fix: λ&hi. λ&lo. λ&scale.
+            (λ&divisor. (λ&half. (λ&isneg.
+              λ{
+                1: // Negative number
+                  (λ&negval. (λ&rem. (λ&intpart.
+                    λ{
+                      1: #Fix{4294967295, (4294967296 - intpart - 1), 0}  // Round away from zero
+                      0: λ{
+                           0: #Cst{0}
+                           _: λ&u_. #Fix{4294967295, (4294967296 - intpart), 0}
+                         }(intpart)
+                    }((rem >= half))
+                  )((negval / divisor)))((negval % divisor)))((4294967296 - lo))
+                0: // Positive number
+                  (λ&rem. (λ&intpart.
+                    λ{
+                      1: #Cst{(intpart + 1)}
+                      0: #Cst{intpart}
+                    }((rem >= half))
+                  )((lo / divisor)))((lo % divisor))
+              }(isneg)
+            )((hi >= 2147483648)))((divisor / 2)))(@omni_pow10(scale))
+          _: λ&u_. v
+        }(v)
+      )(@omni_eval(menv)(x))
+
+    // Sign (returns -1, 0, or 1)
+    #Sign: λ&x.
+      (λ&v.
+        λ{
+          #Cst: λ&n.
+            λ{
+              0: #Cst{0}
+              _: λ&u_.
+                // Check if high bit is set (negative in two's complement)
+                λ{
+                  1: #Fix{4294967295, 4294967295, 0}  // -1 as #Fix
+                  0: #Cst{1}
+                }((n >= 2147483648))
+            }(n)
+          #Fix: λ&hi. λ&lo. λ&scale.
+            λ{
+              0: #Cst{0}  // lo = 0 means value is 0
+              _: λ&u_.
+                λ{
+                  1: #Fix{4294967295, 4294967295, 0}  // -1 as #Fix
+                  0: #Cst{1}
+                }((hi >= 2147483648))
+            }(lo)
+          _: λ&u_. v
+        }(v)
+      )(@omni_eval(menv)(x))
+
+    // Truncate (round toward zero)
+    #Trnc: λ&x.
+      (λ&v.
+        λ{
+          #Cst: λ&n. v  // Integer: identity
+          #Fix: λ&hi. λ&lo. λ&scale.
+            (λ&divisor. (λ&isneg.
+              λ{
+                1: // Negative number: truncate toward zero (like ceil for negative)
+                  (λ&negval. (λ&intpart.
+                    λ{
+                      0: #Cst{0}  // Result is zero
+                      _: λ&u_. #Fix{4294967295, (4294967296 - intpart), 0}
+                    }(intpart)
+                  )((negval / divisor)))((4294967296 - lo))
+                0: // Positive number: truncate is just floor
+                  #Cst{(lo / divisor)}
+              }(isneg)
+            )((hi >= 2147483648)))(@omni_pow10(scale))
+          _: λ&u_. v
+        }(v)
+      )(@omni_eval(menv)(x))
 
     // Exp (e^x) - uses FFI for floating point
     #MExp: λ&x.
@@ -896,15 +1158,23 @@
     #ItoS: λ&n.
       (λ&v. @omni_int_to_str(v))(@omni_eval(menv)(n))
 
+    // Char to int: (char->int char/str) -> code point of first char
+    #CToi: λ&val.
+      (λ&v. @omni_char_to_int(v))(@omni_eval(menv)(val))
+
+    // Int to char: (int->char n) -> character as single-char string
+    #ItoC: λ&n.
+      (λ&v. @omni_int_to_char(v))(@omni_eval(menv)(n))
+
     // ==========================================================================
     // IO Operations
     // ==========================================================================
 
-    // Print: (print val) -> outputs string representation, returns #NIL
+    // Print: (print val) -> outputs string, returns the result list
     #Prnt: λ&val.
       (λ&v. @omni_print_val(v))(@omni_eval(menv)(val))
 
-    // Println: (println val) -> outputs string representation with newline, returns #NIL
+    // Println: (println val) -> outputs string with newline, returns the result list
     #PrnL: λ&val.
       (λ&v. @omni_println_val(v))(@omni_eval(menv)(val))
 
@@ -1045,6 +1315,29 @@
     // Note: nick value 9622802 = omni_nick("JStr")
     #JStr: λ&val.
       (λ&v. #FFI{9622802, #CON{v, #NIL}})(@omni_eval(menv)(val))
+
+    // JSON type predicates
+    // json-array?: (json-array? val) -> true if val is an array/list
+    #JArr: λ&val.
+      (λ&v.
+        λ{
+          #NIL: #True
+          #CON: λ&h. λ&t. #True
+          #Arr: λ&len. λ&data. #True
+          _: λ&u_. #Fals
+        }(v))(@omni_eval(menv)(val))
+
+    // json-object?: (json-object? val) -> true if val is a dict/object
+    #JObj: λ&val.
+      (λ&v.
+        λ{
+          #Dict: λ&entries. #True
+          _: λ&u_. #Fals
+        }(v))(@omni_eval(menv)(val))
+
+    // json-null: returns the JSON null value (nothing)
+    #JNul:
+      #Noth
 
     // ==========================================================================
     // Tower / Meta-programming Operations
@@ -1261,29 +1554,35 @@
 // Function Application
 // =============================================================================
 
+// IMPORTANT: Uses helper to avoid HVM4 closure capture bug where outer lambda
+// parameters (menv, arg) are not properly captured inside pattern match arms
 @omni_apply = λ&menv. λ&fn. λ&arg.
   // Force fn to WNF before pattern matching (needed for FFI-returned values)
   !!&fn_forced = fn;
+  @omni_apply_impl(menv)(arg)(fn_forced)
+
+// Helper - takes menv and arg BEFORE the fn pattern match for proper capture
+@omni_apply_impl = λ&m. λ&a. λ&fn.
   λ{
     // Macro - expand rather than apply
     #MSyn: λ&name. λ&patterns.
       // Macros receive unevaluated arguments as a list
       // For single arg, wrap in list
-      @omni_macro_expand(menv)(fn)(#CON{arg, #NIL})
+      @omni_macro_expand(m)(fn)(#CON{a, #NIL})
 
     // Closure
     #Clo: λ&env. λ&body.
       (λ&new_env.
-        (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
-      )(@omni_env_extend(env)(arg))
+        (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(m)(new_env))
+      )(@omni_env_extend(env)(a))
 
     // Recursive closure
     #CloR: λ&env. λ&body.
       (λ&self.
         (λ&env1.
           (λ&new_env.
-            (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
-          )(@omni_env_extend(env1)(arg))
+            (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(m)(new_env))
+          )(@omni_env_extend(env1)(a))
         )(@omni_env_extend(env)(self))
       )(#CloR{env, body})
 
@@ -1291,15 +1590,15 @@
     // When a define stores #Lam{body} in BOOK, we need to handle it like a closure
     #Lam: λ&body.
       (λ&new_env.
-        (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
-      )(@omni_env_extend(#NIL)(arg))
+        (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(m)(new_env))
+      )(@omni_env_extend(#NIL)(a))
 
     // Recursive lambda AST node (from BOOK reference)
     #LamR: λ&body.
       (λ&self.
         (λ&new_env.
-          (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
-        )(@omni_env_extend(@omni_env_extend(#NIL)(self))(arg))
+          (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(m)(new_env))
+        )(@omni_env_extend(@omni_env_extend(#NIL)(self))(a))
       )(#LamR{body})
 
     // Generic function (multiple dispatch)
@@ -1307,9 +1606,9 @@
       (λ&arity.
         λ{
           1: // Single arg - dispatch immediately
-            @omni_dispatch_gfun(menv)(name)(methods)(#CON{arg, #NIL})
+            @omni_dispatch_gfun(m)(name)(methods)(#CON{a, #NIL})
           _: λ&u_. // Multiple args - create partial application
-            #GPrt{name, methods, #CON{arg, #NIL}, (arity - 1)}
+            #GPrt{name, methods, #CON{a, #NIL}, (arity - 1)}
         }(arity)
       )(@omni_gfun_arity(methods))
 
@@ -1318,33 +1617,40 @@
       (λ&new_args.
         λ{
           1: // Final arg - dispatch
-            @omni_dispatch_gfun(menv)(name)(methods)(new_args)
+            @omni_dispatch_gfun(m)(name)(methods)(new_args)
           _: λ&u_. // More args needed
             #GPrt{name, methods, new_args, (remaining - 1)}
         }(remaining)
-      )(@omni_append(args)(#CON{arg, #NIL}))
+      )(@omni_append(args)(#CON{a, #NIL}))
 
     // Metadata wrappers - unwrap and apply inner function
-    #Assc: λ&inner. @omni_apply(menv)(inner)(arg)
-    #Pure: λ&inner. @omni_apply(menv)(inner)(arg)
-    #Spec: λ&inner. @omni_apply(menv)(inner)(arg)
-    #Strc: λ&inner. @omni_apply(menv)(inner)(arg)
+    #Assc: λ&inner. @omni_apply(m)(inner)(a)
+    #Pure: λ&inner. @omni_apply(m)(inner)(a)
+    #Spec: λ&inner. @omni_apply(m)(inner)(a)
+    #Strc: λ&inner. @omni_apply(m)(inner)(a)
 
     // Curry wrapper - apply inner function to argument
     // #Cury{fn, arity} wraps a function to enable curried calling
-    #Cury: λ&fn. λ&arity. @omni_apply(menv)(fn)(arg)
+    #Cury: λ&fn. λ&arity. @omni_apply(m)(fn)(a)
 
     // Flip wrapper - swap first two arguments
     // #Flip{fn} when applied to x returns a function waiting for y, then calls fn(y)(x)
-    #Flip: λ&fn. #FlipPartial{fn, arg}
+    #Flip: λ&fn. #FlipPartial{fn, a}
 
     // Flip partial application - has first arg, waiting for second
     #FlipPartial: λ&fn. λ&first_arg.
-      @omni_apply(menv)(@omni_apply(menv)(fn)(arg))(first_arg)
+      @omni_apply(m)(@omni_apply(m)(fn)(a))(first_arg)
+
+    // Captured continuation (lambda-wrapped) - invoke it directly
+    // Use strict binding to force evaluation
+    #Kont: λ&k. !!&res = (k(a)); res
+
+    // Captured continuation (defunctionalized) - invoke via @omni_apply_k
+    #KontD: λ&stored_k. @omni_apply_k(stored_k)(a)
 
     // Native HVM4 lambda (compiled code)
-    _: λ&u_. fn_forced(arg)
-  }(fn_forced)
+    _: λ&u_. fn(a)
+  }(fn)
 
 // Get arity of generic function from first method's signature
 @omni_gfun_arity = λ&methods.
@@ -1735,6 +2041,80 @@
     _: λ&u_. #Err{#sym_type}
   }(a)
 
+// =============================================================================
+// Bitwise Operations
+// =============================================================================
+
+@omni_band = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn. #Cst{(an && bn)}
+        _: λ&u_. #Err{#sym_type}
+      }(b)
+    _: λ&u_. #Err{#sym_type}
+  }(a)
+
+@omni_bor = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn. #Cst{(an || bn)}
+        _: λ&u_. #Err{#sym_type}
+      }(b)
+    _: λ&u_. #Err{#sym_type}
+  }(a)
+
+@omni_bxor = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn. #Cst{(an ^ bn)}
+        _: λ&u_. #Err{#sym_type}
+      }(b)
+    _: λ&u_. #Err{#sym_type}
+  }(a)
+
+@omni_bnot = λ&a.
+  λ{
+    #Cst: λ&an. #Cst{(4294967295 - an)}  // ~n = -n - 1 = (2^32 - 1) - n for unsigned
+    _: λ&u_. #Err{#sym_type}
+  }(a)
+
+// bit-shift: positive = left shift, negative = right shift
+// Handle negative shift amount by checking high bit (two's complement)
+// Handles both #Cst and #Fix representations
+@omni_bshift = λ&a. λ&b.
+  λ{
+    #Cst: λ&an.
+      λ{
+        #Cst: λ&bn.
+          // Check if shift amount is negative (high bit set = >= 2^31)
+          !!&isneg = (bn >= 2147483648);
+          λ{
+            1:
+              // Negative shift = right shift, negate to get positive amount
+              !!&posamt = (4294967296 - bn);
+              #Cst{(an >> posamt)}
+            0: #Cst{(an << bn)}
+          }(isneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          // #Fix with hi >= 2^31 means negative
+          !!&isneg = (bhi >= 2147483648);
+          λ{
+            1:
+              // Negative shift = right shift
+              !!&posamt = (4294967296 - blo);
+              #Cst{(an >> posamt)}
+            0: #Cst{(an << blo)}
+          }(isneg)
+        _: λ&u_. #Err{#sym_type}
+      }(b)
+    _: λ&u_. #Err{#sym_type}
+  }(a)
+
+// =============================================================================
+
 // Equality comparison for all value types
 @omni_eql = λ&a. λ&b.
   λ{
@@ -1749,57 +2129,214 @@
     0: #True{}
   }(@omni_values_equal(a)(b))
 
+// Signed comparison helpers
+// Sign bit is bit 31 (2^31 = 2147483648)
+// A number is negative if value >= 2147483648
+@omni_is_negative = λ&n. (n >= 2147483648)
+
+// Helper: Check if #Fix represents a negative number (hi has sign bit set)
+@omni_fix_is_negative = λ&hi. (hi >= 2147483648)
+
+// Helper: Signed less-than comparison for two values with known sign flags
+// aneg, bneg: 1 if negative, 0 if non-negative
+// an, bn: the raw unsigned values
+// NOTE: Using aneg/bneg instead of a_neg/b_neg due to HVM4 bug with underscore names
+// Two's complement: larger unsigned = less negative (closer to 0)
+// e.g., -1 = 0xFFFFFFFF (largest), -10 = 0xFFFFFFF6 (smaller)
+// So for both negative: normal unsigned comparison works directly
+@omni_signed_lt = λ&an. λ&bn. λ&aneg. λ&bneg.
+  λ{
+    // a is negative
+    1: λ{
+      // b is also negative: use normal unsigned compare (larger unsigned = larger signed)
+      1: λ{1: #True{}; _: λ&u_. #Fals{}}((an < bn))
+      // b is non-negative: negative < positive
+      _: λ&u_. #True{}
+    }(bneg)
+    // a is non-negative
+    _: λ&u_. λ{
+      // b is negative: positive > negative
+      1: #Fals{}
+      // both non-negative: normal unsigned compare
+      _: λ&u_. λ{1: #True{}; _: λ&u_. #Fals{}}((an < bn))
+    }(bneg)
+  }(aneg)
+
+// Helper: Signed greater-than comparison
+@omni_signed_gt = λ&an. λ&bn. λ&aneg. λ&bneg.
+  λ{
+    // a is negative
+    1: λ{
+      // b is also negative: use normal unsigned compare
+      1: λ{1: #True{}; _: λ&u_. #Fals{}}((an > bn))
+      // b is non-negative: negative < positive, so a > b is false
+      _: λ&u_. #Fals{}
+    }(bneg)
+    // a is non-negative
+    _: λ&u_. λ{
+      // b is negative: positive > negative
+      1: #True{}
+      // both non-negative: normal unsigned compare
+      _: λ&u_. λ{1: #True{}; _: λ&u_. #Fals{}}((an > bn))
+    }(bneg)
+  }(aneg)
+
+// Helper: Signed less-than-or-equal comparison
+@omni_signed_le = λ&an. λ&bn. λ&aneg. λ&bneg.
+  λ{
+    // a is negative
+    1: λ{
+      // b is also negative: use normal unsigned compare
+      1: λ{1: #True{}; _: λ&u_. #Fals{}}((an <= bn))
+      // b is non-negative: negative <= positive
+      _: λ&u_. #True{}
+    }(bneg)
+    // a is non-negative
+    _: λ&u_. λ{
+      // b is negative: positive > negative, so a <= b is false
+      1: #Fals{}
+      // both non-negative: normal unsigned compare
+      _: λ&u_. λ{1: #True{}; _: λ&u_. #Fals{}}((an <= bn))
+    }(bneg)
+  }(aneg)
+
+// Helper: Signed greater-than-or-equal comparison
+@omni_signed_ge = λ&an. λ&bn. λ&aneg. λ&bneg.
+  λ{
+    // a is negative
+    1: λ{
+      // b is also negative: use normal unsigned compare
+      1: λ{1: #True{}; _: λ&u_. #Fals{}}((an >= bn))
+      // b is non-negative: negative < positive, so a >= b is false
+      _: λ&u_. #Fals{}
+    }(bneg)
+    // a is non-negative
+    _: λ&u_. λ{
+      // b is negative: positive >= negative
+      1: #True{}
+      // both non-negative: normal unsigned compare
+      _: λ&u_. λ{1: #True{}; _: λ&u_. #Fals{}}((an >= bn))
+    }(bneg)
+  }(aneg)
+
+// Signed less-than: handles negative numbers correctly
+// Supports: #Cst vs #Cst, #Fix vs #Fix, #Cst vs #Fix, #Fix vs #Cst
+// NOTE: Using aneg/bneg instead of a_neg/b_neg due to HVM4 bug with underscore names
 @omni_lt = λ&a. λ&b.
   λ{
     #Cst: λ&an.
       λ{
         #Cst: λ&bn.
-          λ{
-            1: #True{}
-            _: λ&u_. #Fals{}
-          }((an < bn))
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_lt(an)(bn)(aneg)(bneg)
+        // #Cst < #Fix
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_lt(an)(blo)(aneg)(bneg)
+        _: λ&u_. #Fals{}
+      }(b)
+    #Fix: λ&ahi. λ&alo. λ&ascale.
+      λ{
+        #Cst: λ&bn.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_lt(alo)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_lt(alo)(blo)(aneg)(bneg)
         _: λ&u_. #Fals{}
       }(b)
     _: λ&u_. #Fals{}
   }(a)
 
+// Signed greater-than
 @omni_gt = λ&a. λ&b.
   λ{
     #Cst: λ&an.
       λ{
         #Cst: λ&bn.
-          λ{
-            1: #True{}
-            _: λ&u_. #Fals{}
-          }((an > bn))
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_gt(an)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_gt(an)(blo)(aneg)(bneg)
+        _: λ&u_. #Fals{}
+      }(b)
+    #Fix: λ&ahi. λ&alo. λ&ascale.
+      λ{
+        #Cst: λ&bn.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_gt(alo)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_gt(alo)(blo)(aneg)(bneg)
         _: λ&u_. #Fals{}
       }(b)
     _: λ&u_. #Fals{}
   }(a)
 
+// Signed less-than-or-equal
 @omni_le = λ&a. λ&b.
   λ{
     #Cst: λ&an.
       λ{
         #Cst: λ&bn.
-          λ{
-            1: #True{}
-            _: λ&u_. #Fals{}
-          }((an <= bn))
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_le(an)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_le(an)(blo)(aneg)(bneg)
+        _: λ&u_. #Fals{}
+      }(b)
+    #Fix: λ&ahi. λ&alo. λ&ascale.
+      λ{
+        #Cst: λ&bn.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_le(alo)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_le(alo)(blo)(aneg)(bneg)
         _: λ&u_. #Fals{}
       }(b)
     _: λ&u_. #Fals{}
   }(a)
 
+// Signed greater-than-or-equal
 @omni_ge = λ&a. λ&b.
   λ{
     #Cst: λ&an.
       λ{
         #Cst: λ&bn.
-          λ{
-            1: #True{}
-            _: λ&u_. #Fals{}
-          }((an >= bn))
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_ge(an)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_is_negative(an);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_ge(an)(blo)(aneg)(bneg)
+        _: λ&u_. #Fals{}
+      }(b)
+    #Fix: λ&ahi. λ&alo. λ&ascale.
+      λ{
+        #Cst: λ&bn.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_is_negative(bn);
+          @omni_signed_ge(alo)(bn)(aneg)(bneg)
+        #Fix: λ&bhi. λ&blo. λ&bscale.
+          !!&aneg = @omni_fix_is_negative(ahi);
+          !!&bneg = @omni_fix_is_negative(bhi);
+          @omni_signed_ge(alo)(blo)(aneg)(bneg)
         _: λ&u_. #Fals{}
       }(b)
     _: λ&u_. #Fals{}
@@ -2097,202 +2634,665 @@
 // Helper to unwrap #Cst
 @omni_unwrap_cst = λ&v. λ{#Cst: λ&n. n; _ : λ&u_. 0}(v)
 
-// CPS evaluator - takes menv, expression, and continuation k
-@omni_eval_cps = λ&m. λ&exp. λ&k.
-  !!&menv = m; !!&kont = k; !!&e = exp;
-  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
-    λ{
-      #Lit: λ&n. (kont(#Cst{n}))
+// =============================================================================
+// Defunctionalized CPS Continuations
+// =============================================================================
+// HVM4 has a closure capture bug where lambdas created inside pattern match arms
+// don't properly capture variables from outer scopes when those lambdas are passed
+// to other functions. The solution is "defunctionalized CPS" - represent continuations
+// as tagged data structures instead of lambdas.
+//
+// Continuation Types:
+// -------------------
+// #KId                        - Identity continuation (returns value as-is)
+// #KLam{k}                    - Native lambda continuation (for callbacks from user code)
+//
+// Binary operations (Add, Sub, Mul, Div):
+// #KBin1{k, op, b, menv}      - Evaluated a, need to eval b, then apply op
+// #KBin2{k, op, va}           - Evaluated b, apply op to va and vb
+//
+// Comparisons (Lt, Gt, Leq, Geq, Eq, Neq):
+// #KCmp1{k, op, b, menv}      - Evaluated a, need to eval b, then compare
+// #KCmp2{k, op, va}           - Evaluated b, compare va and vb
+//
+// Application:
+// #KApp1{k, x, menv}          - Evaluated f, need to eval arg x
+// #KApp2{k, vf, menv}         - Evaluated x, apply function vf to arg
+//
+// Let binding:
+// #KLet{k, body, menv}        - Evaluated value, extend env and eval body
+//
+// Conditionals:
+// #KIf{k, t, el, menv}        - Evaluated condition, branch accordingly
+//
+// Boolean operations:
+// #KAnd{k, b, menv}           - Evaluated a, short-circuit and
+// #KOr{k, b, menv}            - Evaluated a, short-circuit or
+// #KNot{k}                    - Evaluated a, negate
+//
+// Effects:
+// #KPerf1{k, payload, menv}   - Evaluate tag for perform
+// #KPerf2{k, tag, menv}       - Evaluate payload for perform
+//
+// Collections:
+// #KArr{k, rest, acc, menv}   - Evaluating array elements
+// #KDict{k, rest, acc, menv}  - Evaluating dict entries
+//
+// Cons cell:
+// #KCons1{k, tail, menv}      - Evaluated head, need to eval tail
+// #KCons2{k, head}            - Evaluated tail, construct cons cell
+//
+// Do block (sequence):
+// #KDo{k, rest, menv}         - Evaluated first expr, now eval rest
+//
+// Pattern match:
+// #KMat{k, cases, menv}       - Evaluated scrutinee, now match and eval branch
+//
+// Effect resumption:
+// #KResume{k}                 - Defunctionalized resume (wraps continuation k)
 
-      #Cst: λ&n. (kont(#Cst{n}))
-
-      #Var: λ&i. (kont(@omni_env_get(env)(i)))
-
-      #Lam: λ&body. (kont(#CloC{env, body}))
-
-      #LamR: λ&body. (kont(#CloK{env, body}))
-
-      #App: λ&f. λ&x.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(f)(λ&vf.
-          @omni_eval_cps(#MEnv{env, handlers, parent, level})(x)(λ&vx.
-            @omni_apply_cps(#MEnv{env, handlers, parent, level})(vf)(vx)(kont)))
-
-      #Add: λ&a. λ&b.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&va.
-          @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(λ&vb.
-            (kont(#Cst{(@omni_unwrap_cst(va) + @omni_unwrap_cst(vb))}))))
-
-      #Sub: λ&a. λ&b.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&va.
-          @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(λ&vb.
-            (kont(#Cst{(@omni_unwrap_cst(va) - @omni_unwrap_cst(vb))}))))
-
-      #Mul: λ&a. λ&b.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&va.
-          @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(λ&vb.
-            (kont(#Cst{(@omni_unwrap_cst(va) * @omni_unwrap_cst(vb))}))))
-
-      #Div: λ&a. λ&b.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&va.
-          @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(λ&vb.
-            (kont(#Cst{(@omni_unwrap_cst(va) / @omni_unwrap_cst(vb))}))))
-
-      #If: λ&c. λ&t. λ&el.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(c)(λ&vc.
-          λ{
-            #Cst: λ&n. λ{
-              0: @omni_eval_cps(#MEnv{env, handlers, parent, level})(el)(kont)
-              _ : λ&u_. @omni_eval_cps(#MEnv{env, handlers, parent, level})(t)(kont)
-            }(n)
-            #Fals: @omni_eval_cps(#MEnv{env, handlers, parent, level})(el)(kont)
-            _ : λ&u_. @omni_eval_cps(#MEnv{env, handlers, parent, level})(t)(kont)
-          }(vc))
-
-      #Let: λ&val. λ&body.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(val)(λ&vv.
-          @omni_eval_cps(#MEnv{#CON{vv, env}, handlers, parent, level})(body)(kont))
-
-      // Strict let in CPS mode (^:strict)
-      #LetS: λ&val. λ&body.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(val)(λ&vv.
-          @omni_eval_cps(#MEnv{#CON{vv, env}, handlers, parent, level})(body)(kont))
-
-      // Named let (Scheme-style loop) in CPS mode
-      // Creates a CPS closure that can be called recursively
-      #NLet: λ&name_nick. λ&init_values. λ&loop_body.
-        (λ&loop_closure.
-          @omni_eval_list_cps(#MEnv{env, handlers, parent, level})(init_values)(λ&init_vals.
-            @omni_apply_list_cps(#MEnv{env, handlers, parent, level})(loop_closure)(init_vals)(kont))
-        )(#CloK{env, loop_body})
-
-      // Named let (sequential) in CPS mode
-      #NLeS: λ&name_nick. λ&init_values. λ&loop_body.
-        (λ&loop_closure.
-          @omni_eval_list_cps(#MEnv{env, handlers, parent, level})(init_values)(λ&init_vals.
-            @omni_apply_list_cps(#MEnv{env, handlers, parent, level})(loop_closure)(init_vals)(kont))
-        )(#CloK{env, loop_body})
-
-      // Nested reset - creates new delimiter
-      #Prmt: λ&body.
-        (λ&result. (kont(result)))(@omni_eval_cps(#MEnv{env, handlers, parent, level})(body)(λ&v. v))
-
-      // Control - capture the continuation!
-      #Ctrl: λ&k_idx. λ&body.
-        // kont is the current continuation (a native HVM lambda)
-        // Wrap it as a callable OmniLisp value
-        (λ&k_val.
-          // Evaluate body with k bound, using identity continuation
-          // (the body's result becomes the reset's result)
-          @omni_eval_cps(#MEnv{#CON{k_val, env}, handlers, parent, level})(body)(λ&v. v)
-        )(#Kont{kont})
-
-      // Perform effect - capture continuation and invoke handler
-      #Perf: λ&tag. λ&payload.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(payload)(λ&pv.
-          // Capture current continuation as the resume function
-          (λ&resume_k.
-            // Search for handler and invoke with (payload, resume)
-            @omni_perform_cps(#MEnv{env, handlers, parent, level})(tag)(pv)(resume_k)
-          )(#Kont{kont}))
-
-      // Handle effects - install handlers and evaluate body
-      #Hdle: λ&hdlrs. λ&body.
-        // Evaluate handler definitions
-        (λ&evaluated_handlers.
-          // Push handlers onto stack and evaluate body
-          (λ&new_handlers.
-            @omni_eval_cps(#MEnv{env, new_handlers, parent, level})(body)(kont)
-          )(@omni_list_append(evaluated_handlers)(handlers))
-        )(@omni_eval_handlers(#MEnv{env, handlers, parent, level})(hdlrs))
-
-      // Yield for fibers - captures continuation and returns yield marker
-      #Yld: λ&val.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(val)(λ&yv.
-          // Capture current continuation as fiber resumption point
-          #FYld{yv, #Kont{kont}})
-
-      // Boolean AND with short-circuit (CPS)
-      #And: λ&a. λ&b.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&av.
-          λ{
-            #Fals: (kont(#Fals{}))
-            #Cst: λ&n. λ{0: (kont(#Fals{})); _: λ&u_. @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont)}(n)
-            _: λ&u_. @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont)
-          }(av))
-
-      // Boolean OR with short-circuit (CPS)
-      #Or: λ&a. λ&b.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&av.
-          λ{
-            #True: (kont(#True{}))
-            #Fals: @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont)
-            #Cst: λ&n. λ{0: @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(kont); _: λ&u_. (kont(av))}(n)
-            _: λ&u_. (kont(av))
-          }(av))
-
-      // Boolean NOT (CPS)
-      #Not: λ&a.
-        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&av.
-          (kont(@omni_not(av))))
-
-      // Array literal (CPS)
-      #Arr: λ&elems.
-        @omni_eval_list_cps(#MEnv{env, handlers, parent, level})(elems)(λ&evaluated.
-          (kont(#Arr{@omni_list_length(evaluated), evaluated})))
-
-      // Dict literal (CPS)
-      #Dict: λ&entries.
-        @omni_eval_dict_entries_cps(#MEnv{env, handlers, parent, level})(entries)(λ&evaluated.
-          (kont(#Dict{evaluated})))
-
-      // For other forms, fall back to direct evaluation then continue
-      _ : λ&u_. (kont(@omni_eval(#MEnv{env, handlers, parent, level})(e)))
-    }(e)
-  ; _ : λ&u_. #Err{#sym_cps}}(menv)
-
-// CPS application - handles CPS closures and captured continuations
-@omni_apply_cps = λ&m. λ&vf. λ&vx. λ&k.
-  !!&menv = m; !!&kont = k; !!&arg = vx; !!&func = vf;
+// Apply a continuation to a value - the core dispatcher
+@omni_apply_k = λ&k. λ&v.
   λ{
-    // CPS closure created inside reset
+    // Identity - return value directly
+    #KId: v
+
+    // Native lambda continuation (from user code or effects)
+    #KLam: λ&lam. (lam(v))
+
+    // Binary operation - stage 1: evaluated a, now eval b
+    #KBin1: λ&k2. λ&op. λ&b. λ&menv.
+      @omni_eval_cps(menv)(#KBin2{k2, op, v})(b)
+
+    // Binary operation - stage 2: evaluated b, compute result
+    #KBin2: λ&k2. λ&op. λ&va.
+      @omni_apply_k(k2)(@omni_binop(op)(va)(v))
+
+    // Comparison - stage 1: evaluated a, now eval b
+    #KCmp1: λ&k2. λ&op. λ&b. λ&menv.
+      @omni_eval_cps(menv)(#KCmp2{k2, op, v})(b)
+
+    // Comparison - stage 2: evaluated b, compare
+    #KCmp2: λ&k2. λ&op. λ&va.
+      @omni_apply_k(k2)(@omni_cmpop(op)(va)(v))
+
+    // Application - stage 1: evaluated f, now eval arg
+    #KApp1: λ&k2. λ&x. λ&menv.
+      @omni_eval_cps(menv)(#KApp2{k2, v, menv})(x)
+
+    // Application - stage 2: evaluated arg, apply function
+    #KApp2: λ&k2. λ&vf. λ&menv.
+      @omni_apply_cps_defun(menv)(vf)(v)(k2)
+
+    // Let - evaluated value, extend env and eval body
+    #KLet: λ&k2. λ&body. λ&menv.
+      @omni_eval_cps(@omni_menv_extend_val(menv)(v))(k2)(body)
+
+    // If - evaluated condition, branch
+    #KIf: λ&k2. λ&t. λ&el. λ&menv.
+      @omni_eval_cps(menv)(k2)(@omni_if_branch(v)(t)(el))
+
+    // And - short-circuit
+    #KAnd: λ&k2. λ&b. λ&menv.
+      λ{
+        #Fals: @omni_apply_k(k2)(#Fals{})
+        #Cst: λ&n. λ{0: @omni_apply_k(k2)(#Fals{}); _: λ&u_. @omni_eval_cps(menv)(k2)(b)}(n)
+        _: λ&u_. @omni_eval_cps(menv)(k2)(b)
+      }(v)
+
+    // Or - short-circuit
+    #KOr: λ&k2. λ&b. λ&menv.
+      λ{
+        #True: @omni_apply_k(k2)(#True{})
+        #Fals: @omni_eval_cps(menv)(k2)(b)
+        #Cst: λ&n. λ{0: @omni_eval_cps(menv)(k2)(b); _: λ&u_. @omni_apply_k(k2)(v)}(n)
+        _: λ&u_. @omni_apply_k(k2)(v)
+      }(v)
+
+    // Not - negate
+    #KNot: λ&k2.
+      @omni_apply_k(k2)(@omni_not(v))
+
+    // Perform - stage 1: evaluated tag, now eval payload
+    #KPerf1: λ&k2. λ&payload. λ&menv.
+      @omni_eval_cps(menv)(#KPerf2{k2, v, menv})(payload)
+
+    // Perform - stage 2: evaluated payload, perform effect
+    #KPerf2: λ&k2. λ&tag. λ&menv.
+      // Resume continuation uses defunctionalized #KontD to avoid HVM4 closure capture bug
+      @omni_perform_cps(menv)(tag)(v)(#KontD{k2})
+
+    // Array - evaluating elements
+    #KArr: λ&k2. λ&rest. λ&acc. λ&menv.
+      @omni_eval_arr_cps(menv)(k2)(rest)(#CON{v, acc})
+
+    // Dict - evaluating entries
+    #KDict: λ&k2. λ&rest. λ&acc. λ&menv.
+      @omni_eval_dict_cps(menv)(k2)(rest)(#CON{v, acc})
+
+    // Dict value - evaluated a value, now add to acc and continue
+    #KDictVal: λ&k2. λ&key. λ&rest. λ&acc. λ&menv.
+      @omni_eval_dict_cps(menv)(k2)(rest)(#CON{#Pair{key, v}, acc})
+
+    // Yield - return fiber yield marker
+    #KYld: λ&k2.
+      #FYld{v, #KontD{k2}}
+
+    // Cons cell - stage 1: evaluated head, now eval tail
+    #KCons1: λ&k2. λ&tail. λ&menv.
+      @omni_eval_cps(menv)(#KCons2{k2, v})(tail)
+
+    // Cons cell - stage 2: evaluated tail, construct cons
+    #KCons2: λ&k2. λ&head.
+      @omni_apply_k(k2)(#CON{head, v})
+
+    // Do block - stage 1: evaluated first, now eval rest
+    #KDo: λ&k2. λ&rest. λ&menv.
+      @omni_eval_cps(menv)(k2)(rest)
+
+    // Pattern match - scrutinee evaluated, now match cases in CPS
+    #KMat: λ&k2. λ&cases. λ&menv.
+      @omni_match_cps(menv)(k2)(v)(cases)
+
+    // Named let arguments - evaluating init values
+    #KNLetArgs: λ&k2. λ&loop_closure. λ&rest. λ&acc. λ&menv.
+      λ{
+        #NIL:
+          // All args evaluated, apply loop closure
+          @omni_apply_nlet(menv)(k2)(loop_closure)(@omni_list_reverse(#CON{v, acc}))
+        #CON: λ&h. λ&t.
+          @omni_eval_cps(menv)(#KNLetArgs{k2, loop_closure, t, #CON{v, acc}, menv})(h)
+        _: λ&u_. @omni_apply_k(k2)(#Err{#sym_bad_nlet_args})
+      }(rest)
+
+    // Fallback for unknown continuation types
+    _ : λ&u_. #Err{#sym_bad_kont}
+  }(k)
+
+// Apply named let closure to evaluated arguments
+@omni_apply_nlet = λ&menv. λ&k. λ&clo. λ&args.
+  λ{
+    #NIL: @omni_apply_cps_defun(menv)(clo)(#Noth)(k)
+    #CON: λ&h. λ&t. @omni_apply_nlet_args(menv)(k)(clo)(h)(t)
+    _: λ&u_. @omni_apply_k(k)(#Err{#sym_bad_nlet_apply})
+  }(args)
+
+// Apply arguments one at a time
+@omni_apply_nlet_args = λ&menv. λ&k. λ&clo. λ&arg. λ&rest.
+  λ{
+    #NIL: @omni_apply_cps_defun(menv)(clo)(arg)(k)
+    #CON: λ&h. λ&t.
+      // Apply first arg, continue with rest
+      (λ&partial.
+        @omni_apply_nlet_args(menv)(k)(partial)(h)(t)
+      )(@omni_apply_partial(menv)(clo)(arg))
+    _: λ&u_. @omni_apply_cps_defun(menv)(clo)(arg)(k)
+  }(rest)
+
+// Apply one argument to closure (partial application)
+@omni_apply_partial = λ&menv. λ&clo. λ&arg.
+  λ{
+    #CloK: λ&cenv. λ&body.
+      // For CloK with multiple args, we need to extend env and return closure for rest
+      #CloK{#CON{arg, #CON{#CloK{cenv, body}, cenv}}, body}
+    #Clo: λ&cenv. λ&body.
+      #Clo{#CON{arg, cenv}, body}
+    _: λ&u_. clo
+  }(clo)
+
+// Helper: extend menv with a value
+@omni_menv_extend_val = λ&menv. λ&val.
+  λ{
+    #MEnv: λ&env. λ&h. λ&p. λ&l. #MEnv{#CON{val, env}, h, p, l}
+    _: λ&u_. #MEnv{#CON{val, #NIL}, #NIL, #Noth, #Cst{0}}
+  }(menv)
+
+// Helper: select branch for if
+@omni_if_branch = λ&cond. λ&t. λ&el.
+  λ{
+    #Cst: λ&n. λ{0: el; _: λ&u_. t}(n)
+    #Fals: el
+    _: λ&u_. t
+  }(cond)
+
+// Helper: binary operation dispatcher
+@omni_binop = λ&op. λ&a. λ&b.
+  λ{
+    #OpAdd: #Cst{(@omni_unwrap_cst(a) + @omni_unwrap_cst(b))}
+    #OpSub: #Cst{(@omni_unwrap_cst(a) - @omni_unwrap_cst(b))}
+    #OpMul: #Cst{(@omni_unwrap_cst(a) * @omni_unwrap_cst(b))}
+    #OpDiv: #Cst{(@omni_unwrap_cst(a) / @omni_unwrap_cst(b))}
+    #OpMod: #Cst{(@omni_unwrap_cst(a) % @omni_unwrap_cst(b))}
+    _: λ&u_. #Err{#sym_bad_binop}
+  }(op)
+
+// Helper: comparison operation dispatcher (uses signed comparison)
+@omni_cmpop = λ&op. λ&a. λ&b.
+  (λ&av. λ&bv.
+    !!&a_neg = @omni_is_negative(av);
+    !!&b_neg = @omni_is_negative(bv);
+    λ{
+      #OpLt: @omni_signed_lt(av)(bv)(a_neg)(b_neg)
+      #OpGt: @omni_signed_gt(av)(bv)(a_neg)(b_neg)
+      #OpLeq: @omni_signed_le(av)(bv)(a_neg)(b_neg)
+      #OpGeq: @omni_signed_ge(av)(bv)(a_neg)(b_neg)
+      #OpEq: λ{1: #True{}; _: λ&u_. #Fals{}}((av == bv))
+      #OpNeq: λ{1: #True{}; _: λ&u_. #Fals{}}((av != bv))
+      _: λ&u_. #Err{#sym_bad_cmpop}
+    }(op)
+  )(@omni_unwrap_cst(a))(@omni_unwrap_cst(b))
+
+// NOTE: Signed comparison helpers (@omni_signed_lt, @omni_signed_gt, etc.)
+// are defined earlier in this file around line 1785. They handle:
+// - Correct signed comparison for two's complement numbers
+// - The HVM4 underscore-variable-name bug (using aneg/bneg instead of a_neg/b_neg)
+// - The case where both numbers are negative (larger unsigned = more negative)
+
+// Defunctionalized apply for CPS closures
+// Uses helper to capture args before pattern match on function type
+@omni_apply_cps_defun = λ&menv. λ&vf. λ&vx. λ&k.
+  @omni_apply_cps_defun_impl(vx)(k)(menv)(vf)
+
+// Helper - captures vx and k BEFORE pattern match on function
+@omni_apply_cps_defun_impl = λ&arg. λ&kont. λ&menv. λ&func.
+  λ{
+    // CPS closure - extend closure env with arg
     #CloC: λ&cenv. λ&body.
-      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
-        @omni_eval_cps(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body)(kont)
-      ; _ : λ&u_. #Err{#sym_app}}(menv)
+      @omni_eval_cps(@omni_menv_set_env(menv)(#CON{arg, cenv}))(kont)(body)
 
     // Recursive CPS closure
     #CloK: λ&cenv. λ&body.
-      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
-        (λ&self.
-          (λ&env1.
-            @omni_eval_cps(#MEnv{#CON{arg, env1}, handlers, parent, level})(body)(kont)
-          )(#CON{self, cenv})
-        )(#CloK{cenv, body})
-      ; _ : λ&u_. #Err{#sym_app}}(menv)
+      (λ&self.
+        @omni_eval_cps(@omni_menv_set_env(menv)(#CON{arg, #CON{self, cenv}}))(kont)(body)
+      )(#CloK{cenv, body})
 
-    // Captured continuation - call it!
+    // Regular closure from outside reset
+    #Clo: λ&cenv. λ&body.
+      @omni_eval_cps(@omni_menv_set_env(menv)(#CON{arg, cenv}))(kont)(body)
+
+    // Recursive closure from outside reset
+    #CloR: λ&cenv. λ&body.
+      (λ&self.
+        @omni_eval_cps(@omni_menv_set_env(menv)(#CON{arg, #CON{self, cenv}}))(kont)(body)
+      )(#CloR{cenv, body})
+
+    // Captured continuation (lambda-wrapped) - apply it
+    // Helper: call saved_k with arg, then pass result to kont
+    #Kont: λ&saved_k.
+      @omni_apply_kont_lambda_helper(arg)(kont)(saved_k)
+
+    // Captured continuation (defunctionalized) - apply it directly
+    // The stored k is a defunctionalized continuation tag, apply it to arg
+    // Then pass result to current kont
+    #KontD: λ&stored_k.
+      @omni_apply_kontd_helper(arg)(kont)(stored_k)
+
+    _: λ&u_. #Err{#sym_not_function}
+  }(func)
+
+// Helper for applying lambda-wrapped continuation
+// Captures arg and kont BEFORE calling saved_k
+@omni_apply_kont_lambda_helper = λ&arg. λ&kont. λ&saved_k.
+  (λ&result. @omni_apply_k(kont)(result))((saved_k(arg)))
+
+// Helper for applying defunctionalized continuation directly
+// Apply stored_k to arg, then pass result to kont
+@omni_apply_kontd_helper = λ&arg. λ&kont. λ&stored_k.
+  // stored_k is a defunctionalized continuation tag (e.g., #KBin2{...})
+  // First compute the result via the captured continuation
+  (λ&result. @omni_apply_k(kont)(result))(@omni_apply_k(stored_k)(arg))
+
+// Helper: set env in menv
+@omni_menv_set_env = λ&menv. λ&new_env.
+  λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. #MEnv{new_env, h, p, l}
+    _: λ&u_. #MEnv{new_env, #NIL, #Noth, #Cst{0}}
+  }(menv)
+
+// Array evaluation helper
+@omni_eval_arr_cps = λ&menv. λ&k. λ&elems. λ&acc.
+  λ{
+    #NIL: @omni_apply_k(k)(#Arr{@omni_list_length(acc), @omni_list_reverse(acc)})
+    #CON: λ&h. λ&t.
+      @omni_eval_cps(menv)(#KArr{k, t, acc, menv})(h)
+    _: λ&u_. @omni_apply_k(k)(#Arr{@omni_list_length(acc), @omni_list_reverse(acc)})
+  }(elems)
+
+// Dict evaluation helper
+@omni_eval_dict_cps = λ&menv. λ&k. λ&entries. λ&acc.
+  λ{
+    #NIL: @omni_apply_k(k)(#Dict{@omni_list_reverse(acc)})
+    #CON: λ&h. λ&t.
+      // Each entry is #Pair{key, val_expr}
+      λ{
+        #Pair: λ&key. λ&val_expr.
+          @omni_eval_cps(menv)(#KDictVal{k, key, t, acc, menv})(val_expr)
+        _: λ&u_. @omni_apply_k(k)(#Err{#sym_bad_dict_entry})
+      }(h)
+    _: λ&u_. @omni_apply_k(k)(#Dict{@omni_list_reverse(acc)})
+  }(entries)
+
+// Add KDictVal continuation handler
+// Note: This needs to be added to @omni_apply_k above, but for now use separate handler
+
+// CPS evaluator - takes menv, continuation k, and expression
+// Uses DEFUNCTIONALIZED CONTINUATIONS to avoid HVM4 closure capture bug
+// Continuations are data structures (#KId, #KBin1, etc.) instead of lambdas
+@omni_eval_cps = λ&menv. λ&k. λ&expr.
+  λ{
+    #Lit: λ&n. @omni_apply_k(k)(#Cst{n})
+
+    #Cst: λ&n. @omni_apply_k(k)(#Cst{n})
+
+    #Var: λ&i. @omni_apply_k(k)(@omni_env_get_from_menv(menv)(i))
+
+    #Lam: λ&body. @omni_apply_k(k)(#CloC{@omni_menv_get_env(menv), body})
+
+    #LamR: λ&body. @omni_apply_k(k)(#CloK{@omni_menv_get_env(menv), body})
+
+    // Application - use defunctionalized continuation
+    #App: λ&f. λ&x.
+      @omni_eval_cps(menv)(#KApp1{k, x, menv})(f)
+
+    // Binary operations - use defunctionalized continuations
+    #Add: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KBin1{k, #OpAdd, b, menv})(a)
+
+    #Sub: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KBin1{k, #OpSub, b, menv})(a)
+
+    #Mul: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KBin1{k, #OpMul, b, menv})(a)
+
+    #Div: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KBin1{k, #OpDiv, b, menv})(a)
+
+    #Mod: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KBin1{k, #OpMod, b, menv})(a)
+
+    // Comparisons - use defunctionalized continuations
+    #Lt: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KCmp1{k, #OpLt, b, menv})(a)
+
+    #Gt: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KCmp1{k, #OpGt, b, menv})(a)
+
+    #Leq: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KCmp1{k, #OpLeq, b, menv})(a)
+
+    #Geq: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KCmp1{k, #OpGeq, b, menv})(a)
+
+    #Eq: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KCmp1{k, #OpEq, b, menv})(a)
+
+    #Neq: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KCmp1{k, #OpNeq, b, menv})(a)
+
+    // Conditionals - use defunctionalized continuation
+    #If: λ&c. λ&t. λ&el.
+      @omni_eval_cps(menv)(#KIf{k, t, el, menv})(c)
+
+    // Do block (sequence) - evaluate first, then rest
+    #Do: λ&first. λ&rest.
+      @omni_eval_cps(menv)(#KDo{k, rest, menv})(first)
+
+    // Pattern match - evaluate scrutinee, then match in CPS
+    #Mat: λ&scrut. λ&cases.
+      @omni_eval_cps(menv)(#KMat{k, cases, menv})(scrut)
+
+    // Let binding - use defunctionalized continuation
+    #Let: λ&val. λ&body.
+      @omni_eval_cps(menv)(#KLet{k, body, menv})(val)
+
+    // Strict let in CPS mode (^:strict)
+    #LetS: λ&val. λ&body.
+      @omni_eval_cps(menv)(#KLet{k, body, menv})(val)
+
+    // Named let (Scheme-style loop) in CPS mode
+    #NLet: λ&name_nick. λ&init_values. λ&loop_body.
+      (λ&loop_closure.
+        @omni_eval_nlet_cps(menv)(k)(loop_closure)(init_values)
+      )(#CloK{@omni_menv_get_env(menv), loop_body})
+
+    // Named let (sequential) in CPS mode
+    #NLeS: λ&name_nick. λ&init_values. λ&loop_body.
+      (λ&loop_closure.
+        @omni_eval_nlet_cps(menv)(k)(loop_closure)(init_values)
+      )(#CloK{@omni_menv_get_env(menv), loop_body})
+
+    // Nested reset - creates new delimiter
+    #Prmt: λ&body.
+      (λ&result. @omni_apply_k(k)(result))(@omni_eval_cps(menv)(#KId)(body))
+
+    // Control - capture the continuation!
+    #Ctrl: λ&k_idx. λ&body.
+      // Store k directly in #Kont (as defunctionalized tag, not lambda)
+      // When Kont is applied, @omni_apply_kont_helper will call @omni_apply_k
+      (λ&k_val.
+        // Evaluate body with k bound, using identity continuation
+        @omni_eval_cps(@omni_menv_extend_val(menv)(k_val))(#KId)(body)
+      )(#KontD{k})
+
+    // Perform effect - use defunctionalized continuations
+    #Perf: λ&tag. λ&payload.
+      @omni_eval_cps(menv)(#KPerf1{k, payload, menv})(tag)
+
+    // Handle effects - install handlers and evaluate body
+    #Hdle: λ&hdlrs. λ&body.
+      (λ&evaluated_handlers.
+        (λ&new_handlers.
+          @omni_eval_cps(@omni_menv_set_handlers(menv)(new_handlers))(k)(body)
+        )(@omni_list_append(evaluated_handlers)(@omni_menv_get_handlers(menv)))
+      )(@omni_eval_handlers(menv)(hdlrs))
+
+    // Yield for fibers
+    #Yld: λ&val.
+      @omni_eval_cps(menv)(#KYld{k})(val)
+
+    // Boolean AND with short-circuit
+    #And: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KAnd{k, b, menv})(a)
+
+    // Boolean OR with short-circuit
+    #Or: λ&a. λ&b.
+      @omni_eval_cps(menv)(#KOr{k, b, menv})(a)
+
+    // Boolean NOT
+    #Not: λ&a.
+      @omni_eval_cps(menv)(#KNot{k})(a)
+
+    // Array literal
+    #Arr: λ&elems.
+      @omni_eval_arr_cps(menv)(k)(elems)(#NIL)
+
+    // Dict literal
+    #Dict: λ&entries.
+      @omni_eval_dict_cps(menv)(k)(entries)(#NIL)
+
+    // Cons cell - evaluate head and tail in CPS mode
+    #CON: λ&h. λ&t.
+      @omni_eval_cps(menv)(#KCons1{k, t, menv})(h)
+
+    // Empty list - return as-is
+    #NIL: @omni_apply_k(k)(#NIL)
+
+    // Quoted data - return as-is (already evaluated)
+    #QQ: λ&inner. @omni_apply_k(k)(inner)
+
+    // For other forms, fall back to direct evaluation then continue
+    _ : λ&u_. @omni_apply_k(k)(@omni_eval(menv)(expr))
+  }(expr)
+
+// Helper: get env from menv
+@omni_menv_get_env = λ&menv.
+  λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. e
+    _: λ&u_. #NIL
+  }(menv)
+
+// Helper: get handlers from menv
+@omni_menv_get_handlers = λ&menv.
+  λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. h
+    _: λ&u_. #NIL
+  }(menv)
+
+// Helper: set handlers in menv
+@omni_menv_set_handlers = λ&menv. λ&new_handlers.
+  λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. #MEnv{e, new_handlers, p, l}
+    _: λ&u_. #MEnv{#NIL, new_handlers, #Noth, #Cst{0}}
+  }(menv)
+
+// Helper: get value from env using de Bruijn index (via menv)
+@omni_env_get_from_menv = λ&menv. λ&idx.
+  @omni_env_get(@omni_menv_get_env(menv))(idx)
+
+// Named let evaluation helper
+@omni_eval_nlet_cps = λ&menv. λ&k. λ&loop_closure. λ&init_values.
+  λ{
+    #NIL: @omni_apply_k(k)(loop_closure)
+    #CON: λ&h. λ&t.
+      @omni_eval_cps(menv)(#KNLetArgs{k, loop_closure, t, #NIL, menv})(h)
+    _: λ&u_. @omni_apply_k(k)(#Err{#sym_bad_nlet})
+  }(init_values)
+
+// CPS pattern matching - like @omni_match but evaluates body in CPS mode
+@omni_match_cps = λ&menv. λ&k. λ&scrut. λ&cases.
+  λ{
+    #NIL: @omni_apply_k(k)(#Err{#sym_nomatch})
+    #CON: λ&case. λ&rest.
+      // Rebind before nested calls
+      !&menv2 = menv;
+      !&k2 = k;
+      !&scrut2 = scrut;
+      !&rest2 = rest;
+      (λ&result.
+        λ{
+          #Noth: @omni_match_cps(menv2)(k2)(scrut2)(rest2)
+          _: λ&u_. result
+        }(result)
+      )(@omni_try_case_cps(menv)(k)(scrut)(case))
+  }(cases)
+
+// CPS try case - like @omni_try_case but evaluates body in CPS mode
+@omni_try_case_cps = λ&menv. λ&k. λ&scrut. λ&case.
+  λ{
+    #Case: λ&pattern. λ&guard. λ&body.
+      (λ&bindings.
+        // Rebind before nested switch
+        !&menv2 = menv;
+        !&k2 = k;
+        !&guard2 = guard;
+        !&body2 = body;
+        !&bindings2 = bindings;
+        λ{
+          #Noth: #Noth{}
+          _: λ&u_.
+            (λ&env.
+              (λ&new_env.
+                (λ&new_menv.
+                  // Rebind before guard check switch
+                  !&new_menv2 = new_menv;
+                  !&k3 = k2;
+                  !&body3 = body2;
+                  !&guard3 = guard2;
+                  // Check guard if present
+                  (λ&guard_ok.
+                    λ{
+                      #True: @omni_eval_cps(new_menv2)(k3)(body3)
+                      _: λ&u_. #Noth{}
+                    }(guard_ok)
+                  )((λ{
+                    #NIL: #True{}
+                    // Guard evaluation - use non-CPS since guards shouldn't have effects
+                    _: λ&u_. @omni_eval(new_menv2)(guard3)
+                  })(guard3))
+                )(@omni_menv_extend(menv2)(new_env))
+              )(@omni_env_extend_many(env)(bindings2))
+            )((λ{#MEnv: λ&e. λ&h. λ&p. λ&l. e})(menv2))
+        }(bindings)
+      )(@omni_pattern_match(scrut)(pattern))
+  }(case)
+
+// Yield continuation handler
+// (Added to @omni_apply_k above would be cleaner, but add separately for now)
+
+// CPS application - handles CPS closures and captured continuations
+// IMPORTANT: Uses helpers to avoid HVM4 closure capture bug with nested pattern matches
+@omni_apply_cps = λ&m. λ&vf. λ&vx. λ&k.
+  @omni_apply_cps_impl(m)(vx)(k)(vf)
+
+// Helper - takes menv, arg, kont BEFORE func pattern match for proper capture
+@omni_apply_cps_impl = λ&menv. λ&arg. λ&kont. λ&func.
+  λ{
+    // CPS closure created inside reset - use helper to capture before nested menv match
+    #CloC: λ&cenv. λ&body.
+      @omni_apply_cps_cloc(arg)(kont)(cenv)(body)(menv)
+
+    // Recursive CPS closure - use helper
+    #CloK: λ&cenv. λ&body.
+      @omni_apply_cps_clok(arg)(kont)(cenv)(body)(menv)
+
+    // Captured continuation - call it! (no nested pattern match needed)
     #Kont: λ&saved_k.
       // Apply saved continuation to argument, then pass result to current k
       (λ&result. (kont(result)))((saved_k(arg)))
 
-    // Regular closure from outside reset - evaluate body in direct style
+    // Regular closure from outside reset - use helper
     #Clo: λ&cenv. λ&body.
-      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
-        (λ&result. (kont(result)))(@omni_eval(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body))
-      ; _ : λ&u_. #Err{#sym_app}}(menv)
+      @omni_apply_cps_clo(arg)(kont)(cenv)(body)(menv)
 
-    // Recursive closure from outside reset
+    // Recursive closure from outside reset - use helper
     #CloR: λ&cenv. λ&body.
-      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
-        (λ&self.
-          (λ&env1.
-            (λ&result. (kont(result)))(@omni_eval(#MEnv{#CON{arg, env1}, handlers, parent, level})(body))
-          )(#CON{self, cenv})
-        )(#CloR{cenv, body})
-      ; _ : λ&u_. #Err{#sym_app}}(menv)
+      @omni_apply_cps_clor(arg)(kont)(cenv)(body)(menv)
 
     _ : λ&u_. #Err{#sym_app}
   }(func)
+
+// Helpers for CPS apply - extract menv components FIRST using strict bindings,
+// then use those components with a simple lambda (no pattern match)
+@omni_apply_cps_cloc = λ&arg. λ&kont. λ&cenv. λ&body. λ&menv.
+  // Extract menv components first using strict bindings
+  !!&parts = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #E4{e, h, p, l}; _: λ&u_. #E4{#NIL, #NIL, #Noth, #Cst{0}}})(menv);
+  !!&handlers = (λ{#E4: λ&e. λ&h. λ&p. λ&l. h})(parts);
+  !!&parent = (λ{#E4: λ&e. λ&h. λ&p. λ&l. p})(parts);
+  !!&level = (λ{#E4: λ&e. λ&h. λ&p. λ&l. l})(parts);
+  // Now we can use all variables safely (no pattern match with outer vars)
+  @omni_eval_cps(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body)(kont)
+
+@omni_apply_cps_clok = λ&arg. λ&kont. λ&cenv. λ&body. λ&menv.
+  // Extract menv components first
+  !!&parts = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #E4{e, h, p, l}; _: λ&u_. #E4{#NIL, #NIL, #Noth, #Cst{0}}})(menv);
+  !!&handlers = (λ{#E4: λ&e. λ&h. λ&p. λ&l. h})(parts);
+  !!&parent = (λ{#E4: λ&e. λ&h. λ&p. λ&l. p})(parts);
+  !!&level = (λ{#E4: λ&e. λ&h. λ&p. λ&l. l})(parts);
+  (λ&self.
+    (λ&env1.
+      @omni_eval_cps(#MEnv{#CON{arg, env1}, handlers, parent, level})(body)(kont)
+    )(#CON{self, cenv})
+  )(#CloK{cenv, body})
+
+@omni_apply_cps_clo = λ&arg. λ&kont. λ&cenv. λ&body. λ&menv.
+  // Extract menv components first
+  !!&parts = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #E4{e, h, p, l}; _: λ&u_. #E4{#NIL, #NIL, #Noth, #Cst{0}}})(menv);
+  !!&handlers = (λ{#E4: λ&e. λ&h. λ&p. λ&l. h})(parts);
+  !!&parent = (λ{#E4: λ&e. λ&h. λ&p. λ&l. p})(parts);
+  !!&level = (λ{#E4: λ&e. λ&h. λ&p. λ&l. l})(parts);
+  (λ&result. (kont(result)))(@omni_eval(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body))
+
+@omni_apply_cps_clor = λ&arg. λ&kont. λ&cenv. λ&body. λ&menv.
+  // Extract menv components first
+  !!&parts = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #E4{e, h, p, l}; _: λ&u_. #E4{#NIL, #NIL, #Noth, #Cst{0}}})(menv);
+  !!&handlers = (λ{#E4: λ&e. λ&h. λ&p. λ&l. h})(parts);
+  !!&parent = (λ{#E4: λ&e. λ&h. λ&p. λ&l. p})(parts);
+  !!&level = (λ{#E4: λ&e. λ&h. λ&p. λ&l. l})(parts);
+  (λ&self.
+    (λ&env1.
+      (λ&result. (kont(result)))(@omni_eval(#MEnv{#CON{arg, env1}, handlers, parent, level})(body))
+    )(#CON{self, cenv})
+  )(#CloR{cenv, body})
 
 // =============================================================================
 // Algebraic Effects (CPS-based with Continuation Capture)
@@ -2349,58 +3349,137 @@
 
 // Handle with CPS - entry point from direct mode
 // Installs handlers and evaluates body in CPS mode
+// IMPORTANT: Uses helper to avoid HVM4 closure capture bug where pattern match
+// arms don't capture outer lambda parameters correctly
 @omni_handle_cps = λ&menv. λ&handlers. λ&body. λ&k.
-  // Evaluate handler definitions
-  !!&evaluated_handlers = @omni_eval_handlers(menv)(handlers);
-  // Get current handlers from menv
-  !!&old_handlers = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. h})(menv);
-  // Push new handlers onto stack
-  !!&new_handlers = @omni_list_append(evaluated_handlers)(old_handlers);
-  // Create new menv with handlers
-  !!&env = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. e})(menv);
-  !!&parent = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. p})(menv);
-  !!&level = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. l})(menv);
-  !!&new_menv = #MEnv{env, new_handlers, parent, level};
-  // Evaluate body in CPS mode with handlers installed
-  @omni_eval_cps(new_menv)(body)(k)
+  @omni_handle_cps_impl(handlers)(body)(k)(menv)
+
+// Helper for handle_cps that takes handlers before menv pattern match
+// This ensures handlers is properly captured in the pattern match arm
+@omni_handle_cps_impl = λ&hdlrs. λ&body_expr. λ&kont. λ&menv.
+  λ{
+    #MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+      // Evaluate handler definitions (using hdlrs which is properly captured)
+      (λ&evaluated_handlers.
+        // Push new handlers onto stack
+        (λ&new_handlers.
+          // Create new menv with handlers installed
+          (λ&new_menv.
+            // Evaluate body in CPS mode - use defunctionalized continuation
+            @omni_eval_cps(new_menv)(kont)(body_expr)
+          )(#MEnv{env, new_handlers, parent, level})
+        )(@omni_list_append(evaluated_handlers)(old_handlers))
+      )(@omni_eval_handlers(#MEnv{env, old_handlers, parent, level})(hdlrs))
+    _: λ&u_. #Err{#sym_handle_cps}
+  }(menv)
 
 // Perform effect in CPS mode - searches for handler and invokes with continuation
+// IMPORTANT: Uses helper to avoid HVM4 closure capture bug
 @omni_perform_cps = λ&menv. λ&tag. λ&payload. λ&resume_k.
-  !!&handlers = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. h})(menv);
-  @omni_find_handler_cps(menv)(handlers)(tag)(payload)(resume_k)
+  @omni_perform_cps_impl(tag)(payload)(resume_k)(menv)
 
+// Helper - takes tag/payload/resume_k before menv pattern match for proper capture
+@omni_perform_cps_impl = λ&tg. λ&pay. λ&res_k. λ&menv.
+  λ{
+    #MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+      // Pass reconstructed menv to avoid consuming the original
+      @omni_find_handler_cps(#MEnv{env, handlers, parent, level})(handlers)(tg)(pay)(res_k)
+    _: λ&u_. #Err{#sym_perform_cps}
+  }(menv)
+
+// Find handler in handler list
+// IMPORTANT: Uses helper to avoid HVM4 closure capture bug
 @omni_find_handler_cps = λ&menv. λ&handlers. λ&tag. λ&payload. λ&resume_k.
+  @omni_find_handler_impl(menv)(tag)(payload)(resume_k)(handlers)
+
+// Helper - takes captured vars before handlers pattern match
+@omni_find_handler_impl = λ&menv. λ&tg. λ&pay. λ&res_k. λ&handlers.
   λ{
     #NIL:
-      // No handler found - error (or could propagate to parent menv)
-      #Err{#sym_nohandler, tag}
+      // No handler found locally - propagate to parent menv if available
+      @omni_propagate_to_parent(menv)(tg)(pay)(res_k)
     #CON: λ&h. λ&t.
       (λ&matched.
         λ{
-          1: @omni_invoke_handler_cps(menv)(h)(payload)(resume_k)
-          _: λ&u_. @omni_find_handler_cps(menv)(t)(tag)(payload)(resume_k)
+          1: @omni_invoke_handler_cps(menv)(h)(pay)(res_k)
+          _: λ&u_. @omni_find_handler_impl(menv)(tg)(pay)(res_k)(t)
         }(matched)
-      )(@omni_handler_matches(h)(tag))
+      )(@omni_handler_matches(h)(tg))
   }(handlers)
+
+// Propagate effect to parent menv when not handled locally
+@omni_propagate_to_parent = λ&menv. λ&tg. λ&pay. λ&res_k.
+  λ{
+    #MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+      λ{
+        #Noth: #Err{#sym_nohandler, tg}
+        #MEnv: λ&penv. λ&phandlers. λ&pparent. λ&plevel.
+          // Propagate to parent - search in parent's handlers
+          @omni_find_handler_cps(parent)(phandlers)(tg)(pay)(res_k)
+        _: λ&u_. #Err{#sym_nohandler, tg}
+      }(parent)
+    _: λ&u_. #Err{#sym_nohandler, tg}
+  }(menv)
 
 @omni_handler_matches = λ&handler. λ&tag.
   // Handler is #Hdlr{effect_tag, handler_fn}
+  // tag might be #Sym{nick} or just a nick number - extract nick if needed
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
   λ{
-    #Hdlr: λ&htag. λ&hfn. (htag == tag)
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
     _: λ&u_. 0
   }(handler)
 
+// Invoke a matched handler with payload and resume continuation
+// IMPORTANT: Uses helper to avoid HVM4 closure capture bug
 @omni_invoke_handler_cps = λ&menv. λ&handler. λ&payload. λ&resume_k.
+  @omni_invoke_handler_impl(payload)(resume_k)(handler)(menv)
+
+// Helper - takes payload/resume before menv/handler pattern matches for proper capture
+// IMPORTANT: Handler body is evaluated in CPS mode with parent menv for effect propagation
+@omni_invoke_handler_impl = λ&pay. λ&res_k. λ&handler. λ&menv.
   λ{
-    #Hdlr: λ&htag. λ&hfn.
-      // Handler receives (payload, resume)
-      // resume is #Kont{k} - the captured continuation
-      // Handler calls (resume value) to continue the computation
-      //
-      // Note: handler_fn is a 2-arg function: (fn [payload resume] ...)
-      // We apply it to payload, then to resume_k
-      @omni_apply(menv)(@omni_apply(menv)(hfn)(payload))(resume_k)
-  }(handler)
+    #MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+      // Match handler
+      λ{
+        #Hdlr: λ&htag. λ&hfn.
+          // Handler receives (payload, resume)
+          // Handler fn is 2-arg: (fn [payload resume] ...)
+          // Apply handler to payload to get partial (closure waiting for resume)
+          (λ&partial.
+            // Get the parent menv (for effect propagation from handler body)
+            (λ&parent_menv.
+              // Apply partial to resume continuation
+              // The closure body may perform effects which will propagate to parent handlers
+              @omni_invoke_handler_body(parent_menv)(partial)(res_k)
+            )(@omni_get_parent_or_current(parent)(menv))
+          )(@omni_apply(menv)(hfn)(pay))
+        _: λ&u_. #Err{#sym_invoke_handler}
+      }(handler)
+    _: λ&u_. #Err{#sym_invoke_handler_menv}
+  }(menv)
+
+// Get parent menv if available, otherwise current menv
+@omni_get_parent_or_current = λ&parent. λ&current.
+  λ{
+    #Noth: current
+    #MEnv: λ&e. λ&h. λ&p. λ&l. parent
+    _: λ&u_. current
+  }(parent)
+
+// Invoke handler body: apply closure to resume_k, evaluate body in CPS mode
+// This allows performs inside the handler body to propagate to outer handlers
+@omni_invoke_handler_body = λ&menv. λ&closure. λ&resume_k.
+  λ{
+    #Clo: λ&cenv. λ&body.
+      // Extend closure env with resume_k, evaluate body in CPS mode
+      @omni_eval_cps(@omni_menv_set_env(menv)(#CON{resume_k, cenv}))(#KId)(body)
+    #CloC: λ&cenv. λ&body.
+      @omni_eval_cps(@omni_menv_set_env(menv)(#CON{resume_k, cenv}))(#KId)(body)
+    _: λ&u_.
+      // Fallback: apply normally (may not support inner performs)
+      @omni_apply(menv)(closure)(resume_k)
+  }(closure)
 
 // =============================================================================
 // Proof-as-Effect System (Contract Verification)
@@ -2658,13 +3737,13 @@
 // Usage: @omni_with_proof_checking(menv)(body)
 @omni_with_proof_checking = λ&menv. λ&body.
   !!&handlers = @omni_proof_handler_runtime(menv);
-  @omni_handle_cps(menv)(handlers)(body)(λ&v. v)
+  @omni_handle_cps(menv)(handlers)(body)(#KId)
 
 // Wrap a body with the auto-proving handler
 // Usage: @omni_with_auto_proof(menv)(context)(body)
 @omni_with_auto_proof = λ&menv. λ&context. λ&body.
   !!&handlers = @omni_proof_handler_auto(menv)(context);
-  @omni_handle_cps(menv)(handlers)(body)(λ&v. v)
+  @omni_handle_cps(menv)(handlers)(body)(#KId)
 
 // =============================================================================
 // Concurrency (Fiber-based with CPS Continuations)
@@ -2959,6 +4038,26 @@
   }(@type_Int)
 
 // =============================================================================
+// Math Helpers
+// =============================================================================
+
+// Compute 10^n (for fixed-point scale conversion)
+@omni_pow10 = λ&n.
+  λ{
+    0: 1
+    1: 10
+    2: 100
+    3: 1000
+    4: 10000
+    5: 100000
+    6: 1000000
+    7: 10000000
+    8: 100000000
+    9: 1000000000
+    _: λ&u_. (10 * @omni_pow10((n - 1)))  // Recursive fallback
+  }(n)
+
+// =============================================================================
 // List Helpers
 // =============================================================================
 
@@ -2966,6 +4065,19 @@
   λ{
     #NIL: 0
     #CON: λ&h. λ&t. (1 + @omni_list_length(t))
+  }(xs)
+
+// Sum of list elements (assumes all elements are #Cst)
+@omni_list_sum = λ&xs.
+  λ{
+    #NIL: #Cst{0}
+    #CON: λ&h. λ&t.
+      (λ&hval. (λ&tsum.
+        λ{
+          #Cst: λ&tv. #Cst{(hval + tv)}
+          _: λ&u_. #Cst{hval}
+        }(tsum)
+      )(@omni_list_sum(t)))(@omni_unwrap_num(h))
   }(xs)
 
 @omni_append = λ&xs. λ&ys.
@@ -3350,6 +4462,34 @@
     _: λ&u_. 0
   }(c)
 
+// char->int: Get code point of first character of a string
+// Input: string (list of #CHR) or single #CHR
+// Output: #Cst{code_point}
+@omni_char_to_int = λ&val.
+  λ{
+    // Single character
+    #CHR: λ&code. #Cst{code}
+    // String (list of chars) - get first char
+    #CON: λ&h. λ&t.
+      λ{
+        #CHR: λ&code. #Cst{code}
+        _: λ&u_. #Err{#sym_type}
+      }(h)
+    // Integer passed directly (allow passthrough)
+    #Cst: λ&n. #Cst{n}
+    _: λ&u_. #Err{#sym_type}
+  }(val)
+
+// int->char: Convert code point to single-character string
+// Input: #Cst{code_point}
+// Output: string (list with single #CHR)
+@omni_int_to_char = λ&val.
+  λ{
+    #Cst: λ&code. #CON{#CHR{code}, #NIL}
+    // Allow raw number
+    _: λ&n. #CON{#CHR{n}, #NIL}
+  }(val)
+
 // Join list of strings with delimiter
 @omni_str_join = λ&strs. λ&delim.
   λ{
@@ -3482,12 +4622,16 @@
   }(count)
 
 // Compare two strings lexicographically: returns -1, 0, or 1
+// Constant for -1 (used for comparison results)
+// #Fix{4294967295, 4294967295, 0} represents -1
+@omni_neg_one = #Fix{4294967295, 4294967295, 0}
+
 @omni_str_compare = λ&str1. λ&str2.
   λ{
     #NIL:
       λ{
         #NIL: #Cst{0}  // Both empty, equal
-        _: λ&u_. #Cst{(0 - 1)}  // str1 shorter
+        _: λ&u_. @omni_neg_one  // str1 shorter
       }(str2)
     #CON: λ&h1. λ&t1.
       λ{
@@ -3495,11 +4639,11 @@
         #CON: λ&h2. λ&t2.
           (λ&c1. (λ&c2.
             λ{
-              1: #Cst{(0 - 1)}
+              1: @omni_neg_one  // c1 < c2
               _: λ&u_.
                 λ{
-                  1: #Cst{1}
-                  _: λ&u_. @omni_str_compare(t1)(t2)
+                  1: #Cst{1}  // c1 > c2
+                  _: λ&u_. @omni_str_compare(t1)(t2)  // c1 == c2
                 }((c1 > c2))
             }((c1 < c2))
           )(@omni_char_code(h2)))(@omni_char_code(h1))
@@ -3614,10 +4758,12 @@
     #NIL: #NIL  // Done, return empty list
     #CON: λ&h. λ&t.
       // Putc the char, then recurse on the tail
-      !!&ret = @omni_putc(h);
-      @omni_print_val(t)
+      // Use seq pattern: force putc, then return recursive result
+      !!&result = @omni_putc(h);
+      !!&rest = @omni_print_val(t);
+      #CON{result, rest}  // Build result list to force evaluation
     // For non-string values, return #NIL
-    _: λ&u. #NIL
+    _: λ&u_. #NIL
   }(val)
 
 // Test function to see what @omni_putc produces
@@ -3631,11 +4777,13 @@
     _: λ&u. #Sym{1}  // 1 = unknown case
   }(val)
 
-// Print with newline
+// Print with newline - must return something that depends on printed + newline to force eval
 @omni_println_val = λ&val.
   !!&printed = @omni_print_val(val);
   !!&newline = @omni_putc(#CHR{10});
-  #NIL
+  // Return a list containing both to force their evaluation
+  #CON{printed, #CON{newline, #NIL}}
+
 
 // Put a single character via FFI
 // putc nick = ((((16 << 6) + 21) << 6) + 20) << 6 + 3 = 4281603
@@ -3747,6 +4895,7 @@
 // Returns #True on success, #Err{errno} on failure
 @omni_copy_file = λ&from. λ&to.
   #FFI{7669772, #CON{from, #CON{to, #NIL}}}
+
 
 // =============================================================================
 // End IO Helper Functions
@@ -4331,6 +5480,25 @@
       }(pair)
   }(entries)
 
+// Merge two dict entry lists (d2 wins on conflict)
+@omni_dict_merge = λ&entries1. λ&entries2.
+  λ{
+    #NIL: entries1
+    #CON: λ&pair. λ&rest.
+      // Add each entry from entries2, overwriting keys in entries1
+      λ{
+        #CON: λ&k. λ&v_rest.
+          λ{
+            #CON: λ&v. λ&tail.
+              // entries1 with key removed, then prepend pair
+              !&e1 = @omni_dict_remove_key(entries1)(k);
+              #CON{pair, @omni_dict_merge(e1)(rest)}
+            _: λ&u_. @omni_dict_merge(entries1)(rest)
+          }(v_rest)
+        _: λ&u_. @omni_dict_merge(entries1)(rest)
+      }(pair)
+  }(entries2)
+
 // Set element at index in list
 @omni_list_set = λ&list. λ&idx. λ&val.
   λ{
@@ -4384,11 +5552,13 @@
   }(list)
 
 // Slice: get elements from start to end (exclusive)
+// Returns array for array input, list for list input
 @omni_slice = λ&coll. λ&start. λ&end.
   λ{
     #Arr: λ&len. λ&data.
       (λ&st. (λ&en.
-        (λ&dropped. @omni_take(#Cst{(en - st)})(dropped))(@omni_drop(#Cst{st})(data))
+        (λ&sliced. #Arr{@omni_list_length(sliced), sliced})
+        (@omni_take(#Cst{(en - st)})(@omni_drop(#Cst{st})(data)))
       )(@omni_unwrap_num(end)))(@omni_unwrap_num(start))
     #CON: λ&h. λ&t.
       (λ&st. (λ&en.
@@ -4440,6 +5610,244 @@
     _: λ&u_. #NIL
   }(nested)
 
+// Remove duplicates from a list (keeps first occurrence)
+@omni_distinct = λ&list.
+  @omni_distinct_acc(list)(#NIL)
+
+@omni_distinct_acc = λ&list. λ&seen.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&already.
+        λ{
+          #True: @omni_distinct_acc(t)(seen)
+          #Fals: #CON{h, @omni_distinct_acc(t)(#CON{h, seen})}
+        }(already)
+      )(@omni_member(h)(seen))
+  }(list)
+
+// Check if element is member of list
+@omni_member = λ&elem. λ&list.
+  λ{
+    #NIL: #Fals
+    #CON: λ&h. λ&t.
+      (λ&eq.
+        λ{
+          #True: #True
+          _: λ&u_. @omni_member(elem)(t)
+        }(eq)
+      )(@omni_eql(elem)(h))
+  }(list)
+
+// Partition list into groups of n elements
+@omni_partition = λ&n. λ&list.
+  λ{
+    #Cst: λ&size.
+      @omni_partition_iter(size)(list)
+    _: λ&u_. #NIL
+  }(n)
+
+@omni_partition_iter = λ&size. λ&list.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&group. (λ&rest.
+        #CON{group, @omni_partition_iter(size)(rest)}
+      )(@omni_drop(#Cst{size})(list)))(@omni_take(#Cst{size})(list))
+  }(list)
+
+// Interleave multiple collections
+@omni_interleave = λ&menv. λ&colls.
+  λ{
+    #NIL: #NIL
+    #CON: λ&first. λ&rest.
+      // Evaluate all collections first
+      (λ&evaled_colls. @omni_interleave_iter(evaled_colls))
+      (@omni_map_eval(menv)(colls))
+  }(colls)
+
+@omni_interleave_iter = λ&colls.
+  // If any collection is empty, we're done
+  (λ&all_non_empty.
+    λ{
+      #Fals: #NIL
+      #True:
+        // Get heads from all, then recurse with tails
+        (λ&heads. (λ&tails.
+          @omni_append(heads)(@omni_interleave_iter(tails))
+        )(@omni_map_tail(colls)))(@omni_map_head(colls))
+    }(all_non_empty)
+  )(@omni_all_non_empty(colls))
+
+// Check if all lists are non-empty
+@omni_all_non_empty = λ&colls.
+  λ{
+    #NIL: #True
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: #Fals
+        #CON: λ&h2. λ&t2. @omni_all_non_empty(t)
+        _: λ&u_. #Fals
+      }(h)
+  }(colls)
+
+// Get head of each list
+@omni_map_head = λ&colls.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #CON: λ&hd. λ&tl. #CON{hd, @omni_map_head(t)}
+        _: λ&u_. @omni_map_head(t)
+      }(h)
+  }(colls)
+
+// Get tail of each list
+@omni_map_tail = λ&colls.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #CON: λ&hd. λ&tl. #CON{tl, @omni_map_tail(t)}
+        _: λ&u_. #CON{#NIL, @omni_map_tail(t)}
+      }(h)
+  }(colls)
+
+// Evaluate each element in a list
+@omni_map_eval = λ&menv. λ&list.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{@omni_eval(menv)(h), @omni_map_eval(menv)(t)}
+  }(list)
+
+// Insert separator between elements
+@omni_interpose = λ&sep. λ&list.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      λ{
+        #NIL: #CON{h, #NIL}
+        #CON: λ&h2. λ&t2.
+          #CON{h, #CON{sep, @omni_interpose(sep)(t)}}
+      }(t)
+  }(list)
+
+// Group elements by key function
+// Returns a dict mapping keys to lists of elements with that key
+@omni_group_by = λ&menv. λ&fn. λ&list.
+  @omni_group_by_acc(menv)(fn)(list)(#NIL)
+
+@omni_group_by_acc = λ&menv. λ&fn. λ&list. λ&acc.
+  λ{
+    #NIL: #Dict{acc}
+    #CON: λ&h. λ&t.
+      // Get key for this element - force evaluation
+      !!&key = @omni_apply(menv)(fn)(h);
+      // Add element to the group for this key
+      !!&new_acc = @omni_add_to_group(key)(h)(acc);
+      @omni_group_by_acc(menv)(fn)(t)(new_acc)
+  }(list)
+
+// Add element to a group in the accumulator
+// Uses immediate lambda binding pattern like @omni_increment_count
+@omni_add_to_group = λ&key. λ&elem. λ&groups.
+  λ{
+    #NIL: #CON{#CON{key, #CON{#CON{elem, #NIL}, #NIL}}, #NIL}
+    #CON: λ&group. λ&rest.
+      // Extract key from this group entry
+      (λ&gkey.
+        // Extract current elements list from this group
+        (λ&cur_elems.
+          // Check if this is our key
+          (λ&eq.
+            λ{
+              #True:
+                // Found it! Add element to front of list
+                #CON{#CON{gkey, #CON{#CON{elem, cur_elems}, #NIL}}, rest}
+              _: λ&u_.
+                // Not this key, recurse
+                !!&updated_rest = @omni_add_to_group(key)(elem)(rest);
+                #CON{group, updated_rest}
+            }(eq)
+          )(@omni_eql(key)(gkey))
+        )(@omni_get_group_elems(group))
+      )(@omni_get_group_key(group))
+  }(groups)
+
+// Helper: get key from a group entry (key . (elems . nil))
+@omni_get_group_key = λ&entry.
+  λ{
+    #CON: λ&k. λ&rest. k
+    _: λ&u_. #Noth{}
+  }(entry)
+
+// Helper: get elements list from a group entry (key . (elems . nil))
+@omni_get_group_elems = λ&entry.
+  λ{
+    #CON: λ&k. λ&rest.
+      λ{
+        #CON: λ&elems. λ&ign. elems
+        _: λ&u_. #NIL
+      }(rest)
+    _: λ&u_. #NIL
+  }(entry)
+
+// Count occurrences of each element
+// Returns a dict mapping elements to counts
+@omni_frequencies = λ&list.
+  #Dict{@omni_frequencies_acc(list)(#NIL)}
+
+@omni_frequencies_acc = λ&list. λ&acc.
+  λ{
+    #NIL: acc
+    #CON: λ&h. λ&t.
+      @omni_frequencies_acc(t)(@omni_increment_count(h)(acc))
+  }(list)
+
+// Increment count for an element in the accumulator
+@omni_increment_count = λ&elem. λ&counts.
+  λ{
+    #NIL: #CON{#CON{elem, #CON{#Cst{1}, #NIL}}, #NIL}
+    #CON: λ&pair. λ&rest.
+      // Each pair is (elem . (count . nil))
+      (λ&key. (λ&cur_count.
+        (λ&eq.
+          λ{
+            #True:
+              // Found it, increment count
+              #CON{#CON{key, #CON{#Cst{(cur_count + 1)}, #NIL}}, rest}
+            _: λ&u_.
+              // Not this element, keep searching
+              !!&updated_rest = @omni_increment_count(elem)(rest);
+              #CON{pair, updated_rest}
+          }(eq)
+        )(@omni_eql(elem)(key))
+      )(@omni_get_count(pair)))(@omni_get_key(pair))
+  }(counts)
+
+// Helper to get key from a pair
+@omni_get_key = λ&pair.
+  λ{
+    #CON: λ&k. λ&rest. k
+    _: λ&u_. #Noth{}
+  }(pair)
+
+// Helper to get count from a pair (extracts from (key . (count . nil)))
+@omni_get_count = λ&pair.
+  λ{
+    #CON: λ&k. λ&rest.
+      λ{
+        #CON: λ&count. λ&ign.
+          λ{
+            #Cst: λ&n. n
+            _: λ&u_. 1
+          }(count)
+        _: λ&u_. 1
+      }(rest)
+    _: λ&u_. 1
+  }(pair)
+
 // Sort list using comparator (merge sort)
 @omni_sort = λ&menv. λ&list. λ&cmp.
   (λ&len.
@@ -4482,25 +5890,8 @@
 
 // Apply function to two arguments (handles curried functions)
 @omni_apply2 = λ&menv. λ&fn. λ&a. λ&b.
-  // Apply first argument to get intermediate function
-  (λ&fn1.
-    // Apply second argument to intermediate function
-    λ{
-      #Clo: λ&env2. λ&body2.
-        @omni_eval(@omni_bind(env2)(b))(body2)
-      #CloR: λ&env2. λ&body2.
-        @omni_eval(@omni_bind(env2)(b))(body2)
-      _: λ&u_. #Fals{}
-    }(fn1)
-  )(
-    λ{
-      #Clo: λ&env. λ&body.
-        @omni_eval(@omni_bind(env)(a))(body)
-      #CloR: λ&env. λ&body.
-        @omni_eval(@omni_bind(env)(a))(body)
-      _: λ&u_. fn
-    }(fn)
-  )
+  // Apply curried function: ((fn a) b)
+  @omni_apply(menv)(@omni_apply(menv)(fn)(a))(b)
 
 // Get nested value by path
 @omni_get_in = λ&coll. λ&path.
@@ -5330,7 +6721,30 @@
   !!&menv = #MEnv{#NIL, #NIL, #Noth, #Cst{level}};
   @omni_eval_sp(menv)(expr)
 
-
+// Unwrap result values for cleaner output
+// - #Cst{n} -> n (raw number)
+// - #True -> 1, #Fals -> 0
+// - Lists and arrays pass through (HVM4 will format them)
+// - Other values pass through
+@omni_unwrap = λ&v.
+  λ{
+    #Cst: λ&n. n
+    #Fix: λ&hi. λ&lo. λ&scale.
+      // Fixed-point number - convert to printable
+      λ{
+        1: (0 - lo)  // Negative: negate lo
+        0: v         // Positive: return as-is (HVM4 will format)
+      }((hi >= 2147483648))
+    #True: 1
+    #Fals: 0
+    #Noth: v  // Keep as #Noth for display
+    #NIL: v   // Keep as #NIL (shows as ())
+    #CON: λ&h. λ&t. v  // Keep list as-is
+    #Arr: λ&len. λ&data. v  // Keep array as-is
+    #Dict: λ&entries. v  // Keep dict as-is
+    #Err: λ&e. v  // Keep error for debugging
+    _: λ&u_. v  // Everything else passes through
+  }(v)
 
 // DEBUG TEST - simple FFI node creation
 @test_ffi_node = #FFI{4281603, #NIL}

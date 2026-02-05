@@ -4,56 +4,56 @@
 ;; EXPECT: 30
 (handle
   (handle
-    (+ (perform get-a) (perform get-b))
-    (get-b [resume] (resume 20)))
-  (get-a [resume] (resume 10)))
+    (+ (perform get-a nil) (perform get-b nil))
+    (get-b [_ resume] (resume 20)))
+  (get-a [_ resume] (resume 10)))
 
 ;; TEST: inner effect doesn't escape
 ;; EXPECT: 100
 (handle
   (handle
-    (* (perform inner) 10)
-    (inner [resume] (resume 10)))
-  (outer [resume] (resume 999)))
+    (* (perform inner nil) 10)
+    (inner [_ resume] (resume 10)))
+  (outer [_ resume] (resume 999)))
 
 ;; TEST: outer catches when inner doesn't handle
 ;; EXPECT: "outer"
 (handle
   (handle
-    (perform escape)
-    (other [resume] (resume "inner")))
-  (escape [resume] (resume "outer")))
+    (perform escape nil)
+    (other [_ resume] (resume "inner")))
+  (escape [_ resume] (resume "outer")))
 
 ;; TEST: layered handlers
 ;; EXPECT: 15
 (handle
   (handle
-    (+ (perform layer1) (perform layer2))
-    (layer2 [resume] (resume 10)))
-  (layer1 [resume] (resume 5)))
+    (+ (perform layer1 nil) (perform layer2 nil))
+    (layer2 [_ resume] (resume 10)))
+  (layer1 [_ resume] (resume 5)))
 
 ;; TEST: inner shadows outer with same name
 ;; EXPECT: "inner"
 (handle
   (handle
-    (perform get)
-    (get [resume] (resume "inner")))
-  (get [resume] (resume "outer")))
+    (perform get nil)
+    (get [_ resume] (resume "inner")))
+  (get [_ resume] (resume "outer")))
 
 ;; TEST: three levels deep
 ;; EXPECT: 111
 (handle
   (handle
     (handle
-      (+ (perform a) (+ (perform b) (perform c)))
-      (c [resume] (resume 1)))
-    (b [resume] (resume 10)))
-  (a [resume] (resume 100)))
+      (+ (perform a nil) (+ (perform b nil) (perform c nil)))
+      (c [_ resume] (resume 1)))
+    (b [_ resume] (resume 10)))
+  (a [_ resume] (resume 100)))
 
 ;; EXPECT: true
 (let [result (handle
                (handle
-                 (+ (perform x) (perform y))
-                 (y [resume] (resume 2)))
-               (x [resume] (resume 3)))]
+                 (+ (perform x nil) (perform y nil))
+                 (y [_ resume] (resume 2)))
+               (x [_ resume] (resume 3)))]
   (= result 5))

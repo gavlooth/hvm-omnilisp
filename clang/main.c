@@ -385,7 +385,43 @@ fn void print_ast(Term t) {
 
 fn void omni_print_value_to(FILE *out, Term t);
 
+// Check if a list is all CHR characters (a string)
+static int is_chr_list(Term t) {
+  while (term_tag(t) >= C00 && term_tag(t) <= C16) {
+    if (term_ext(t) == OMNI_NAM_NIL) return 1;  // Empty or end of list
+    if (term_ext(t) != OMNI_NAM_CON) return 0;  // Not a cons cell
+    u32 loc = term_val(t);
+    Term head = HEAP[loc];
+    if (term_tag(head) < C00 || term_tag(head) > C16) return 0;
+    if (term_ext(head) != OMNI_NAM_CHR) return 0;  // Head is not CHR
+    t = HEAP[loc + 1];  // Continue with tail
+  }
+  return 0;  // Improper list
+}
+
 fn void omni_print_list_to(FILE *out, Term t) {
+  // Check if it's a string (list of all CHR)
+  if (is_chr_list(t)) {
+    fprintf(out, "\"");
+    while (term_tag(t) >= C00 && term_tag(t) <= C16 && term_ext(t) == OMNI_NAM_CON) {
+      u32 loc = term_val(t);
+      Term head = HEAP[loc];
+      // Get char code
+      u32 chr_loc = term_val(head);
+      Term chr_val = HEAP[chr_loc];
+      u32 code = term_tag(chr_val) == NUM ? term_val(chr_val) : 0;
+      if (code >= 32 && code < 127) {
+        if (code == '"' || code == '\\') fprintf(out, "\\");
+        fprintf(out, "%c", (char)code);
+      } else {
+        fprintf(out, "\\x%02x", code);
+      }
+      t = HEAP[loc + 1];
+    }
+    fprintf(out, "\"");
+    return;
+  }
+
   fprintf(out, "(");
   int first = 1;
   while (term_tag(t) == C02 && term_ext(t) == OMNI_NAM_CON) {
@@ -427,6 +463,48 @@ fn void omni_print_value_to(FILE *out, Term t) {
       return;
     }
 
+    // #Fix{hi, lo, scale} - fixed-point number
+    if (ext == OMNI_NAM_FIX) {
+      // Get hi, lo, scale
+      Term hi_term = HEAP[val];
+      Term lo_term = HEAP[val + 1];
+      Term scale_term = HEAP[val + 2];
+
+      u32 hi = term_tag(hi_term) == NUM ? term_val(hi_term) : 0;
+      u32 lo = term_tag(lo_term) == NUM ? term_val(lo_term) : 0;
+      u32 scale = term_tag(scale_term) == NUM ? term_val(scale_term) : 0;
+
+      // Check if negative (hi >= 2^31)
+      int is_negative = (hi >= 2147483648u);
+
+      if (scale == 0) {
+        // Integer
+        if (is_negative) {
+          // Two's complement: negate lo
+          u64 abs_val = (u64)4294967296ULL - (u64)lo;
+          fprintf(out, "-%llu", (unsigned long long)abs_val);
+        } else {
+          fprintf(out, "%u", lo);
+        }
+      } else {
+        // Decimal - compute divisor
+        u32 divisor = 1;
+        for (u32 i = 0; i < scale; i++) divisor *= 10;
+
+        if (is_negative) {
+          u64 abs_val = (u64)4294967296ULL - (u64)lo;
+          u64 int_part = abs_val / divisor;
+          u64 frac_part = abs_val % divisor;
+          fprintf(out, "-%llu.%0*llu", (unsigned long long)int_part, scale, (unsigned long long)frac_part);
+        } else {
+          u32 int_part = lo / divisor;
+          u32 frac_part = lo % divisor;
+          fprintf(out, "%u.%0*u", int_part, scale, frac_part);
+        }
+      }
+      return;
+    }
+
     // #True{} - boolean true
     if (ext == OMNI_NAM_TRUE) {
       fprintf(out, "true");
@@ -451,19 +529,87 @@ fn void omni_print_value_to(FILE *out, Term t) {
       return;
     }
 
+    // #Arr{len, data} - array
+    if (ext == OMNI_NAM_ARR) {
+      // Array: #Arr{len, data} where data is a list
+      Term data_term = HEAP[val + 1];  // Skip len, get data
+      fprintf(out, "[");
+      int first = 1;
+      Term cur = data_term;
+      while (term_tag(cur) >= C00 && term_tag(cur) <= C16) {
+        if (term_ext(cur) == OMNI_NAM_NIL) break;
+        if (term_ext(cur) == OMNI_NAM_CON) {
+          u32 cur_val = term_val(cur);
+          Term head = HEAP[cur_val];
+          Term tail = HEAP[cur_val + 1];
+          if (!first) fprintf(out, " ");
+          first = 0;
+          omni_print_value_to(out, head);
+          cur = tail;
+        } else {
+          break;
+        }
+      }
+      fprintf(out, "]");
+      return;
+    }
+
     // #CON{h, t} - cons cell (list)
     if (ext == OMNI_NAM_CON) {
       omni_print_list_to(out, t);
       return;
     }
 
+    // #Dict{entries} - dictionary
+    if (ext == OMNI_NAM_DICT) {
+      Term entries = HEAP[val];
+      fprintf(out, "#{");
+      int first = 1;
+      Term cur = entries;
+      while (term_tag(cur) >= C00 && term_tag(cur) <= C16) {
+        if (term_ext(cur) == OMNI_NAM_NIL) break;
+        if (term_ext(cur) == OMNI_NAM_CON) {
+          u32 cur_val = term_val(cur);
+          Term pair = HEAP[cur_val];
+          Term tail = HEAP[cur_val + 1];
+          // Each pair is (key . (value . nil)) - matching runtime format
+          if (term_tag(pair) >= C00 && term_tag(pair) <= C16 && term_ext(pair) == OMNI_NAM_CON) {
+            u32 pair_val = term_val(pair);
+            Term key = HEAP[pair_val];
+            Term val_cell = HEAP[pair_val + 1];
+            // val_cell should be (value . nil)
+            if (term_tag(val_cell) >= C00 && term_tag(val_cell) <= C16 && term_ext(val_cell) == OMNI_NAM_CON) {
+              Term value = HEAP[term_val(val_cell)];
+              if (!first) fprintf(out, " ");
+              first = 0;
+              omni_print_value_to(out, key);
+              fprintf(out, " ");
+              omni_print_value_to(out, value);
+            }
+          }
+          cur = tail;
+        } else {
+          break;
+        }
+      }
+      fprintf(out, "}");
+      return;
+    }
+
     // #Sym{nick} - symbol
     if (ext == OMNI_NAM_SYM) {
-      char name[64];
       Term nick_term = HEAP[val];
       u32 nick = term_tag(nick_term) == NUM ? term_val(nick_term) : term_ext(nick_term);
-      nick_to_str(nick, name, sizeof(name));
-      fprintf(out, "%s", name);
+      // Try symbol table lookup first (for hashed symbols)
+      const char *sym_name = omni_symtab_lookup(nick);
+      if (sym_name) {
+        fprintf(out, "%s", sym_name);
+      } else {
+        // Fall back to nick decoding
+        char name[64];
+        nick_to_str(nick, name, sizeof(name));
+        fprintf(out, "%s", name);
+      }
       return;
     }
 

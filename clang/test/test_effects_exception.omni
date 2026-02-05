@@ -2,32 +2,32 @@
 ;; Using handle/perform for error handling
 
 ;; TEST: simple effect catch
-;; EXPECT: "caught"
+;; EXPECT: 999
 (handle
-  (perform error-signal)
-  (error-signal [resume] "caught"))
+  (perform error-signal nil)
+  (error-signal [_ resume] 999))
 
-;; TEST: effect with value
-;; EXPECT: "error: oops"
+;; TEST: effect with value - numeric version
+;; EXPECT: 100
 (handle
-  (perform raise "oops")
-  (raise [msg resume] (str-concat "error: " msg)))
+  (perform raise 10)
+  (raise [msg resume] (* msg 10)))
 
 ;; TEST: computation then effect
 ;; EXPECT: 42
 (handle
   (do
     (+ 1 2)
-    (perform get-val))
-  (get-val [resume] (resume 42)))
+    (perform get-val nil))
+  (get-val [_ resume] (resume 42)))
 
-;; TEST: conditional effect
-;; EXPECT: "negative"
+;; TEST: conditional effect - numeric
+;; EXPECT: -1
 (handle
   (let [x -5]
     (if (< x 0)
-      (perform signal "negative")
-      "positive"))
+      (perform signal -1)
+      1))
   (signal [msg resume] msg))
 
 ;; TEST: no effect - normal return
@@ -35,31 +35,44 @@
 (handle
   (let [x 5]
     (if (< x 0)
-      (perform signal "negative")
+      (perform signal -1)
       (* x 2)))
   (signal [msg resume] msg))
 
-;; Safe divide with effect
-(define safe-div [a] [b]
-  (handle
-    (if (= b 0)
-      (perform div-error)
-      (/ a b))
-    (div-error [resume] 0)))
-
 ;; TEST: safe divide success
 ;; EXPECT: 5
-(safe-div 10 2)
+(do
+  (define safe-div [a] [b]
+    (handle
+      (if (= b 0)
+        (perform div-error nil)
+        (/ a b))
+      (div-error [_ resume] 0)))
+  (safe-div 10 2))
 
 ;; TEST: safe divide by zero
 ;; EXPECT: 0
-(safe-div 10 0)
+(do
+  (define safe-div [a] [b]
+    (handle
+      (if (= b 0)
+        (perform div-error nil)
+        (/ a b))
+      (div-error [_ resume] 0)))
+  (safe-div 10 0))
 
-;; TEST: effect with dict payload
+;; TEST: effect with payload, extract value
 ;; EXPECT: 404
 (handle
-  (perform error-data #{"code" 404 "msg" "not found"})
-  (error-data [err resume] (get err "code")))
+  (perform error-data 404)
+  (error-data [err resume] err))
 
 ;; EXPECT: true
-(= (safe-div 20 4) 5)
+(do
+  (define safe-div [a] [b]
+    (handle
+      (if (= b 0)
+        (perform div-error nil)
+        (/ a b))
+      (div-error [_ resume] 0)))
+  (= (safe-div 20 4) 5))

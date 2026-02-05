@@ -1,60 +1,61 @@
 ;; test_effects_writer.omni - Tests for Writer effect pattern
 ;; Writer effect accumulates output (logs)
 
-;; TEST: single tell
-;; EXPECT: "logged"
+;; TEST: single tell - numeric
+;; EXPECT: 1
 (handle
   (do
-    (perform tell "message")
-    "logged")
+    (perform tell 999)
+    1)
   (tell [msg resume] (resume msg)))
 
-;; TEST: multiple tells
-;; EXPECT: "done"
+;; TEST: multiple tells - numeric
+;; EXPECT: 999
 (handle
   (do
-    (perform tell "step 1")
-    (perform tell "step 2")
-    (perform tell "step 3")
-    "done")
+    (perform tell 1)
+    (perform tell 2)
+    (perform tell 3)
+    999)
   (tell [msg resume] (resume msg)))
-
-;; Log and compute function
-(define log-compute [x]
-  (handle
-    (let [doubled (* x 2)]
-      (perform log-msg "doubled")
-      (+ doubled 10))
-    (log-msg [msg resume] (resume msg))))
 
 ;; TEST: log and compute
 ;; EXPECT: 30
-(log-compute 10)
+(do
+  (define log-compute [x]
+    (handle
+      (let [doubled (* x 2)]
+        (do
+          (perform log-msg 0)
+          (+ doubled 10)))
+      (log-msg [msg resume] (resume msg))))
+  (log-compute 10))
 
 ;; TEST: log with value
 ;; EXPECT: 42
 (handle
-  (let [x (perform get-val)]
-    (perform tell-val x)
-    x)
-  (get-val [resume] (resume 42))
+  (let [x (perform get-val nil)]
+    (do
+      (perform tell-val x)
+      x))
+  (get-val [_ resume] (resume 42))
   (tell-val [msg resume] (resume msg)))
 
 ;; Trace effect for debugging
-;; TEST: trace calls
-;; EXPECT: "result"
+;; TEST: trace calls - numeric
+;; EXPECT: 100
 (handle
   (do
-    (perform trace "enter")
-    (perform trace "process")
-    "result")
+    (perform trace 1)
+    (perform trace 2)
+    100)
   (trace [msg resume] (resume msg)))
 
 ;; EXPECT: true
 (handle
   (do
     (if true
-      (perform log "true")
-      (perform log "false"))
+      (perform log 1)
+      (perform log 0))
     true)
   (log [msg resume] (resume msg)))

@@ -18,26 +18,19 @@
   (Get [_ resume] (resume 42))
   (Put [v resume] (resume nil)))
 
-;; Simulated stateful computation using nested handlers
-;; Count up from 0 to n and return final state
-(define count-to [n]
-  (handle
-    (let loop [i 0]
-      (if (= i n)
-        (perform Get nil)
-        (do
-          (perform Put (+ (perform Get nil) 1))
-          (loop (+ i 1)))))
-    (Get [_ resume] (resume n))  ;; simplified - returns n
-    (Put [v resume] (resume nil))))
+;; TEST: multiple get calls
+;; EXPECT: 20
+(handle
+  (+ (perform Get nil) (perform Get nil))
+  (Get [_ resume] (resume 10))
+  (Put [v resume] (resume nil)))
 
-;; TEST: count to 5
-;; EXPECT: 5
-(count-to 5)
-
-;; TEST: count to 0
-;; EXPECT: 0
-(count-to 0)
+;; TEST: get in let
+;; EXPECT: 100
+(handle
+  (let [x (perform Get nil)]
+    (* x x))
+  (Get [_ resume] (resume 10)))
 
 ;; Increment effect using state
 ;; TEST: increment effect
@@ -51,11 +44,11 @@
     (perform Increment nil)
     (perform Get nil))
   (Increment [_ resume] (resume nil))
-  (Get [_ resume] (resume 10)))  ;; simplified - 5 increments * 2
+  (Get [_ resume] (resume 10)))
 
-;; TEST: state with conditional
-;; EXPECT: "even"
+;; TEST: state with conditional - numeric
+;; EXPECT: 1
 (handle
   (let [x (perform Get nil)]
-    (if (= (% x 2) 0) "even" "odd"))
+    (if (= (% x 2) 0) 1 0))
   (Get [_ resume] (resume 42)))

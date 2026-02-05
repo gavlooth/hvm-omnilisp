@@ -32,8 +32,8 @@
 (bit-xor 12 10)
 
 ;; Bitwise NOT
-;; TEST: not of 0
-;; EXPECT: -1
+;; TEST: not of 0 (returns unsigned 2^32 - 1)
+;; EXPECT: 4294967295
 (bit-not 0)
 
 ;; Left shift

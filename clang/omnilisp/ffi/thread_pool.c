@@ -447,6 +447,20 @@ fn OmniFFIEntry* omni_ffi_lookup(u32 name_nick) {
 // FFI Dispatch (called during reduction)
 // =============================================================================
 
+// Forward declaration for recursive dispatch
+fn Term omni_ffi_dispatch(Term ffi_node);
+
+// Reduce a term, dispatching any FFI terms recursively
+// This allows nested FFI calls like (datetime-year (datetime-now))
+fn Term omni_ffi_reduce(Term t) {
+  t = wnf(t);
+  // If this is an FFI term, dispatch it
+  if (term_tag(t) == C02 && term_ext(t) == OMNI_NAM_FFI) {
+    return omni_ffi_dispatch(t);
+  }
+  return t;
+}
+
 // Dispatch #FFI{name, args} node
 fn Term omni_ffi_dispatch(Term ffi_node) {
   // #FFI{name, args} is C02 (2 args)

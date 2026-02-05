@@ -54,6 +54,14 @@ static u32 OMNI_NAM_AND;   // and
 static u32 OMNI_NAM_OR;    // or
 static u32 OMNI_NAM_NOT;   // not
 
+// Bitwise operations
+static u32 OMNI_NAM_BAND;  // bit-and
+static u32 OMNI_NAM_BOR;   // bit-or
+static u32 OMNI_NAM_BXOR;  // bit-xor
+static u32 OMNI_NAM_BNOT;  // bit-not
+static u32 OMNI_NAM_BSHL;  // bit-shift (left when positive)
+static u32 OMNI_NAM_BSHR;  // bit-shift (right when negative)
+
 // Type predicates
 static u32 OMNI_NAM_INTP;  // int?
 static u32 OMNI_NAM_LSTP;  // list?
@@ -65,13 +73,22 @@ static u32 OMNI_NAM_CON;   // Cons cell
 static u32 OMNI_NAM_NIL;   // Empty list
 static u32 OMNI_NAM_LST;   // List literal (quoted list)
 static u32 OMNI_NAM_CHR;   // Character
+static u32 OMNI_NAM_CToi;  // char->int
+static u32 OMNI_NAM_ItoC;  // int->char
 static u32 OMNI_NAM_ARR;   // Array
 static u32 OMNI_NAM_AGE;   // Array get: #AGe{arr, idx}
 static u32 OMNI_NAM_ASE;   // Array set: #ASe{arr, idx, val}
 static u32 OMNI_NAM_ALE;   // Array length: #ALe{arr}
+static u32 OMNI_NAM_ALIX;  // Array last index: #ALix{arr}
+static u32 OMNI_NAM_ATAK;  // Array take: #ATak{arr, n}
+static u32 OMNI_NAM_ADRP;  // Array drop: #ADrp{arr, n}
+static u32 OMNI_NAM_ASPA;  // Array split-at: #ASpA{arr, n}
+static u32 OMNI_NAM_ASUM;  // Array sum: #ASum{arr}
 static u32 OMNI_NAM_DICT;  // Dictionary
 static u32 OMNI_NAM_DGE;   // Dict get: #DGe{dict, key}
 static u32 OMNI_NAM_DSE;   // Dict set: #DSe{dict, key, val}
+static u32 OMNI_NAM_DMRG;  // Dict merge: #DMrg{d1, d2}
+static u32 OMNI_NAM_DENT;  // Dict entries: #DEnt{dict}
 static u32 OMNI_NAM_FST;   // First
 static u32 OMNI_NAM_SND;   // Second
 
@@ -174,6 +191,8 @@ static u32 OMNI_NAM_MABS;  // abs: #MAbs{x}
 static u32 OMNI_NAM_FLOR;  // floor: #Flor{x}
 static u32 OMNI_NAM_MCEI;  // ceil: #MCei{x}
 static u32 OMNI_NAM_ROND;  // round: #Rond{x}
+static u32 OMNI_NAM_SIGN;  // sign: #Sign{x}
+static u32 OMNI_NAM_TRNC;  // truncate: #Trnc{x}
 static u32 OMNI_NAM_RAND;  // random: #Rand{}
 
 // I/O operations (FFI-backed)
@@ -501,6 +520,12 @@ static u32 OMNI_NAM_SLCE;  // Slice: #Slce{coll, start, end} - generic dispatch
 static u32 OMNI_NAM_LAST;  // Last: #Last{coll} - get last element
 static u32 OMNI_NAM_INIT;  // Init: #Init{coll} - all but last element
 static u32 OMNI_NAM_FRNG;  // From range: #FRng{start, end, step}
+static u32 OMNI_NAM_DIST;  // Distinct: #Dist{coll} - remove duplicates
+static u32 OMNI_NAM_PART;  // Partition: #Part{n, coll} - split into groups
+static u32 OMNI_NAM_INTL;  // Interleave: #Intl{colls} - interleave collections
+static u32 OMNI_NAM_INPS;  // Interpose: #Inps{sep, coll} - insert separator
+static u32 OMNI_NAM_GRBY;  // Group-by: #GrBy{fn, coll} - group by key function
+static u32 OMNI_NAM_FREQ;  // Frequencies: #Freq{coll} - count occurrences
 
 // String operations
 static u32 OMNI_NAM_STR;   // String: #Str{chars}
@@ -597,6 +622,14 @@ fn void omni_names_init(void) {
   OMNI_NAM_OR  = omni_nick("Or");
   OMNI_NAM_NOT = omni_nick("Not");
 
+  // Bitwise operations
+  OMNI_NAM_BAND = omni_nick("BAnd");
+  OMNI_NAM_BOR  = omni_nick("BOr");
+  OMNI_NAM_BXOR = omni_nick("BXor");
+  OMNI_NAM_BNOT = omni_nick("BNot");
+  OMNI_NAM_BSHL = omni_nick("BShl");
+  OMNI_NAM_BSHR = omni_nick("BShr");
+
   // Type predicates
   OMNI_NAM_INTP = omni_nick("IntP");
   OMNI_NAM_LSTP = omni_nick("LstP");
@@ -608,13 +641,22 @@ fn void omni_names_init(void) {
   OMNI_NAM_NIL  = NAM_NIL;  // Use HVM4's NIL
   OMNI_NAM_LST  = omni_nick("Lst");  // List literal
   OMNI_NAM_CHR  = NAM_CHR;  // Use HVM4's CHR
+  OMNI_NAM_CToi = omni_nick("CToi");
+  OMNI_NAM_ItoC = omni_nick("ItoC");
   OMNI_NAM_ARR  = omni_nick("Arr");
   OMNI_NAM_AGE  = omni_nick("AGe");
   OMNI_NAM_ASE  = omni_nick("ASe");
   OMNI_NAM_ALE  = omni_nick("ALe");
+  OMNI_NAM_ALIX = omni_nick("ALix");
+  OMNI_NAM_ATAK = omni_nick("ATak");
+  OMNI_NAM_ADRP = omni_nick("ADrp");
+  OMNI_NAM_ASPA = omni_nick("ASpA");
+  OMNI_NAM_ASUM = omni_nick("ASum");
   OMNI_NAM_DICT = omni_nick("Dict");
   OMNI_NAM_DGE  = omni_nick("DGe");
   OMNI_NAM_DSE  = omni_nick("DSe");
+  OMNI_NAM_DMRG = omni_nick("DMrg");
+  OMNI_NAM_DENT = omni_nick("DEnt");
   OMNI_NAM_FST  = omni_nick("Fst");
   OMNI_NAM_SND  = omni_nick("Snd");
 
@@ -711,6 +753,8 @@ fn void omni_names_init(void) {
   OMNI_NAM_FLOR = omni_nick("Flor");
   OMNI_NAM_MCEI = omni_nick("MCei");
   OMNI_NAM_ROND = omni_nick("Rond");
+  OMNI_NAM_SIGN = omni_nick("Sign");
+  OMNI_NAM_TRNC = omni_nick("Trnc");
   OMNI_NAM_RAND = omni_nick("Rand");
 
   // I/O operations
@@ -1022,6 +1066,12 @@ fn void omni_names_init(void) {
   OMNI_NAM_LAST = omni_nick("Last");
   OMNI_NAM_INIT = omni_nick("Init");
   OMNI_NAM_FRNG = omni_nick("FRng");
+  OMNI_NAM_DIST = omni_nick("Dist");
+  OMNI_NAM_PART = omni_nick("Part");
+  OMNI_NAM_INTL = omni_nick("Intl");
+  OMNI_NAM_INPS = omni_nick("Inps");
+  OMNI_NAM_GRBY = omni_nick("GrBy");
+  OMNI_NAM_FREQ = omni_nick("Freq");
 
   // String operations
   OMNI_NAM_STR  = omni_nick("Str");

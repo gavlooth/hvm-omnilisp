@@ -12,6 +12,10 @@
 // strptime is a POSIX function, declare it manually if not available
 extern char *strptime(const char *s, const char *format, struct tm *tm);
 
+// FFI reduce function - dispatches nested FFI terms recursively
+// Defined in thread_pool.c
+fn Term omni_ffi_reduce(Term t);
+
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -323,7 +327,8 @@ fn Term omni_ffi_dt_year(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  // Use omni_ffi_reduce to dispatch nested FFI terms (e.g., from datetime-now)
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_year(dt);
 }
 
@@ -334,7 +339,7 @@ fn Term omni_ffi_dt_month(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_month(dt);
 }
 
@@ -345,7 +350,7 @@ fn Term omni_ffi_dt_day(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_day(dt);
 }
 
@@ -356,7 +361,7 @@ fn Term omni_ffi_dt_hour(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_hour(dt);
 }
 
@@ -367,7 +372,7 @@ fn Term omni_ffi_dt_minute(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_minute(dt);
 }
 
@@ -378,7 +383,7 @@ fn Term omni_ffi_dt_second(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_second(dt);
 }
 
@@ -389,7 +394,7 @@ fn Term omni_ffi_dt_to_timestamp(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   return omni_dt_to_timestamp(dt);
 }
 
@@ -411,7 +416,7 @@ fn Term omni_ffi_dt_add(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   Term tail = wnf(HEAP[loc + 1]);
 
   if (term_tag(tail) != C02 || term_ext(tail) != NAM_CON) {
@@ -431,7 +436,7 @@ fn Term omni_ffi_dt_sub(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   Term tail = wnf(HEAP[loc + 1]);
 
   if (term_tag(tail) != C02 || term_ext(tail) != NAM_CON) {
@@ -451,7 +456,7 @@ fn Term omni_ffi_dt_diff(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt1 = wnf(HEAP[loc]);
+  Term dt1 = omni_ffi_reduce(HEAP[loc]);
   Term tail = wnf(HEAP[loc + 1]);
 
   if (term_tag(tail) != C02 || term_ext(tail) != NAM_CON) {
@@ -459,7 +464,7 @@ fn Term omni_ffi_dt_diff(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 tail_loc = term_val(tail);
-  Term dt2 = wnf(HEAP[tail_loc]);
+  Term dt2 = omni_ffi_reduce(HEAP[tail_loc]);
 
   return omni_dt_diff(dt1, dt2);
 }
@@ -471,7 +476,7 @@ fn Term omni_ffi_dt_format(Term args) {
     return term_new_ctr(OMNI_NAM_ERR, 1, err_args);
   }
   u32 loc = term_val(args);
-  Term dt = wnf(HEAP[loc]);
+  Term dt = omni_ffi_reduce(HEAP[loc]);
   Term tail = wnf(HEAP[loc + 1]);
 
   if (term_tag(tail) != C02 || term_ext(tail) != NAM_CON) {

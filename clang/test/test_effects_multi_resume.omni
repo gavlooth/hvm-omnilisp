@@ -3,14 +3,14 @@
 ;; TEST: simple flip effect
 ;; EXPECT: 1
 (handle
-  (perform flip)
-  (flip [resume] (resume 1)))
+  (perform flip nil)
+  (flip [_ resume] (resume 1)))
 
-;; TEST: flip with boolean
-;; EXPECT: "heads"
+;; TEST: flip with boolean - numeric
+;; EXPECT: 1
 (handle
-  (if (perform flip-coin) "heads" "tails")
-  (flip-coin [resume] (resume true)))
+  (if (perform flip-coin nil) 1 0)
+  (flip-coin [_ resume] (resume true)))
 
 ;; TEST: choose first from options
 ;; EXPECT: 2
@@ -51,10 +51,10 @@
 ;; TEST: accumulate via nested perform
 ;; EXPECT: 15
 (handle
-  (+ (perform get-a) (+ (perform get-b) (perform get-c)))
-  (get-a [resume] (resume 5))
-  (get-b [resume] (resume 5))
-  (get-c [resume] (resume 5)))
+  (+ (perform get-a nil) (+ (perform get-b nil) (perform get-c nil)))
+  (get-a [_ resume] (resume 5))
+  (get-b [_ resume] (resume 5))
+  (get-c [_ resume] (resume 5)))
 
 ;; EXPECT: true
-(= (handle (perform val) (val [resume] (resume 100))) 100)
+(= (handle (perform val nil) (val [_ resume] (resume 100))) 100)

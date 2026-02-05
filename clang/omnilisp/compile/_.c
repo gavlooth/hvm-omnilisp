@@ -537,6 +537,25 @@ fn void omni_analyze_let_deps(LetBinding *bindings, u32 count) {
 // Lambda Emission
 // =============================================================================
 
+// Emit lambda as AST node (#Lam{body}) rather than native HVM4 lambda
+// This is needed for handler functions because @omni_eval pattern matching
+// doesn't reduce when applied to native lambdas
+fn void omni_emit_lambda_ast(OmniEmit *e, Term t) {
+  u8 tag = term_tag(t);
+  if (tag >= C00 && tag <= C16) {
+    u32 nam = term_ext(t);
+    u32 ari = tag - C00;
+    if ((nam == OMNI_NAM_LAM || nam == OMNI_NAM_LAMR) && ari == 1) {
+      fputs("#Lam{", e->out);
+      omni_emit_lambda_ast(e, omni_ctr_arg(t, 0));
+      fputc('}', e->out);
+      return;
+    }
+  }
+  // For non-lambda terms, emit normally
+  omni_emit_term(e, t);
+}
+
 fn void omni_emit_lambda(OmniEmit *e, Term body, int is_rec) {
   const char *name = omni_env_push(e);
   fputs("λ&", e->out);
@@ -1212,6 +1231,46 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       return;
     }
 
+    // Bitwise operations
+    if (nam == OMNI_NAM_BAND && ari == 2) {
+      fputs("#BAnd{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
+      return;
+    }
+    if (nam == OMNI_NAM_BOR && ari == 2) {
+      fputs("#BOr{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
+      return;
+    }
+    if (nam == OMNI_NAM_BXOR && ari == 2) {
+      fputs("#BXor{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
+      return;
+    }
+    if (nam == OMNI_NAM_BNOT && ari == 1) {
+      fputs("#BNot{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputc('}', e->out);
+      return;
+    }
+    if (nam == OMNI_NAM_BSHL && ari == 2) {
+      fputs("#BShl{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
+      return;
+    }
+
     // Data structures
     if (nam == OMNI_NAM_CON && ari == 2) {
       fputs("#CON{", e->out);
@@ -1303,6 +1362,18 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
       omni_emit_term(e, omni_ctr_arg(t, 0));
       fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));
+      fputc('}', e->out);
+      return;
+    }
+
+    // Handler definition - emit function as AST node, not native lambda
+    // This is needed because @omni_eval pattern matches don't work on native lambdas
+    if (nam == OMNI_NAM_HDEF && ari == 2) {
+      fputs("#HDef{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));  // effect tag
+      fputs(", ", e->out);
+      // Emit handler function as AST node (don't convert #Lam to native lambda)
+      omni_emit_lambda_ast(e, omni_ctr_arg(t, 1));
       fputc('}', e->out);
       return;
     }
@@ -1701,7 +1772,8 @@ fn int omni_compile_with_runtime(FILE *out, Term ast, const char *runtime_path) 
   free(runtime);
 
   // Emit main entry point
-  fputs("\n@main = @omni_unwrap(@omni_eval(@omni_menv_new(0)(#NIL)(#NIL))(", out);
+  // Create initial menv with: env=0, handlers=#NIL, parent=#Noth, level=0
+  fputs("\n@main = @omni_unwrap(@omni_eval(@omni_menv_new(0)(#NIL)(#Noth)(0))(", out);
   omni_compile_emit(out, ast);
   fputs("))\n", out);
   return 0;

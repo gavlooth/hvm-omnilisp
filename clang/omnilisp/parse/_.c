@@ -20,6 +20,44 @@
 static u32 OMNI_BINDS[OMNI_BIND_MAX];
 static u32 OMNI_BINDS_LEN = 0;
 
+// =============================================================================
+// Symbol Table - maps hashes back to original names
+// =============================================================================
+
+#define OMNI_SYMTAB_SIZE 8192
+typedef struct {
+  u32 hash;
+  char name[64];
+} OmniSymEntry;
+
+static OmniSymEntry OMNI_SYMTAB[OMNI_SYMTAB_SIZE];
+static u32 OMNI_SYMTAB_LEN = 0;
+
+// Register a symbol in the table (if not already present)
+fn void omni_symtab_register(u32 hash, const char *src, u32 start, u32 len) {
+  // Check if already registered
+  for (u32 i = 0; i < OMNI_SYMTAB_LEN; i++) {
+    if (OMNI_SYMTAB[i].hash == hash) return;  // Already exists
+  }
+  // Add new entry
+  if (OMNI_SYMTAB_LEN >= OMNI_SYMTAB_SIZE) return;  // Table full
+  OmniSymEntry *entry = &OMNI_SYMTAB[OMNI_SYMTAB_LEN++];
+  entry->hash = hash;
+  u32 copy_len = len < 63 ? len : 63;
+  memcpy(entry->name, src + start, copy_len);
+  entry->name[copy_len] = '\0';
+}
+
+// Look up a symbol by hash, returns NULL if not found
+fn const char* omni_symtab_lookup(u32 hash) {
+  for (u32 i = 0; i < OMNI_SYMTAB_LEN; i++) {
+    if (OMNI_SYMTAB[i].hash == hash) {
+      return OMNI_SYMTAB[i].name;
+    }
+  }
+  return NULL;
+}
+
 fn void omni_bind_push(u32 sym) {
   if (OMNI_BINDS_LEN >= OMNI_BIND_MAX) {
     fprintf(stderr, "OMNI_ERROR: too many binders\n");
@@ -145,6 +183,17 @@ fn u32 omni_symbol_nick(PState *s, u32 start, u32 len) {
   u32 copy_len = len > 4 ? 4 : len;
   memcpy(buf, s->src + start, copy_len);
   return omni_nick(buf);
+}
+
+// FNV-1a hash for full symbol - returns 24-bit hash
+// Used for effect names which may have common prefixes
+fn u32 omni_symbol_hash(PState *s, u32 start, u32 len) {
+  u32 hash = 2166136261u;  // FNV offset basis
+  for (u32 i = 0; i < len; i++) {
+    hash ^= (u8)(s->src[start + i]);
+    hash *= 16777619u;  // FNV prime
+  }
+  return hash & EXT_MASK;  // Mask to 24 bits
 }
 
 // Check if symbol matches a literal
@@ -308,11 +357,21 @@ fn Term omni_and(Term a, Term b) { return omni_ctr2(OMNI_NAM_AND, a, b); }
 fn Term omni_or(Term a, Term b)  { return omni_ctr2(OMNI_NAM_OR, a, b); }
 fn Term omni_not(Term a)         { return omni_ctr1(OMNI_NAM_NOT, a); }
 
+// Bitwise operations
+fn Term omni_band(Term a, Term b) { return omni_ctr2(OMNI_NAM_BAND, a, b); }
+fn Term omni_bor(Term a, Term b)  { return omni_ctr2(OMNI_NAM_BOR, a, b); }
+fn Term omni_bxor(Term a, Term b) { return omni_ctr2(OMNI_NAM_BXOR, a, b); }
+fn Term omni_bnot(Term a)         { return omni_ctr1(OMNI_NAM_BNOT, a); }
+fn Term omni_bshl(Term a, Term b) { return omni_ctr2(OMNI_NAM_BSHL, a, b); }
+fn Term omni_bshr(Term a, Term b) { return omni_ctr2(OMNI_NAM_BSHR, a, b); }
+
 fn Term omni_cons(Term h, Term t) { return omni_ctr2(OMNI_NAM_CON, h, t); }
 fn Term omni_nil(void)            { return omni_ctr0(OMNI_NAM_NIL); }
 fn int  omni_is_nil(Term t)       { return term_tag(t) == C00 && term_ext(t) == OMNI_NAM_NIL; }
 fn Term omni_ctr_arg(Term t, u32 idx) { return HEAP[term_val(t) + idx]; }
 fn Term omni_chr(u32 c)           { return omni_ctr1(OMNI_NAM_CHR, term_new_num(c)); }
+fn Term omni_char_to_int(Term t)  { return omni_ctr1(OMNI_NAM_CToi, t); }
+fn Term omni_int_to_char(Term t)  { return omni_ctr1(OMNI_NAM_ItoC, t); }
 
 fn Term omni_nothing(void) { return omni_ctr0(OMNI_NAM_NOTH); }
 fn Term omni_true(void)    { return omni_ctr0(OMNI_NAM_TRUE); }
@@ -1594,9 +1653,11 @@ fn Term parse_omni_quoted_data(PState *s) {
     if (omni_symbol_is(s, sym_start, sym_len, "nothing")) return omni_nothing();
     if (omni_symbol_is(s, sym_start, sym_len, "nil")) return omni_nil();
 
-    // Use nick encoding for quoted symbols (not table ID!)
-    u32 nick = omni_symbol_nick(s, sym_start, sym_len);
-    return omni_sym(nick);
+    // Use full hash for quoted symbols to avoid collisions
+    u32 hash = omni_symbol_hash(s, sym_start, sym_len);
+    // Register for reverse lookup when printing
+    omni_symtab_register(hash, s->src, sym_start, sym_len);
+    return omni_sym(hash);
   }
 
   parse_error(s, "quoted data", c);
@@ -1664,19 +1725,55 @@ fn Term parse_omni_atom(PState *s) {
 
   // Colon-quoted symbol: :name
   if (c == ':') {
+    u32 colon_pos = s->pos;  // Save position of colon for registration
     parse_advance(s);
     u32 sym_start, sym_len;
     if (omni_parse_symbol_raw(s, &sym_start, &sym_len)) {
-      u32 nick = omni_symbol_nick(s, sym_start, sym_len);
-      return omni_sym(nick);
+      // Use full hash for colon-quoted symbols to avoid collisions
+      u32 hash = omni_symbol_hash(s, sym_start, sym_len);
+      // Register for reverse lookup when printing - include the colon
+      omni_symtab_register(hash, s->src, colon_pos, sym_len + 1);
+      return omni_sym(hash);
     }
     parse_error(s, "symbol after :", parse_peek(s));
     return omni_nil();
   }
 
-  // Character literal: #\c
+  // Character literal: #\c (scheme-style) or \c (OmniLisp shorthand)
   if (c == '#' && s->pos + 1 < s->len && s->src[s->pos + 1] == '\\') {
     return parse_omni_char(s);
+  }
+
+  // Character literal shorthand: \c, \space, \newline, \xNN
+  if (c == '\\') {
+    parse_advance(s);  // skip backslash
+
+    // Check for named characters
+    if (omni_match_str(s, "newline")) return omni_chr('\n');
+    if (omni_match_str(s, "space")) return omni_chr(' ');
+    if (omni_match_str(s, "tab")) return omni_chr('\t');
+    if (omni_match_str(s, "return")) return omni_chr('\r');
+
+    // Hex character: \xNN
+    if (parse_peek(s) == 'x') {
+      parse_advance(s);
+      char h1 = parse_peek(s); parse_advance(s);
+      char h2 = parse_peek(s); parse_advance(s);
+      int d1 = isdigit(h1) ? h1 - '0' : (tolower(h1) - 'a' + 10);
+      int d2 = isdigit(h2) ? h2 - '0' : (tolower(h2) - 'a' + 10);
+      u32 chr = (u32)(d1 * 16 + d2);
+      omni_skip(s);
+      return omni_chr(chr);
+    }
+
+    // Single character
+    u32 chr = parse_utf8(s);
+    if (chr == 0) {
+      chr = (u32)parse_peek(s);
+      parse_advance(s);
+    }
+    omni_skip(s);
+    return omni_chr(chr);
   }
 
   // Value-to-type (singleton type): #val expr
@@ -1703,6 +1800,7 @@ fn Term parse_omni_atom(PState *s) {
     while (parse_peek(s) != '}' && !parse_at_end(s)) {
       Term key = parse_omni_expr(s);
       Term val = parse_omni_expr(s);
+      // Pair format: (key . val) - evaluator transforms to (key . (val . nil))
       Term pair = omni_cons(key, val);
       Term cell = omni_cons(pair, omni_nil());
       *tail = cell;
@@ -3744,7 +3842,8 @@ fn Term parse_omni_sexp(PState *s) {
       // Effect name
       u32 eff_start, eff_len;
       omni_parse_symbol_raw(s, &eff_start, &eff_len);
-      u32 eff_nick = omni_symbol_nick(s, eff_start, eff_len);
+      // Use full hash for effect names to avoid collisions (e.g., get-a vs get-b)
+      u32 eff_nick = omni_symbol_hash(s, eff_start, eff_len);
 
       // Handler args - always use []
       omni_expect_char(s, '[');
@@ -4069,6 +4168,38 @@ fn Term parse_omni_sexp(PState *s) {
     Term a = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_not(a);
+  }
+
+  // Bitwise operators
+  if (omni_symbol_is(s, sym_start, sym_len, "bit-and")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_band(a, b);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "bit-or")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_bor(a, b);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "bit-xor")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_bxor(a, b);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "bit-not")) {
+    Term a = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_bnot(a);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "bit-shift")) {
+    Term a = parse_omni_expr(s);
+    Term b = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    // bit-shift: positive shift = left, negative = right
+    return omni_bshl(a, b);
   }
 
   // Simple type predicates
@@ -4673,6 +4804,66 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_ctr3(OMNI_NAM_UPIN, coll, path, func);
   }
 
+  // dict-get: (dict-get dict key) - get value from dict
+  if (omni_symbol_is(s, sym_start, sym_len, "dict-get")) {
+    Term dict = parse_omni_expr(s);
+    Term key = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_DGE, dict, key);
+  }
+
+  // keys / dict-keys: (keys coll) - get keys from dict/collection
+  if (omni_symbol_is(s, sym_start, sym_len, "keys") ||
+      omni_symbol_is(s, sym_start, sym_len, "dict-keys")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_KEYS, coll);
+  }
+
+  // values / vals / dict-values: (values coll) - get values from dict/collection
+  if (omni_symbol_is(s, sym_start, sym_len, "values") ||
+      omni_symbol_is(s, sym_start, sym_len, "vals") ||
+      omni_symbol_is(s, sym_start, sym_len, "dict-values")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_VALS, coll);
+  }
+
+  // dissoc / dict-remove: (dissoc coll key) - remove key from collection
+  if (omni_symbol_is(s, sym_start, sym_len, "dissoc") ||
+      omni_symbol_is(s, sym_start, sym_len, "dict-remove")) {
+    Term coll = parse_omni_expr(s);
+    Term key = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_DISS, coll, key);
+  }
+
+  // dict-set: (dict-set dict key val) - set key to value in dict
+  if (omni_symbol_is(s, sym_start, sym_len, "dict-set")) {
+    Term dict = parse_omni_expr(s);
+    Term key = parse_omni_expr(s);
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_DSE, dict, key, val);
+  }
+
+  // dict-merge: (dict-merge d1 d2) - merge two dicts (d2 wins on conflict)
+  if (omni_symbol_is(s, sym_start, sym_len, "dict-merge") ||
+      omni_symbol_is(s, sym_start, sym_len, "merge")) {
+    Term d1 = parse_omni_expr(s);
+    Term d2 = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_DMRG, d1, d2);
+  }
+
+  // dict-entries / entries: (entries dict) - get list of (key . value) pairs
+  if (omni_symbol_is(s, sym_start, sym_len, "dict-entries") ||
+      omni_symbol_is(s, sym_start, sym_len, "entries")) {
+    Term dict = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_DENT, dict);
+  }
+
   // ==========================================================================
   // Mutation primitives (side-effecting, use with ^:mutable bindings)
   // ==========================================================================
@@ -4755,6 +4946,58 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_ctr1(OMNI_NAM_FLAT, nested);
   }
 
+  // distinct: (distinct coll) - remove duplicates from collection
+  if (omni_symbol_is(s, sym_start, sym_len, "distinct")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_DIST, coll);
+  }
+
+  // partition: (partition n coll) - split into groups of n elements
+  if (omni_symbol_is(s, sym_start, sym_len, "partition")) {
+    Term n = parse_omni_expr(s);
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_PART, n, coll);
+  }
+
+  // interleave: (interleave coll1 coll2 ...) - interleave collections
+  if (omni_symbol_is(s, sym_start, sym_len, "interleave")) {
+    Term colls = omni_nil();
+    Term *tail = &colls;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      Term coll = parse_omni_expr(s);
+      Term cell = omni_cons(coll, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_INTL, colls);
+  }
+
+  // interpose: (interpose sep coll) - insert separator between elements
+  if (omni_symbol_is(s, sym_start, sym_len, "interpose")) {
+    Term sep = parse_omni_expr(s);
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_INPS, sep, coll);
+  }
+
+  // group-by: (group-by fn coll) - group elements by key function
+  if (omni_symbol_is(s, sym_start, sym_len, "group-by")) {
+    Term key_fn = parse_omni_expr(s);
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_GRBY, key_fn, coll);
+  }
+
+  // frequencies: (frequencies coll) - count occurrences of each element
+  if (omni_symbol_is(s, sym_start, sym_len, "frequencies")) {
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_FREQ, coll);
+  }
+
   // sort: (sort coll) or (sort coll cmp) - sort collection
   if (omni_symbol_is(s, sym_start, sym_len, "sort")) {
     Term coll = parse_omni_expr(s);
@@ -4763,7 +5006,7 @@ fn Term parse_omni_sexp(PState *s) {
       cmp = parse_omni_expr(s);
     } else {
       // Default comparator: (lambda [a] [b] (< a b))
-      cmp = omni_ctr2(OMNI_NAM_LAM, omni_ctr2(OMNI_NAM_LAM, omni_ctr2(OMNI_NAM_LT, omni_var(1), omni_var(0)), omni_nothing()), omni_nothing());
+      cmp = omni_lam(omni_lam(omni_ctr2(OMNI_NAM_LT, omni_var(1), omni_var(0))));
     }
     omni_expect_char(s, ')');
     return omni_ctr2(OMNI_NAM_SORT, coll, cmp);
@@ -4803,6 +5046,67 @@ fn Term parse_omni_sexp(PState *s) {
     Term arr = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_ALE, arr);
+  }
+
+  // arr-last: (arr-last arr) - get last element
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-last") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-last")) {
+    Term arr = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_LAST, arr);
+  }
+
+  // arr-last-index: (arr-last-index arr) - get index of last element (length - 1)
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-last-index") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-last-index")) {
+    Term arr = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_ALIX, arr);
+  }
+
+  // arr-slice: (arr-slice arr start end) - get slice
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-slice") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-slice")) {
+    Term arr = parse_omni_expr(s);
+    Term start = parse_omni_expr(s);
+    Term end = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr3(OMNI_NAM_SLCE, arr, start, end);
+  }
+
+  // arr-take: (arr-take arr n) - take first n elements
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-take") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-take")) {
+    Term arr = parse_omni_expr(s);
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_ATAK, arr, n);
+  }
+
+  // arr-drop: (arr-drop arr n) - drop first n elements
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-drop") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-drop")) {
+    Term arr = parse_omni_expr(s);
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_ADRP, arr, n);
+  }
+
+  // arr-split-at: (arr-split-at arr n) - split at index
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-split-at") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-split-at")) {
+    Term arr = parse_omni_expr(s);
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_ASPA, arr, n);
+  }
+
+  // arr-sum: (arr-sum arr) - sum of array elements
+  if (omni_symbol_is(s, sym_start, sym_len, "arr-sum") ||
+      omni_symbol_is(s, sym_start, sym_len, "array-sum")) {
+    Term arr = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_ASUM, arr);
   }
 
   // range: (range end) or (range start end) or (range start end step)
@@ -5004,9 +5308,16 @@ fn Term parse_omni_sexp(PState *s) {
     return omni_ctr2(OMNI_NAM_IALL, iter, pred);
   }
 
-  // iter-nth: (iter-nth n iter) - get nth element
-  if (omni_symbol_is(s, sym_start, sym_len, "iter-nth") ||
-      omni_symbol_is(s, sym_start, sym_len, "nth")) {
+  // nth: (nth n coll) - get nth element from collection
+  if (omni_symbol_is(s, sym_start, sym_len, "nth")) {
+    Term n = parse_omni_expr(s);
+    Term coll = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr2(OMNI_NAM_NTH, coll, n);
+  }
+
+  // iter-nth: (iter-nth n iter) - get nth element from iterator
+  if (omni_symbol_is(s, sym_start, sym_len, "iter-nth")) {
     Term n = parse_omni_expr(s);
     Term iter = parse_omni_expr(s);
     omni_expect_char(s, ')');
@@ -5126,6 +5437,18 @@ fn Term parse_omni_sexp(PState *s) {
     Term x = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_ROND, x);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "sign") ||
+      omni_symbol_is(s, sym_start, sym_len, "signum")) {
+    Term x = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_SIGN, x);
+  }
+  if (omni_symbol_is(s, sym_start, sym_len, "truncate") ||
+      omni_symbol_is(s, sym_start, sym_len, "trunc")) {
+    Term x = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_TRNC, x);
   }
   if (omni_symbol_is(s, sym_start, sym_len, "random")) {
     omni_expect_char(s, ')');
@@ -5288,6 +5611,28 @@ fn Term parse_omni_sexp(PState *s) {
     omni_expect_char(s, ')');
     // Equivalent to (get-in json path)
     return omni_ctr2(OMNI_NAM_GTIN, json, path);
+  }
+
+  // json-array?: (json-array? val) - check if value is an array/list
+  if (omni_symbol_is(s, sym_start, sym_len, "json-array?") ||
+      omni_symbol_is(s, sym_start, sym_len, "array?")) {
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_JARR, val);
+  }
+
+  // json-object?: (json-object? val) - check if value is an object/dict
+  if (omni_symbol_is(s, sym_start, sym_len, "json-object?") ||
+      omni_symbol_is(s, sym_start, sym_len, "object?")) {
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_ctr1(OMNI_NAM_JOBJ, val);
+  }
+
+  // json-null: returns JSON null value (nothing)
+  if (omni_symbol_is(s, sym_start, sym_len, "json-null")) {
+    omni_expect_char(s, ')');
+    return omni_ctr0(OMNI_NAM_JNUL);
   }
 
   // ==========================================================================
@@ -5959,8 +6304,43 @@ fn Term parse_omni_sexp(PState *s) {
   }
 
   // perform: (perform effect-tag payload)
+  // Effect tag can be:
+  // - Bare symbol: (perform ask payload) -> parsed as literal effect name
+  // - Quoted symbol: (perform 'ask payload) -> evaluates to #Sym{hash}
+  // - Expression: (perform my-var payload) -> evaluated at runtime
   if (omni_symbol_is(s, sym_start, sym_len, "perform")) {
-    Term tag = parse_omni_expr(s);
+    omni_skip(s);
+    Term tag;
+    char c = parse_peek(s);
+
+    // Check if it's a bare symbol (not quoted, not in parens)
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_') {
+      // Check if this is a bare symbol (effect name) vs a bound variable
+      u32 tag_start, tag_len;
+      u32 save_pos = s->pos;
+      if (omni_parse_symbol_raw(s, &tag_start, &tag_len)) {
+        u32 tag_nick = omni_symbol_nick(s, tag_start, tag_len);
+        u32 idx;
+        if (omni_bind_lookup(tag_nick, &idx)) {
+          // It's a bound variable - restore and parse as expression
+          s->pos = save_pos;
+          tag = parse_omni_expr(s);
+        } else {
+          // It's an unbound bare symbol - treat as effect name
+          // Use the same hash function as handler parsing for consistency
+          u32 tag_hash = omni_symbol_hash(s, tag_start, tag_len);
+          // Create #Sym{hash} wrapped in #Cod to represent a quoted symbol
+          tag = omni_ctr1(OMNI_NAM_COD, omni_sym(tag_hash));
+        }
+      } else {
+        s->pos = save_pos;
+        tag = parse_omni_expr(s);
+      }
+    } else {
+      // Not a bare symbol - parse as expression (e.g., 'foo, (get-effect), etc.)
+      tag = parse_omni_expr(s);
+    }
+
     Term payload = omni_nothing();
     if (parse_peek(s) != ')') {
       payload = parse_omni_expr(s);
@@ -6192,6 +6572,22 @@ fn Term parse_omni_sexp(PState *s) {
     Term n = parse_omni_expr(s);
     omni_expect_char(s, ')');
     return omni_ctr1(OMNI_NAM_ITOS, n);
+  }
+
+  // char->int: (char->int char/str) -> code point of first character
+  if (omni_symbol_is(s, sym_start, sym_len, "char->int") ||
+      omni_symbol_is(s, sym_start, sym_len, "char-to-int")) {
+    Term val = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_char_to_int(val);
+  }
+
+  // int->char: (int->char n) -> character with that code point
+  if (omni_symbol_is(s, sym_start, sym_len, "int->char") ||
+      omni_symbol_is(s, sym_start, sym_len, "int-to-char")) {
+    Term n = parse_omni_expr(s);
+    omni_expect_char(s, ')');
+    return omni_int_to_char(n);
   }
 
   // Default: function application
