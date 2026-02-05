@@ -1984,3 +1984,66 @@
     #Cst: λ&n. n
     _: λ&u_. 0  // Unknown tag
   }(tag)
+
+// =============================================================================
+// Phase 3.2: Effect Handler Verification
+// =============================================================================
+//
+// Static checks that handlers properly cover all performed effects.
+
+// Check that all effects in body are handled
+// Returns #EfOk if all handled, #EfWarn{unhandled_effects} otherwise
+@effect_check_handled = λ&body_effects. λ&handlers.
+  !!&handled_tags = @handler_list_tags(handlers);
+  !!&handled_row  = #ERow{handled_tags, #ENil};
+  !!&residual     = @effect_row_remove_handled(body_effects)(handlers);
+  !!&is_pure      = @effect_row_is_pure(residual);
+  λ{
+    1: #EfOk
+    _: λ&u_. #EfWarn{residual}
+  }(is_pure)
+
+// Extract all tags from a handler list
+@handler_list_tags = λ&handlers.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&tag = @handler_get_tag(h);
+      #CON{tag, @handler_list_tags(t)}
+  }(handlers)
+
+// Check handler completeness for a full handle expression
+// body_expr: the body being handled
+// handler_list: the handler definitions
+// menv: current environment (for effect inference)
+// Returns: #EfOk or #EfWarn{residual_effects}
+@effect_check_handle_expr = λ&menv. λ&body_expr. λ&handler_list.
+  !!&body_effects = @effect_infer(menv)(body_expr);
+  @effect_check_handled(body_effects)(handler_list)
+
+// =============================================================================
+// Phase 3.3: Effect Inference Integration
+// =============================================================================
+//
+// Functions to infer and report effect signatures for definitions.
+
+// Infer effect signature for a function definition
+// Returns #EfSig{param_type, return_type, effects}
+@effect_infer_fn = λ&menv. λ&body.
+  !!&effects = @effect_infer(menv)(body);
+  #EfSig{#TAny, #TAny, effects}
+
+// Get the effect row from a function signature
+@effect_sig_effects = λ&sig.
+  λ{
+    #EfSig: λ&p. λ&r. λ&e. e
+    _: λ&u_. @effect_row_empty
+  }(sig)
+
+// Pretty-print an effect row (for error messages)
+// Returns a list of effect name nicks
+@effect_row_to_list = λ&row.
+  λ{
+    #ERow: λ&effs. λ&rest. effs
+    _: λ&u_. #NIL
+  }(row)
