@@ -1650,3 +1650,337 @@
     _: #NIL
   }(result)
 
+// =============================================================================
+// Phase 3.1: Effect Row Types
+// =============================================================================
+//
+// Effect rows track which effects a computation may perform.
+// They extend the type system to statically verify effect handling.
+//
+// Representation:
+//   #ERow{effects, rest}
+//     effects: sorted list of effect names (nick-encoded)
+//     rest: #ENil (closed/pure) or #EVar{id} (open/polymorphic)
+//
+// Examples:
+//   #ERow{#NIL, #ENil}                     = {} (pure)
+//   #ERow{#CON{ask, #NIL}, #ENil}          = {Ask}
+//   #ERow{#CON{ask, #CON{log, #NIL}}, #ENil} = {Ask, Log}
+//   #ERow{#CON{io, #NIL}, #EVar{42}}       = {IO | ε₄₂}
+
+// --- Construction ---
+
+// Empty effect row (pure computation)
+@effect_row_empty = #ERow{#NIL, #ENil}
+
+// Single effect row
+@effect_row_single = λ&name. #ERow{#CON{name, #NIL}, #ENil}
+
+// Open effect row with variable (for polymorphism)
+@effect_row_open = λ&name. λ&var_id. #ERow{#CON{name, #NIL}, #EVar{var_id}}
+
+// --- Predicates ---
+
+// Check if effect row is pure (no effects)
+@effect_row_is_pure = λ&row.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      λ{
+        #NIL:
+          λ{
+            #ENil: 1
+            _: λ&u_. 0  // Has variable tail, not proven pure
+          }(rest)
+        _: λ&u_. 0  // Has effects
+      }(effs)
+    _: λ&u_. 0
+  }(row)
+
+// Check if effect row contains a specific effect
+@effect_row_contains = λ&row. λ&effect_name.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      @effect_list_contains(effs)(effect_name)
+    _: λ&u_. 0
+  }(row)
+
+// Check if an effect is in a list
+@effect_list_contains = λ&lst. λ&name.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t.
+      !!&eq = (h == name);
+      λ{
+        1: 1
+        _: λ&u_. @effect_list_contains(t)(name)
+      }(eq)
+  }(lst)
+
+// --- Operations ---
+
+// Union of two effect rows: merge effect lists, combine tails
+@effect_row_union = λ&e1. λ&e2.
+  λ{
+    #ERow: λ&effs1. λ&rest1.
+      λ{
+        #ERow: λ&effs2. λ&rest2.
+          !!&merged = @effect_list_merge(effs1)(effs2);
+          !!&tail   = @effect_rest_merge(rest1)(rest2);
+          #ERow{merged, tail}
+        _: λ&u_. e1
+      }(e2)
+    _: λ&u_. e2
+  }(e1)
+
+// Merge two sorted effect lists (union, no duplicates)
+@effect_list_merge = λ&l1. λ&l2.
+  λ{
+    #NIL: l2
+    #CON: λ&h1. λ&t1.
+      @effect_list_insert(h1)(@effect_list_merge(t1)(l2))
+  }(l1)
+
+// Insert an effect name into a sorted list (no duplicates)
+@effect_list_insert = λ&name. λ&lst.
+  λ{
+    #NIL: #CON{name, #NIL}
+    #CON: λ&h. λ&t.
+      !!&eq  = (name == h);
+      !!&lt_ = (name < h);
+      λ{
+        1: lst  // Already present
+        _: λ&u_.
+          λ{
+            1: #CON{name, lst}  // Insert before
+            _: λ&u_. #CON{h, @effect_list_insert(name)(t)}  // Continue
+          }(lt_)
+      }(eq)
+  }(lst)
+
+// Merge effect row tails
+@effect_rest_merge = λ&r1. λ&r2.
+  λ{
+    #ENil: r2
+    #EVar: λ&id1.
+      λ{
+        #ENil: r1
+        #EVar: λ&id2.
+          !!&same = (id1 == id2);
+          λ{
+            1: r1  // Same variable
+            _: λ&u_. r1  // Keep first (unification resolves later)
+          }(same)
+        _: λ&u_. r1
+      }(r2)
+    _: λ&u_. r1
+  }(r1)
+
+// Remove a specific effect from a row
+@effect_row_remove = λ&row. λ&effect_name.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      #ERow{@effect_list_remove(effs)(effect_name), rest}
+    _: λ&u_. row
+  }(row)
+
+// Remove an element from a sorted list
+@effect_list_remove = λ&lst. λ&name.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&eq = (h == name);
+      λ{
+        1: t  // Found, remove it (skip rest since sorted, no dups)
+        _: λ&u_. #CON{h, @effect_list_remove(t)(name)}
+      }(eq)
+  }(lst)
+
+// Remove all effects covered by a handler list from an effect row
+// handlers is a list of #Hdlr{tag, fn} or #HDef{tag, fn_expr}
+@effect_row_remove_handled = λ&row. λ&handlers.
+  λ{
+    #NIL: row
+    #CON: λ&h. λ&t.
+      !!&tag = @handler_get_tag(h);
+      @effect_row_remove_handled(@effect_row_remove(row)(tag))(t)
+  }(handlers)
+
+// Extract tag from handler definition
+@handler_get_tag = λ&handler.
+  λ{
+    #HDef: λ&tag. λ&fn. tag
+    #Hdlr: λ&tag. λ&fn. tag
+    _: λ&u_. 0
+  }(handler)
+
+// --- Subset check ---
+
+// Check if all effects in row1 are handled by row2
+// Returns 1 if row1 ⊆ row2
+@effect_row_subset = λ&row1. λ&row2.
+  λ{
+    #ERow: λ&effs1. λ&rest1.
+      λ{
+        #ERow: λ&effs2. λ&rest2.
+          @effect_list_subset(effs1)(effs2)
+        _: λ&u_. 0
+      }(row2)
+    _: λ&u_. 1  // Non-row is trivially subset
+  }(row1)
+
+@effect_list_subset = λ&l1. λ&l2.
+  λ{
+    #NIL: 1  // Empty is subset of anything
+    #CON: λ&h. λ&t.
+      !!&found = @effect_list_contains(l2)(h);
+      λ{
+        1: @effect_list_subset(t)(l2)
+        _: λ&u_. 0  // Not found in l2
+      }(found)
+  }(l1)
+
+// --- Unification ---
+
+// Unify two effect rows during type checking
+// Returns #UOk{substitution} or #UFal{reason}
+@effect_row_unify = λ&e1. λ&e2. λ&subst.
+  λ{
+    #ERow: λ&effs1. λ&rest1.
+      λ{
+        #ERow: λ&effs2. λ&rest2.
+          // First check if effect lists match
+          !!&lists_eq = @effect_list_eq(effs1)(effs2);
+          λ{
+            1: // Lists match, unify tails
+              @effect_rest_unify(rest1)(rest2)(subst)
+            _: λ&u_.
+              // Lists differ — try to unify via row variable
+              @effect_row_unify_diff(effs1)(rest1)(effs2)(rest2)(subst)
+          }(lists_eq)
+        _: λ&u_. #UFal{#EfMismatch}
+      }(e2)
+    _: λ&u_.
+      // e1 is not an ERow — could be an effect variable
+      #UFal{#EfMismatch}
+  }(e1)
+
+// Unify effect row tails
+@effect_rest_unify = λ&r1. λ&r2. λ&subst.
+  λ{
+    #ENil:
+      λ{
+        #ENil: #UOk{subst}
+        #EVar: λ&id. #UOk{@subst_add(subst)(id)(#ERow{#NIL, #ENil})}
+        _: λ&u_. #UFal{#EfTailMismatch}
+      }(r2)
+    #EVar: λ&id1.
+      λ{
+        #ENil: #UOk{@subst_add(subst)(id1)(#ERow{#NIL, #ENil})}
+        #EVar: λ&id2.
+          !!&same = (id1 == id2);
+          λ{
+            1: #UOk{subst}  // Same variable
+            _: λ&u_. #UOk{@subst_add(subst)(id1)(#ERow{#NIL, r2})}
+          }(same)
+        _: λ&u_. #UFal{#EfTailMismatch}
+      }(r2)
+    _: λ&u_. #UFal{#EfTailMismatch}
+  }(r1)
+
+// Unify when effect lists differ — one side may have a variable tail
+@effect_row_unify_diff = λ&effs1. λ&rest1. λ&effs2. λ&rest2. λ&subst.
+  λ{
+    #EVar: λ&id1.
+      // rest1 is variable — it absorbs the difference
+      !!&diff = @effect_list_diff(effs2)(effs1);
+      #UOk{@subst_add(subst)(id1)(#ERow{diff, rest2})}
+    _: λ&u_.
+      λ{
+        #EVar: λ&id2.
+          // rest2 is variable — it absorbs the difference
+          !!&diff = @effect_list_diff(effs1)(effs2);
+          #UOk{@subst_add(subst)(id2)(#ERow{diff, rest1})}
+        _: λ&u_. #UFal{#EfMismatch}
+      }(rest2)
+  }(rest1)
+
+// List equality check
+@effect_list_eq = λ&l1. λ&l2.
+  λ{
+    #NIL:
+      λ{
+        #NIL: 1
+        _: λ&u_. 0
+      }(l2)
+    #CON: λ&h1. λ&t1.
+      λ{
+        #CON: λ&h2. λ&t2.
+          !!&eq = (h1 == h2);
+          λ{
+            1: @effect_list_eq(t1)(t2)
+            _: λ&u_. 0
+          }(eq)
+        _: λ&u_. 0
+      }(l2)
+  }(l1)
+
+// List difference: elements in l1 not in l2
+@effect_list_diff = λ&l1. λ&l2.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&found = @effect_list_contains(l2)(h);
+      λ{
+        1: @effect_list_diff(t)(l2)  // Skip — in l2
+        _: λ&u_. #CON{h, @effect_list_diff(t)(l2)}  // Keep — not in l2
+      }(found)
+  }(l1)
+
+// --- Inference ---
+
+// Infer the effect row of an expression
+// Returns #ERow{effects, rest}
+@effect_infer = λ&menv. λ&exp.
+  λ{
+    #Lit:  λ&n. @effect_row_empty
+    #Cst:  λ&n. @effect_row_empty
+    #Var:  λ&i. @effect_row_empty
+    #Sym:  λ&s. @effect_row_empty
+    #Lam:  λ&body. @effect_row_empty  // Effects are in the function type
+    #LamR: λ&body. @effect_row_empty
+
+    #App: λ&fn. λ&arg.
+      @effect_row_union(@effect_infer(menv)(fn))(@effect_infer(menv)(arg))
+
+    #Perf: λ&tag. λ&payload.
+      // Perform adds the named effect
+      !!&tag_name = @effect_resolve_tag(menv)(tag);
+      @effect_row_union(@effect_row_single(tag_name))(@effect_infer(menv)(payload))
+
+    #Hdle: λ&handlers. λ&body.
+      // Handle removes effects covered by its handlers
+      @effect_row_remove_handled(@effect_infer(menv)(body))(handlers)
+
+    #Do: λ&first. λ&rest.
+      @effect_row_union(@effect_infer(menv)(first))(@effect_infer(menv)(rest))
+
+    #If: λ&cond. λ&then. λ&else_.
+      @effect_row_union(@effect_infer(menv)(cond))(
+        @effect_row_union(@effect_infer(menv)(then))(@effect_infer(menv)(else_)))
+
+    #Let: λ&val. λ&body.
+      @effect_row_union(@effect_infer(menv)(val))(@effect_infer(menv)(body))
+
+    _: λ&u_. @effect_row_empty  // Unknown forms are pure by default
+  }(exp)
+
+// Resolve effect tag to its name
+// Tags in perform are usually #Sym{nick} or #Cod{#Sym{nick}}
+@effect_resolve_tag = λ&menv. λ&tag.
+  λ{
+    #Sym: λ&n. n
+    #Cod: λ&inner. @effect_resolve_tag(menv)(inner)
+    #Lit: λ&n. n
+    #Cst: λ&n. n
+    _: λ&u_. 0  // Unknown tag
+  }(tag)
