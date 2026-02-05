@@ -36,3 +36,7 @@ Proper error handling with Result types, exceptions, and clear error messages.
 ---
 
 **Status:** Design complete. Testing via existing test files.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

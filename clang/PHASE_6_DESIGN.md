@@ -46,3 +46,7 @@ docs/
 ---
 
 **Status:** Design complete. Documentation to be written in parallel with implementation.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

@@ -268,3 +268,7 @@ Given HEARTBEAT.md marks this as "HVM only", the C interpreter will continue wit
 ---
 
 **Implementation Approach:** Design-first for HVM backend. C interpreter maintains current runtime-only effect handling.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

@@ -533,3 +533,7 @@ Test files validating the macro system:
 ---
 
 **Implementation Approach:** Full hygienic macro system for HVM. C interpreter could support basic syntax-rules.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

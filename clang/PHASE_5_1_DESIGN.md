@@ -333,3 +333,7 @@ Based on existing test files, the standard library already has substantial test 
 ---
 
 **Implementation Note:** Many standard library functions already exist in test files - Phase 5.1 organizes and documents them systematically.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

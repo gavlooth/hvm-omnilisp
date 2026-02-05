@@ -410,3 +410,7 @@ handle config-handler body : Config / {}
 ---
 
 **Implementation Approach:** Design specification for HVM backend. C interpreter maintains runtime-only handler dispatch.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

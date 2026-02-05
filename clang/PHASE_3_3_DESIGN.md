@@ -422,3 +422,7 @@ Test files validating effect inference:
 ---
 
 **Implementation Approach:** Complete design for HVM type inference engine. C interpreter maintains runtime-only effect dispatch.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

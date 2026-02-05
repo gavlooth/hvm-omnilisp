@@ -417,3 +417,7 @@ Pattern **find_missing_patterns(Pattern **patterns,
 ---
 
 **Implementation Approach:** Full pattern compilation for HVM. C interpreter uses runtime pattern matching.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

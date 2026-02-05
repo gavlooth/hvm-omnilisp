@@ -436,3 +436,7 @@ bool has_circular_deps(DependencyGraph *graph);
 ---
 
 **Implementation Approach:** Design for HVM module system with separate compilation. C interpreter could use simpler runtime loading.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

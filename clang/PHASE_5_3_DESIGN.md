@@ -40,3 +40,7 @@ Int -> Data / {IO, Http}
 ---
 
 **Status:** Design complete.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

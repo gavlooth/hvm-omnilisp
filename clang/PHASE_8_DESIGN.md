@@ -88,3 +88,7 @@ releases/
 ---
 
 **Status:** Design complete. Release follows implementation and testing.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**

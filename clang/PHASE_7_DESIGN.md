@@ -56,3 +56,7 @@ bench/
 ---
 
 **Status:** Design complete. Benchmarking follows implementation.
+
+---
+
+**⚠️ HVM4 IMPLEMENTATION ONLY - DO NOT IMPLEMENT IN C INTERPRETER ⚠️**
