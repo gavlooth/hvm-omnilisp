@@ -1,0 +1,38 @@
+;; test_str_index.omni - Tests for string index-of
+
+;; Str-index-of finds first occurrence of substring
+;; TEST: index-of basic
+;; EXPECT: 2
+(str-index-of "hello" "ll")
+
+;; TEST: index-of start
+;; EXPECT: 0
+(str-index-of "hello" "he")
+
+;; TEST: index-of end
+;; EXPECT: 3
+(str-index-of "hello" "lo")
+
+;; TEST: index-of single char
+;; EXPECT: 1
+(str-index-of "hello" "e")
+
+;; TEST: index-of not found
+;; EXPECT: nothing
+(str-index-of "hello" "xyz")
+
+;; TEST: index-of empty needle
+;; EXPECT: 0
+(str-index-of "hello" "")
+
+;; TEST: index-of whole string
+;; EXPECT: 0
+(str-index-of "hello" "hello")
+
+;; TEST: index-of longer needle
+;; EXPECT: nothing
+(str-index-of "hi" "hello")
+
+;; TEST: index-of in empty string
+;; EXPECT: nothing
+(str-index-of "" "a")

@@ -1,0 +1,29 @@
+;; Test file for IO operations
+
+;; TEST: read-file - read this test file itself
+;; EXPECT: starts with ;;
+(read-file "test/test_io.omni")
+
+;; TEST: file-exists? - check if existing file exists
+;; EXPECT: true
+(file-exists? "test/test_io.omni")
+
+;; TEST: file-exists? - check non-existent file
+;; EXPECT: false
+(file-exists? "test/nonexistent_file_xyz.omni")
+
+;; TEST: dir? - check if test directory is a directory
+;; EXPECT: true
+(dir? "test")
+
+;; TEST: dir? - check if a file is not a directory
+;; EXPECT: false
+(dir? "test/test_io.omni")
+
+;; TEST: getenv - get PATH environment variable
+;; Should return something (not nothing)
+(getenv "PATH")
+
+;; TEST: getenv - get non-existent env var
+;; EXPECT: nothing
+(getenv "OMNILISP_NONEXISTENT_VAR_XYZ")

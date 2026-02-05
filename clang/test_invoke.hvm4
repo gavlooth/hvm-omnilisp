@@ -1,0 +1,48 @@
+// Minimal test: Why does @omni_eval_handlers work when called directly
+// but fail when called from inside another function?
+
+@is_nil = λ&lst. λ{#NIL: 1; #CON: λ&h. λ&t. 0}(lst)
+
+// Simple eval_handlers - no debug wrappers
+@eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      #CON{#Eval{h}, @eval_handlers(menv)(t)}
+  }(hdlrs)
+
+// Test 1: Direct call
+@test_direct = @eval_handlers(0)(#CON{#A{}, #NIL})
+@test_direct_nil = @is_nil(@test_direct)
+
+// Test 2: Call from inside a function with lambda binding
+@wrapper1 = λ&hdlrs.
+  (λ&result. #W1{result, @is_nil(result)})(@eval_handlers(0)(hdlrs))
+@test_wrapper1 = @wrapper1(#CON{#A{}, #NIL})
+
+// Test 3: Call from inside a function with strict binding
+@wrapper2 = λ&hdlrs.
+  !!&result = @eval_handlers(0)(hdlrs);
+  #W2{result, @is_nil(result)}
+@test_wrapper2 = @wrapper2(#CON{#A{}, #NIL})
+
+// Test 4: Nested function calls
+@inner = λ&hdlrs. @eval_handlers(0)(hdlrs)
+@outer = λ&hdlrs.
+  !!&result = @inner(hdlrs);
+  #W3{result, @is_nil(result)}
+@test_nested = @outer(#CON{#A{}, #NIL})
+
+@main = #CON{
+  #direct{@test_direct_nil, @test_direct},
+  #CON{
+    @test_wrapper1,
+    #CON{
+      @test_wrapper2,
+      #CON{
+        @test_nested,
+        #NIL
+      }
+    }
+  }
+}

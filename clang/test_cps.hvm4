@@ -1,0 +1,60 @@
+// Defunctionalized CPS test
+// Use data structures for continuations instead of lambdas
+
+// ============================================================
+// Continuation data types (defunctionalized)
+// ============================================================
+// #KDone           - base continuation, return the value
+// #KAddL{b, k}     - evaluated left operand, need to evaluate right operand b, then add
+// #KAddR{va, k}    - evaluated right operand, va is left value, add and continue
+
+// ============================================================
+// Unwrap #Cst to get the number
+// ============================================================
+@unwrap = λ&v. λ{#Cst: λ&n. n; _ : λ&u_. 0}(v)
+
+// ============================================================
+// Apply a defunctionalized continuation to a value
+// ============================================================
+@apply_cont = λ&k. λ&v.
+  λ{
+    #KDone: v
+    #KAddL: λ&b. λ&outer_k.
+      // We have left value v, now evaluate right operand b
+      @eval_defun(b)(#KAddR{v, outer_k})
+    #KAddR: λ&va. λ&outer_k.
+      // We have both operands, compute the sum
+      !!&left = @unwrap(va);
+      !!&right = @unwrap(v);
+      !!&sum = (left + right);
+      !!&result = #Cst{sum};
+      @apply_cont(outer_k)(result)
+  }(k)
+
+// ============================================================
+// Evaluate expression with defunctionalized continuation
+// ============================================================
+@eval_defun = λ&exp. λ&k.
+  λ{
+    #Cst: λ&n. @apply_cont(k)(#Cst{n})
+    #Add: λ&a. λ&b. @eval_defun(a)(#KAddL{b, k})
+  }(exp)
+
+// ============================================================
+// Tests
+// ============================================================
+
+// Test 1: Simple constant -> 42
+@test_const = @eval_defun(#Cst{42})(#KDone)
+
+// Test 2: Simple add (+ 1 2) -> 3
+@test_add1 = @eval_defun(#Add{#Cst{1}, #Cst{2}})(#KDone)
+
+// Test 3: Nested add (+ 1 (+ 2 3)) -> 6
+@test_add2 = @eval_defun(#Add{#Cst{1}, #Add{#Cst{2}, #Cst{3}}})(#KDone)
+
+// Test 4: Deeper nesting (+ (+ 1 2) (+ 3 4)) -> 10
+@test_add3 = @eval_defun(#Add{#Add{#Cst{1}, #Cst{2}}, #Add{#Cst{3}, #Cst{4}}})(#KDone)
+
+// Main test - run all tests
+@main = #Tests{@test_const, @test_add1, @test_add2, @test_add3}

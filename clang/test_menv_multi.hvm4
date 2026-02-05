@@ -1,0 +1,8 @@
+// Test multiple extractions from borrowed menv
+
+@test_extract = λ&m.
+  !!&a = (λ{#P: λ&x. λ&y. x})(m);
+  !!&b = (λ{#P: λ&x. λ&y. y})(m);
+  #R{a, b}
+
+@main = @test_extract(#P{1, 2})

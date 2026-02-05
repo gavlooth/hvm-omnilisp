@@ -1,0 +1,10 @@
+// Test @is_nil behavior with different inputs
+
+@is_nil = λ&lst. λ{#NIL: 1; #CON: λ&h. λ&t. 0}(lst)
+
+@test1 = @is_nil(#NIL)           // Should be 1
+@test2 = @is_nil(#CON{1, #NIL})  // Should be 0
+@test3 = @is_nil(#Debug{1, 2})   // What happens with non-list?
+@test4 = @is_nil(42)             // What about a number?
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #CON{@test4, #NIL}}}}

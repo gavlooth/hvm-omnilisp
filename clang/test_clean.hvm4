@@ -1,0 +1,48 @@
+// Clean test with simple tags
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr. #Hdlr{tag, fn_expr}
+    _: λ&u_. h
+  }(h)
+
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@omni_list_append = λ&a. λ&b.
+  λ{#NIL: b; #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(b)}}(a)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Clean test
+@test_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        !!&a = @list_len(hdlrs);
+        !!&b = @list_len(handlers);
+        !!&new_menv = #MEnv{env, handlers, parent, level};
+        !!&evaled = @omni_eval_handlers(new_menv)(hdlrs);
+        !!&c = @list_len(evaled);
+        !!&newh = @omni_list_append(evaled)(handlers);
+        !!&d = @list_len(newh);
+        // Return: [hdlrs_len, old_handlers_len, evaluated_len, new_handlers_len]
+        #CON{a, #CON{b, #CON{c, #CON{d, #NIL}}}}
+      _: λ&u_. #Other{}
+    }(e)
+  }(menv)
+
+@handler_def = #HDef{7522834, 99}
+@expr = #Hdle{#CON{@handler_def, #NIL}, #Perf{0, 0}}
+
+@test = @test_cps(@menv_empty)(@expr)(λ&v. v)
+
+@main = @test

@@ -1,0 +1,119 @@
+// Test Effect Row Type System (Phase 3.1)
+
+
+// =============================================================================
+// Test: Empty Effect Row
+// =============================================================================
+
+@test_empty = @effect_empty
+// Expected: #ERow{#NIL, #ENil}
+
+// =============================================================================
+// Test: Single Effect
+// =============================================================================
+
+@test_single = @effect_single(#Sym{7522834})  // 'ask' effect
+// Expected: #ERow{#CON{#Sym{7522834}, #NIL}, #ENil}
+
+// =============================================================================
+// Test: Effect Union
+// =============================================================================
+
+@test_union =
+  @effect_union(
+    @effect_single(#Sym{7522834})  // ask
+  )(@effect_single(#Sym{8238130}))  // log
+// Expected: #ERow{#CON{#Sym{7522834}, #CON{#Sym{8238130}, #NIL}}, #ENil}
+
+// =============================================================================
+// Test: Effect Removal
+// =============================================================================
+
+@test_remove =
+  @effect_remove(
+    @effect_union(
+      @effect_single(#Sym{7522834})  // ask
+    )(@effect_single(#Sym{8238130}))  // log
+  )(#Sym{7522834})  // Remove 'ask'
+// Expected: #ERow{#CON{#Sym{8238130}, #NIL}, #ENil}
+
+// =============================================================================
+// Test: Effect Contains
+// =============================================================================
+
+@test_contains =
+  @effect_contains(
+    @effect_union(
+      @effect_single(#Sym{7522834})  // ask
+    )(@effect_single(#Sym{8238130}))  // log
+  )(#Sym{7522834})
+// Expected: 1
+
+@test_not_contains =
+  @effect_contains(
+    @effect_single(#Sym{8238130})  // log
+  )(#Sym{7522834})  // ask
+// Expected: 0
+
+// =============================================================================
+// Test: Effect Simplify (remove duplicates)
+// =============================================================================
+
+@test_simplify =
+  @effect_simplify(
+    #ERow{
+      #CON{#Sym{7522834},
+        #CON{#Sym{8238130},
+          #CON{#Sym{7522834},  // Duplicate
+            #NIL}}},
+      #ENil
+    }
+  )
+// Expected: #ERow{#CON{#Sym{7522834}, #CON{#Sym{8238130}, #NIL}}, #ENil}
+
+// =============================================================================
+// Test: Infer Effects for Pure Expression
+// =============================================================================
+
+@test_infer_pure = @infer_effects(#MEnv{#NIL, #NIL, #Noth, #Cst{0}})(#Lit{42})
+// Expected: #ERow{#NIL, #ENil}
+
+// =============================================================================
+// Test: Infer Effects for Perform
+// =============================================================================
+
+@test_infer_perform =
+  @infer_effects(
+    #MEnv{#NIL, #NIL, #Noth, #Cst{0}}
+  )(#Perf{#Sym{7522834}, #Cst{5}})
+// Expected: #ERow{#CON{#Sym{7522834}, #NIL}, #ENil}
+
+// =============================================================================
+// Test: Infer Effects with Handler Removal
+// =============================================================================
+
+@test_infer_handle =
+  @infer_effects(
+    #MEnv{#NIL, #NIL, #Noth, #Cst{0}}
+  )(#Hdle{
+      #CON{#HDef{#Sym{7522834}, #Lam{#Lam{#Cst{999}}}}, #NIL},
+      #Perf{#Sym{7522834}, #Cst{5}}
+    })
+// Expected: #ERow{#NIL, #ENil} (effect handled)
+
+// =============================================================================
+// Main Tests
+// =============================================================================
+
+@main = #Tests{
+  @test_empty,
+  @test_single,
+  @test_union,
+  @test_remove,
+  @test_contains,
+  @test_not_contains,
+  @test_simplify,
+  @test_infer_pure,
+  @test_infer_perform,
+  @test_infer_handle
+}

@@ -1,0 +1,172 @@
+;; test_effect_row_types.omni - Tests for effect row type operations
+
+;; These tests verify the effect row type system implementation
+
+;; ============================================================================
+;; Basic Effect Operations
+;; ============================================================================
+
+;; TEST: basic effect handling
+;; EXPECT: 42
+(handle
+  (+ (perform 'get-value 0) 32)
+  (get-value [payload resume]
+    (resume 10)))
+
+;; TEST: effect with state pattern
+;; EXPECT: 15
+(handle
+  (+ (perform 'read-state 0)
+     (+ (perform 'read-state 0)
+        (perform 'read-state 0)))
+  (read-state [payload resume]
+    (resume 5)))
+
+;; ============================================================================
+;; Effect Row Subset Tests
+;; ============================================================================
+
+;; TEST: pure function in effectful context
+;; EXPECT: 10
+(do
+  (define pure-double [x] (* x 2))
+  (handle
+    (pure-double 5)
+    (unused-effect [p r] (r 0))))
+
+;; TEST: effect subset - reader only uses read
+;; EXPECT: 100
+(handle
+  (let [x (perform 'read 0)]
+    (* x x))
+  (read [p r] (r 10)))
+
+;; ============================================================================
+;; Nested Effect Rows
+;; ============================================================================
+
+;; TEST: nested handlers compose effects
+;; EXPECT: 30
+(handle
+  (handle
+    (+ (perform 'get-a 0) (perform 'get-b 0))
+    (get-b [p r] (r 20)))
+  (get-a [p r] (r 10)))
+
+;; TEST: inner handler delegates to outer
+;; EXPECT: 50
+(handle
+  (handle
+    (+ (perform 'get-x 0) (perform 'get-y 0))
+    (get-x [p r] (r 20)))
+  (get-y [p r] (r 30)))
+
+;; ============================================================================
+;; Effect Row Union Tests
+;; ============================================================================
+
+;; TEST: multiple effects in same handler
+;; EXPECT: 7
+(handle
+  (+ (perform 'effect-a 0)
+     (+ (perform 'effect-b 0)
+        (perform 'effect-c 0)))
+  (effect-a [p r] (r 1))
+  (effect-b [p r] (r 2))
+  (effect-c [p r] (r 4)))
+
+;; TEST: effect union - state + reader
+;; EXPECT: 25
+(handle
+  (let [base (perform 'read-base 0)]
+    (let [incr (perform 'get-increment 0)]
+      (+ base incr)))
+  (read-base [p r] (r 20))
+  (get-increment [p r] (r 5)))
+
+;; ============================================================================
+;; Effect Row Difference Tests
+;; ============================================================================
+
+;; TEST: handler removes effect from context
+;; EXPECT: 42
+(handle
+  (handle
+    (perform 'outer-effect 0)
+    (inner-effect [p r] (r 99)))
+  (outer-effect [p r] (r 42)))
+
+;; ============================================================================
+;; Effect Polymorphism Simulation
+;; ============================================================================
+
+;; TEST: polymorphic function works with different effects
+;; EXPECT: 6
+(do
+  ;; map-with-effect applies f to each element, allowing effects
+  (define map-effect [f] [lst]
+    (match lst
+      ()       '()
+      (h .. t) (cons (f h) (map-effect f t))))
+
+  (handle
+    (let [result (map-effect (lambda [x] (+ x (perform 'get-delta 0))) '(1 2 3))]
+      (foldl (lambda [a] [b] (+ a b)) 0 result))
+    (get-delta [p r] (r 0))))
+
+;; TEST: same function with effectful computation
+;; EXPECT: 9
+(do
+  (define map-effect [f] [lst]
+    (match lst
+      ()       '()
+      (h .. t) (cons (f h) (map-effect f t))))
+
+  (handle
+    (let [result (map-effect (lambda [x] (+ x (perform 'get-delta 0))) '(1 2 3))]
+      (foldl (lambda [a] [b] (+ a b)) 0 result))
+    (get-delta [p r] (r 1))))
+
+;; ============================================================================
+;; Effect Row Subtyping Tests
+;; ============================================================================
+
+;; TEST: pure result in effectful context
+;; EXPECT: 100
+(handle
+  100  ;; pure value, no effects performed
+  (some-effect [p r] (r 0)))
+
+;; TEST: fewer effects is subtype
+;; EXPECT: 5
+(handle
+  (handle
+    (perform 'only-one 0)
+    (only-one [p r] (r 5)))
+  (effect-a [p r] (r 1))
+  (effect-b [p r] (r 2)))
+
+;; ============================================================================
+;; Effect Propagation Tests
+;; ============================================================================
+
+;; TEST: effects propagate through function calls
+;; EXPECT: 20
+(do
+  (define get-twice [_]
+    (+ (perform 'fetch 0) (perform 'fetch 0)))
+
+  (handle
+    (get-twice 0)
+    (fetch [p r] (r 10))))
+
+;; TEST: higher-order function with effect propagation
+;; EXPECT: 30
+(do
+  (define apply-thrice [f]
+    (+ (f 0) (+ (f 0) (f 0))))
+
+  (handle
+    (apply-thrice (lambda [_] (perform 'get-val 0)))
+    (get-val [p r] (r 10))))
+

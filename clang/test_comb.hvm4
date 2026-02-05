@@ -1,0 +1,431 @@
+// Type System with Effect Rows (Phase 3.1)
+// Based on PHASE_3_1_DESIGN.md
+
+// =============================================================================
+// Type Representation
+// =============================================================================
+
+// Type constructors
+// #TVar{id} - Type variable
+// #TCon{name, args} - Type constructor (Int, String, List, etc.)
+// #TFun{param, result, effects} - Function type with effects
+// #TApp{fn, arg} - Type application
+
+// Effect Row constructors
+// #ERow{effects, rest} - Effect row (extensible)
+//   effects: list of effect names
+//   rest: #ENil (closed) or #EVar{id} (open/polymorphic)
+// #ENil - Empty effect row (pure)
+// #EVar{id} - Effect variable (for polymorphism)
+
+// =============================================================================
+// Effect Row Operations
+// =============================================================================
+
+// Create empty effect row
+@effect_empty = #ERow{#NIL, #ENil}
+
+// Create single effect row
+@effect_single = λ&name. #ERow{#CON{name, #NIL}, #ENil}
+
+// Union of two effect rows
+@effect_union = λ&e1. λ&e2.
+  λ{
+    #ERow: λ&effs1. λ&rest1.
+      λ{
+        #ERow: λ&effs2. λ&rest2.
+          // Merge effect lists and combine rest variables
+          #ERow{@list_append(effs1)(effs2), @effect_rest_union(rest1)(rest2)}
+        _: λ&u_. e1
+      }(e2)
+    _: λ&u_. e2
+  }(e1)
+
+// Union of effect row tails
+@effect_rest_union = λ&r1. λ&r2.
+  λ{
+    #ENil: r2
+    #EVar: λ&id1.
+      λ{
+        #ENil: r1
+        #EVar: λ&id2.
+          // If same variable, keep one; otherwise create union
+          λ{
+            1: r1
+            _: λ&u_. #EVar{id1}  // For now, just use first var
+          }((id1 == id2))
+        _: λ&u_. r1
+      }(r2)
+    _: λ&u_. r1
+  }(r1)
+
+// Difference: remove effect from row
+@effect_remove = λ&row. λ&effect_name.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      #ERow{@list_remove(effs)(effect_name), rest}
+    _: λ&u_. row
+  }(row)
+
+// Check if effect row contains an effect
+@effect_contains = λ&row. λ&effect_name.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      @list_contains(effs)(effect_name)
+    _: λ&u_. 0
+  }(row)
+
+// Simplify effect row (remove duplicates)
+@effect_simplify = λ&row.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      #ERow{@list_unique(effs), rest}
+    _: λ&u_. row
+  }(row)
+
+// =============================================================================
+// Type Unification with Effects
+// =============================================================================
+
+// Unify two types (including effect rows)
+@type_unify = λ&t1. λ&t2. λ&subst.
+  !!&t1_resolved = @type_resolve(t1)(subst);
+  !!&t2_resolved = @type_resolve(t2)(subst);
+  λ{
+    #TVar: λ&id1.
+      λ{
+        #TVar: λ&id2.
+          λ{
+            1: #Some{subst}  // Same variable
+            _: λ&u_. #Some{@subst_extend(subst)(id1)(t2_resolved)}
+          }((id1 == id2))
+        _: λ&u_. #Some{@subst_extend(subst)(id1)(t2_resolved)}
+      }(t2_resolved)
+    #TCon: λ&name1. λ&args1.
+      λ{
+        #TCon: λ&name2. λ&args2.
+          λ{
+            1: @type_unify_list(args1)(args2)(subst)
+            _: λ&u_. #None  // Different constructors
+          }((name1 == name2))
+        _: λ&u_. #None
+      }(t2_resolved)
+    #TFun: λ&p1. λ&r1. λ&e1.
+      λ{
+        #TFun: λ&p2. λ&r2. λ&e2.
+          // Unify parameter, result, and effects
+          @option_chain(
+            @type_unify(p1)(p2)(subst)
+          )(λ&s1.
+            @option_chain(
+              @type_unify(r1)(r2)(s1)
+            )(λ&s2.
+              @effect_unify(e1)(e2)(s2)
+            )
+          )
+        _: λ&u_. #None
+      }(t2_resolved)
+    _: λ&u_. #None
+  }(t1_resolved)
+
+// Unify effect rows
+@effect_unify = λ&e1. λ&e2. λ&subst.
+  !!&e1_simp = @effect_simplify(e1);
+  !!&e2_simp = @effect_simplify(e2);
+  λ{
+    #ERow: λ&effs1. λ&rest1.
+      λ{
+        #ERow: λ&effs2. λ&rest2.
+          // Check if effect sets match
+          λ{
+            1: @effect_rest_unify(rest1)(rest2)(subst)
+            _: λ&u_. #None  // Effect sets don't match
+          }(@list_eq(effs1)(effs2))
+        _: λ&u_. #None
+      }(e2_simp)
+    _: λ&u_. #None
+  }(e1_simp)
+
+// Unify effect row tails
+@effect_rest_unify = λ&r1. λ&r2. λ&subst.
+  λ{
+    #ENil:
+      λ{
+        #ENil: #Some{subst}
+        _: λ&u_. #None
+      }(r2)
+    #EVar: λ&id1.
+      #Some{@subst_extend(subst)(id1)(r2)}
+    _: λ&u_. #None
+  }(r1)
+
+// =============================================================================
+// Effect Inference
+// =============================================================================
+
+// Infer effects for an expression
+@infer_effects = λ&menv. λ&exp.
+  λ{
+    #Lit: λ&n. @effect_empty  // Literals are pure
+    #Var: λ&i. @effect_empty  // Variables are pure
+    #Lam: λ&body.
+      // Lambda body effects are in the function type, not performed at definition
+      @effect_empty
+    #App: λ&fn. λ&arg.
+      // Union of effects from fn, arg, and application
+      @effect_union(
+        @infer_effects(menv)(fn)
+      )(@infer_effects(menv)(arg))
+    #Perf: λ&tag. λ&payload.
+      // Perform adds the effect to the row
+      @effect_union(
+        @effect_single(tag)
+      )(@infer_effects(menv)(payload))
+    #Hdle: λ&handlers. λ&body.
+      // Handle removes effects covered by handlers
+      @effect_remove_handled(
+        @infer_effects(menv)(body)
+      )(handlers)
+    _: λ&u_. @effect_empty
+  }(exp)
+
+// Remove effects that are handled
+@effect_remove_handled = λ&row. λ&handlers.
+  λ{
+    #NIL: row
+    #CON: λ&h. λ&t.
+      λ{
+        #HDef: λ&tag. λ&fn.
+          @effect_remove_handled(
+            @effect_remove(row)(tag)
+          )(t)
+        _: λ&u_. @effect_remove_handled(row)(t)
+      }(h)
+  }(handlers)
+
+// =============================================================================
+// Helper Functions
+// =============================================================================
+
+@list_append = λ&l1. λ&l2.
+  λ{
+    #NIL: l2
+    #CON: λ&h. λ&t. #CON{h, @list_append(t)(l2)}
+  }(l1)
+
+@list_contains = λ&lst. λ&item.
+  λ{
+    #NIL: 0
+    #CON: λ&h. λ&t.
+      λ{
+        1: 1
+        _: λ&u_. @list_contains(t)(item)
+      }((h == item))
+  }(lst)
+
+@list_remove = λ&lst. λ&item.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&removed_tail = @list_remove(t)(item);
+      λ{
+        1: removed_tail
+        _: λ&u_. #CON{h, removed_tail}
+      }((h == item))
+  }(lst)
+
+@list_unique = λ&lst.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      !!&unique_tail = @list_unique(t);
+      λ{
+        1: unique_tail
+        _: λ&u_. #CON{h, unique_tail}
+      }(@list_contains(t)(h))
+  }(lst)
+
+@list_eq = λ&l1. λ&l2.
+  λ{
+    #NIL:
+      λ{
+        #NIL: 1
+        _: λ&u_. 0
+      }(l2)
+    #CON: λ&h1. λ&t1.
+      λ{
+        #CON: λ&h2. λ&t2.
+          λ{
+            1: @list_eq(t1)(t2)
+            _: λ&u_. 0
+          }((h1 == h2))
+        _: λ&u_. 0
+      }(l2)
+  }(l1)
+
+@option_chain = λ&opt. λ&f.
+  λ{
+    #Some: λ&v. (f(v))
+    #None: #None
+  }(opt)
+
+@type_unify_list = λ&l1. λ&l2. λ&subst.
+  λ{
+    #NIL:
+      λ{
+        #NIL: #Some{subst}
+        _: λ&u_. #None
+      }(l2)
+    #CON: λ&h1. λ&t1.
+      λ{
+        #CON: λ&h2. λ&t2.
+          @option_chain(
+            @type_unify(h1)(h2)(subst)
+          )(λ&s. @type_unify_list(t1)(t2)(s))
+        _: λ&u_. #None
+      }(l2)
+  }(l1)
+
+// Placeholder for substitution operations
+@type_resolve = λ&t. λ&subst. t
+@subst_extend = λ&subst. λ&id. λ&val. subst
+
+// =============================================================================
+// Pretty Printing
+// =============================================================================
+
+@effect_show = λ&row.
+  λ{
+    #ERow: λ&effs. λ&rest.
+      λ{
+        #ENil: @list_show(effs)
+        #EVar: λ&id. @list_show(effs)  // TODO: show variable
+        _: λ&u_. @list_show(effs)
+      }(rest)
+    _: λ&u_. "{}"
+  }(row)
+
+@list_show = λ&lst.
+  λ{
+    #NIL: "{}"
+    _: λ&u_. "{...}"
+  }(lst)
+// Test Effect Row Type System (Phase 3.1)
+
+
+// =============================================================================
+// Test: Empty Effect Row
+// =============================================================================
+
+@test_empty = @effect_empty
+// Expected: #ERow{#NIL, #ENil}
+
+// =============================================================================
+// Test: Single Effect
+// =============================================================================
+
+@test_single = @effect_single(#Sym{7522834})  // 'ask' effect
+// Expected: #ERow{#CON{#Sym{7522834}, #NIL}, #ENil}
+
+// =============================================================================
+// Test: Effect Union
+// =============================================================================
+
+@test_union =
+  @effect_union(
+    @effect_single(#Sym{7522834})  // ask
+  )(@effect_single(#Sym{8238130}))  // log
+// Expected: #ERow{#CON{#Sym{7522834}, #CON{#Sym{8238130}, #NIL}}, #ENil}
+
+// =============================================================================
+// Test: Effect Removal
+// =============================================================================
+
+@test_remove =
+  @effect_remove(
+    @effect_union(
+      @effect_single(#Sym{7522834})  // ask
+    )(@effect_single(#Sym{8238130}))  // log
+  )(#Sym{7522834})  // Remove 'ask'
+// Expected: #ERow{#CON{#Sym{8238130}, #NIL}, #ENil}
+
+// =============================================================================
+// Test: Effect Contains
+// =============================================================================
+
+@test_contains =
+  @effect_contains(
+    @effect_union(
+      @effect_single(#Sym{7522834})  // ask
+    )(@effect_single(#Sym{8238130}))  // log
+  )(#Sym{7522834})
+// Expected: 1
+
+@test_not_contains =
+  @effect_contains(
+    @effect_single(#Sym{8238130})  // log
+  )(#Sym{7522834})  // ask
+// Expected: 0
+
+// =============================================================================
+// Test: Effect Simplify (remove duplicates)
+// =============================================================================
+
+@test_simplify =
+  @effect_simplify(
+    #ERow{
+      #CON{#Sym{7522834},
+        #CON{#Sym{8238130},
+          #CON{#Sym{7522834},  // Duplicate
+            #NIL}}},
+      #ENil
+    }
+  )
+// Expected: #ERow{#CON{#Sym{7522834}, #CON{#Sym{8238130}, #NIL}}, #ENil}
+
+// =============================================================================
+// Test: Infer Effects for Pure Expression
+// =============================================================================
+
+@test_infer_pure = @infer_effects(#MEnv{#NIL, #NIL, #Noth, #Cst{0}})(#Lit{42})
+// Expected: #ERow{#NIL, #ENil}
+
+// =============================================================================
+// Test: Infer Effects for Perform
+// =============================================================================
+
+@test_infer_perform =
+  @infer_effects(
+    #MEnv{#NIL, #NIL, #Noth, #Cst{0}}
+  )(#Perf{#Sym{7522834}, #Cst{5}})
+// Expected: #ERow{#CON{#Sym{7522834}, #NIL}, #ENil}
+
+// =============================================================================
+// Test: Infer Effects with Handler Removal
+// =============================================================================
+
+@test_infer_handle =
+  @infer_effects(
+    #MEnv{#NIL, #NIL, #Noth, #Cst{0}}
+  )(#Hdle{
+      #CON{#HDef{#Sym{7522834}, #Lam{#Lam{#Cst{999}}}}, #NIL},
+      #Perf{#Sym{7522834}, #Cst{5}}
+    })
+// Expected: #ERow{#NIL, #ENil} (effect handled)
+
+// =============================================================================
+// Main Tests
+// =============================================================================
+
+@main = #Tests{
+  @test_empty,
+  @test_single,
+  @test_union,
+  @test_remove,
+  @test_contains,
+  @test_not_contains,
+  @test_simplify,
+  @test_infer_pure,
+  @test_infer_perform,
+  @test_infer_handle
+}

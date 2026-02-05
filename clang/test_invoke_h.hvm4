@@ -1,0 +1,70 @@
+// Debug invoke handler flow
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Basic operations
+@omni_env_extend = λ&env. λ&val. #CON{val, env}
+@omni_menv_extend = λ&menv. λ&new_env.
+  λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #MEnv{new_env, h, p, l}}(menv)
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      #Cst: λ&n. #Cst{n}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Apply
+@mock_apply = λ&menv. λ&fn. λ&arg.
+  !!&fn_forced = fn;
+  λ{
+    #Clo: λ&cenv. λ&body.
+      (λ&new_env.
+        (λ&new_menv. @mock_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
+      )(@omni_env_extend(cenv)(arg))
+    #Kont: λ&k. (k(arg))
+    _: λ&u. #Err{#sym_apply}
+  }(fn_forced)
+
+// Handler evaluation
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+// Invoke handler - simplified version
+@mock_invoke_handler = λ&handler. λ&payload. λ&resume_k.
+  !!&pay = payload;
+  !!&res_k = resume_k;
+  λ{
+    #Hdlr: λ&htag. λ&hfn.
+      // Apply handler to payload
+      (λ&partial.
+        // Apply partial to resume
+        (λ&result.
+          result
+        )(@mock_apply(@menv_empty)(partial)(res_k))
+      )(@mock_apply(@menv_empty)(hfn)(pay))
+    _: λ&u_. #Err{#sym_invoke_handler}
+  }(handler)
+
+// Setup
+@hdef = #HDef{7522834, #Lam{#Lam{#Cst{999}}}}
+@handler = @eval_handler(@menv_empty)(@hdef)
+@payload = #Cst{5}
+@resume = #Kont{λ&x. x}
+
+// Test invoke handler
+@result = @mock_invoke_handler(@handler)(@payload)(@resume)
+
+// Also test the individual steps
+@hfn = λ{#Hdlr: λ&t. λ&f. f}(@handler)
+@partial = @mock_apply(@menv_empty)(@hfn)(@payload)
+@final = @mock_apply(@menv_empty)(@partial)(@resume)
+
+@main = #CON{@handler, #CON{@hfn, #CON{@partial, #CON{@final, #CON{@result, #NIL}}}}}

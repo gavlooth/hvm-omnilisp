@@ -1,0 +1,30 @@
+// Test menv field access directly
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Test direct menv field extraction
+@test_direct = λ{#MEnv: λ&e. λ&h. λ&p. λ&l.
+  #Fields{
+    #env_len{@list_len(e)},
+    #hdl_len{@list_len(h)},
+    #parent{p},
+    #level{l}
+  }
+}(@menv_empty)
+
+// Test through CPS eval pattern
+@test_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    #CPSFields{
+      #env_len{@list_len(env)},
+      #hdl_len{@list_len(handlers)}
+    }
+  }(menv)
+
+@test2 = @test_cps(@menv_empty)(0)(0)
+
+@main = #CON{@test_direct, #CON{@test2, #NIL}}

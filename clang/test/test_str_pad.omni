@@ -1,0 +1,44 @@
+;; test_str_pad.omni - Tests for string padding
+
+;; Str-pad pads string to target length
+;; side: 0 = left, 1 = right, 2 = both
+
+;; TEST: pad left basic
+;; EXPECT: "  hi"
+(str-pad "hi" 4 \space 0)
+
+;; TEST: pad right basic
+;; EXPECT: "hi  "
+(str-pad "hi" 4 \space 1)
+
+;; TEST: pad both basic
+;; EXPECT: " hi "
+(str-pad "hi" 4 \space 2)
+
+;; TEST: pad left zeros
+;; EXPECT: "007"
+(str-pad "7" 3 \0 0)
+
+;; TEST: pad no change needed
+;; EXPECT: "hello"
+(str-pad "hello" 3 \space 0)
+
+;; TEST: pad exact length
+;; EXPECT: "hello"
+(str-pad "hello" 5 \space 0)
+
+;; TEST: pad left single
+;; EXPECT: "*hi"
+(str-pad "hi" 3 \* 0)
+
+;; TEST: pad right single
+;; EXPECT: "hi*"
+(str-pad "hi" 3 \* 1)
+
+;; TEST: pad empty string
+;; EXPECT: "   "
+(str-pad "" 3 \space 0)
+
+;; TEST: pad both uneven
+;; EXPECT: " ab  "
+(str-pad "ab" 5 \space 2)

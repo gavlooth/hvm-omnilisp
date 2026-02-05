@@ -1,0 +1,28 @@
+// Fix: use helper function to capture handlers
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Helper that takes handlers explicitly
+@process_menv = λ&hdlrs. λ&menv.
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    #Inside{env, old_handlers, parent, level, hdlrs}
+  }(menv)
+
+// Fixed version: call helper with handlers
+@test_fn_v2 = λ&menv. λ&handlers. λ&body. λ&k.
+  @process_menv(handlers)(menv)
+
+// Another approach: don't use pattern match inside multi-arg lambda
+@test_fn_v3 = λ&menv. λ&handlers.
+  (λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    λ&body. λ&k.
+      #Inside{env, old_handlers, parent, level, handlers}
+  }(menv))
+
+// Test
+@result_v2 = @test_fn_v2(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+@result_v3 = @test_fn_v3(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+@main = #CON{@result_v2, #CON{@result_v3, #NIL}}

@@ -1,0 +1,187 @@
+// Test the full effect handling flow in pure HVM4
+
+// Helper: check if list is nil
+@is_nil = λ&lst. λ{#NIL: 1; #CON: λ&hx. λ&tx. 0}(lst)
+
+// Minimal runtime pieces needed for the test
+
+// Environment operations
+@omni_env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t.
+      λ{
+        0: h
+        _: λ&u_. @omni_env_get(t)((idx - 1))
+      }(idx)
+  }(env)
+
+// Unwrap Cst
+@omni_unwrap_cst = λ&v.
+  λ{#Cst: λ&n. n; _: λ&u_. v}(v)
+
+// Apply function
+@omni_apply = λ&menv. λ&fn. λ&arg.
+  λ{
+    #Clo: λ&env. λ&body. @omni_eval(#MEnv{#CON{arg, env}, #NIL, #Noth, 0})(body)
+    #CloR: λ&env. λ&body.
+      (λ&self. (λ&env1. @omni_eval(#MEnv{#CON{arg, env1}, #NIL, #Noth, 0})(body))(#CON{self, env}))(#CloR{env, body})
+    #Kont: λ&k. (k(arg))
+    _: λ&u_. #Err{#sym_not_fn}
+  }(fn)
+
+// Handler evaluation - NO DEBUG WRAPPERS
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@omni_eval(menv)(fn_expr))
+    _: λ&u_. h  // Return as-is if not HDef
+  }(h)
+
+// Handler matching
+@omni_handler_matches = λ&handler. λ&tag.
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+// List append
+@omni_list_append = λ&a. λ&b.
+  λ{
+    #NIL: b
+    #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(b)}
+  }(a)
+
+// CPS evaluator (minimal)
+@omni_eval_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Lit: λ&n. (kont(#Cst{n}))
+      #Cst: λ&n. (kont(#Cst{n}))
+      #Var: λ&i. (kont(@omni_env_get(env)(i)))
+      #Lam: λ&body. (kont(#CloC{env, body}))
+      #Add: λ&a. λ&b.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&va.
+          @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(λ&vb.
+            (kont(#Cst{(@omni_unwrap_cst(va) + @omni_unwrap_cst(vb))}))))
+      #Perf: λ&tag. λ&payload.
+        // DEBUG: Return handlers directly to see what they are
+        #PerfCheck{handlers}
+      #App: λ&f. λ&x.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(f)(λ&vf.
+          @omni_eval_cps(#MEnv{env, handlers, parent, level})(x)(λ&vx.
+            @omni_apply_cps(#MEnv{env, handlers, parent, level})(vf)(vx)(kont)))
+      // Fall through to direct mode for unhandled cases
+      _ : λ&u_. (kont(@omni_eval(#MEnv{env, handlers, parent, level})(e)))
+    }(e)
+  ; _ : λ&u_. #Err{#sym_cps}}(menv)
+
+@omni_apply_cps = λ&m. λ&vf. λ&vx. λ&k.
+  !!&menv = m; !!&kont = k; !!&arg = vx; !!&func = vf;
+  λ{
+    #CloC: λ&cenv. λ&body.
+      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+        @omni_eval_cps(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body)(kont)
+      ; _ : λ&u_. #Err{#sym_app}}(menv)
+    #Kont: λ&saved_k.
+      (λ&result. (kont(result)))((saved_k(arg)))
+    #Clo: λ&cenv. λ&body.
+      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+        (λ&result. (kont(result)))(@omni_eval(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body))
+      ; _ : λ&u_. #Err{#sym_app}}(menv)
+    _ : λ&u_. #Err{#sym_app}
+  }(func)
+
+// Perform effect
+@omni_perform_cps = λ&menv. λ&tag. λ&payload. λ&resume_k.
+  !!&handlers = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. h})(menv);
+  @omni_find_handler_cps(menv)(handlers)(tag)(payload)(resume_k)
+
+@omni_find_handler_cps = λ&menv. λ&handlers. λ&tag. λ&payload. λ&resume_k.
+  λ{
+    #NIL:
+      #Err{#sym_nohandler}
+    #CON: λ&h. λ&t.
+      (λ&matched.
+        λ{
+          1: @omni_invoke_handler_cps(menv)(h)(payload)(resume_k)
+          _: λ&u_. @omni_find_handler_cps(menv)(t)(tag)(payload)(resume_k)
+        }(matched)
+      )(@omni_handler_matches(h)(tag))
+  }(handlers)
+
+@omni_invoke_handler_cps = λ&menv. λ&handler. λ&payload. λ&resume_k.
+  λ{
+    #Hdlr: λ&htag. λ&hfn.
+      @omni_apply(menv)(@omni_apply(menv)(hfn)(payload))(resume_k)
+  }(handler)
+
+// Handle with CPS - entry point - WITH DEBUG
+@omni_handle_cps = λ&menv. λ&handler_defs. λ&body. λ&k.
+  (λ&evaluated_handlers.
+    (λ&old_handlers.
+      (λ&new_handlers.
+        (λ&env.
+          (λ&parent.
+            (λ&level.
+              (λ&new_menv.
+                // DEBUG: return new_menv and what we pass to eval_cps
+                #HandleCreate{
+                  #new_handlers{new_handlers},
+                  #new_menv{new_menv},
+                  #body_result{@omni_eval_cps(new_menv)(body)(k)}
+                }
+              )(#MEnv{env, new_handlers, parent, level})
+            )((λ{#MEnv: λ&e. λ&h. λ&p. λ&l. l})(menv))
+          )((λ{#MEnv: λ&e. λ&h. λ&p. λ&l. p})(menv))
+        )((λ{#MEnv: λ&e. λ&h. λ&p. λ&l. e})(menv))
+      )(@omni_list_append(evaluated_handlers)(old_handlers))
+    )((λ{#MEnv: λ&e. λ&h. λ&p. λ&l. h})(menv))
+  )(@omni_eval_handlers(menv)(handler_defs))
+
+// Minimal direct evaluator
+@omni_eval = λ&menv. λ&exp.
+  !!&env = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. e})(menv);
+  λ{
+    #Lit: λ&n. #Cst{n}
+    #Cst: λ&n. #Cst{n}
+    #Var: λ&i. @omni_env_get(env)(i)
+    #Lam: λ&body. #Clo{env, body}
+    #Add: λ&a. λ&b.
+      (λ&av. (λ&bv. #Cst{(@omni_unwrap_cst(av) + @omni_unwrap_cst(bv))})(@omni_eval(menv)(b)))(@omni_eval(menv)(a))
+    #Hdle: λ&hdlr_defs. λ&body.
+      @omni_handle_cps(menv)(hdlr_defs)(body)(λ&v. v)
+    #Cod: λ&inner.
+      @omni_eval(menv)(inner)
+    _: λ&u_. exp
+  }(exp)
+
+// Create empty menv
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Test: Simple handle without perform (should work)
+@test1 = @omni_eval(@menv_empty)(#Hdle{#NIL, #Cst{100}})
+
+// Test: Handle with handler and perform
+// (handle (+ 1 (perform 'ask nothing)) (ask [p r] (r 42)))
+// Handler: #HDef{7522834, λp.λr.(r 42)}
+// Body: #Add{#Cst{1}, #Perf{#Cod{#Sym{7522834}}, #Noth}}
+@test_handler_def = #HDef{7522834, #Lam{#Lam{#App{#Var{0}, #Cst{42}}}}}
+@test_body = #Add{#Cst{1}, #Perf{#Cod{#Sym{7522834}}, #Noth}}
+@test_handle = #Hdle{#CON{@test_handler_def, #NIL}, @test_body}
+@test2 = @omni_eval(@menv_empty)(@test_handle)
+
+// Test: Check what evaluated handlers look like
+@test_handlers_list = @omni_eval_handlers(@menv_empty)(#CON{@test_handler_def, #NIL})
+@test3 = @test_handlers_list
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #NIL}}}

@@ -1,0 +1,31 @@
+;; TEST: keys - get keys from dict
+;; EXPECT: (a b)
+(keys #{:a 1 :b 2})
+
+;; TEST: vals - get values from dict
+;; EXPECT: (1 2)
+(vals #{:a 1 :b 2})
+
+;; TEST: last - get last element of list
+;; EXPECT: 3
+(last '(1 2 3))
+
+;; TEST: init - get all but last element
+;; EXPECT: (1 2)
+(init '(1 2 3))
+
+;; TEST: flatten - flatten nested list
+;; EXPECT: (1 2 3 4)
+(flatten '((1 2) (3 4)))
+
+;; TEST: slice - get subsequence
+;; EXPECT: (2 3)
+(slice '(1 2 3 4 5) 1 3)
+
+;; TEST: arr-get element at index
+;; EXPECT: 20
+(arr-get [10 20 30] 1)
+
+;; TEST: arr-len - get array length
+;; EXPECT: 5
+(arr-len [1 2 3 4 5])

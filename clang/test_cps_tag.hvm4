@@ -1,0 +1,47 @@
+// Test CPS tag evaluation flow
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Cod: λ&inner. @mock_eval(#MEnv{env, h, p, l})(inner)
+      #Sym: λ&s. #Sym{s}
+      #Cst: λ&n. #Cst{n}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// CPS eval (simplified)
+@mock_eval_cps = λ&menv. λ&exp. λ&kont.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Cst: λ&n. (kont(#Cst{n}))
+      #Sym: λ&s. (kont(#Sym{s}))
+      _: λ&u. (kont(@mock_eval(#MEnv{env, h, p, l})(exp)))
+    }(exp)
+  }(menv)
+
+// Handler matching (from runtime)
+@handler_matches = λ&handler. λ&tag.
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+// Test: evaluate tag in CPS, then match handler
+@test_handler = #Hdlr{7522834, #Clo{#NIL, #Cst{999}}}
+@test_tag = #Cod{#Sym{7522834}}
+
+// Flow: eval tag in CPS, then check if handler matches
+@test1 = @mock_eval_cps(@menv_empty)(@test_tag)(λ&tv.
+  @handler_matches(@test_handler)(tv))
+
+// Same but with explicit sequencing
+@test2 =
+  !!&tag_val = @mock_eval(@menv_empty)(@test_tag);
+  @handler_matches(@test_handler)(tag_val)
+
+@main = #CON{@test1, #CON{@test2, #NIL}}

@@ -1,0 +1,35 @@
+// Debug what handler value looks like
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      #Cod: λ&inner. @mock_eval(#MEnv{env, h, p, l})(inner)
+      #Sym: λ&s. #Sym{s}
+      #Cst: λ&n. #Cst{n}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Handler evaluation
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+// Test
+@hdef = #HDef{7522834, #Lam{#Lam{#Cst{999}}}}
+@handler = @eval_handler(@menv_empty)(@hdef)
+
+// Pattern match test
+@match_test = λ{
+  #Hdlr: λ&htag. λ&hfn. #Matched{htag, hfn}
+  _: λ&u. #NotMatched{@handler}
+}(@handler)
+
+@main = #CON{@handler, #CON{@match_test, #NIL}}

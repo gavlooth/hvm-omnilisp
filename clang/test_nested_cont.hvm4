@@ -1,0 +1,39 @@
+// Minimal test for nested continuations with variable capture
+
+// Env operations
+@env_empty = #NIL
+@env_extend = λ&env. λ&val. #CON{val, env}
+@env_get = λ&env. λ&i.
+  λ{
+    #NIL: #Err{#sym_novar}
+    #CON: λ&h. λ&t. λ{0: h; _: λ&u_. @env_get(t)(i - 1)}(i)
+  }(env)
+
+// Simple evaluator with strict bindings
+@eval_simple = λ&env. λ&kont. λ&expr.
+  λ{
+    #Cst: λ&n. (kont(#Cst{n}))
+    #Var: λ&i. (kont(@env_get(env)(i)))
+    #Let: λ&val. λ&body.
+      @eval_simple(env)(λ&vv. @eval_simple(@env_extend(env)(vv))(kont)(body))(val)
+    #Add: λ&a. λ&b.
+      @eval_simple(env)(λ&va.
+        @eval_simple(env)(λ&vb.
+          (kont(#Cst{(@unwrap(va) + @unwrap(vb))}))
+        )(b)
+      )(a)
+    _ : λ&u_. #Err{#sym_unknown}
+  }(expr)
+
+@unwrap = λ&v. λ{#Cst: λ&n. n; _: λ&u_. 0}(v)
+
+// Test: (let [x 5] x) = 5
+@test1 = @eval_simple(@env_empty)(λ&v. v)(#Let{#Cst{5}, #Var{0}})
+
+// Test: (let [x 5] (+ x 3)) = 8
+@test2 = @eval_simple(@env_empty)(λ&v. v)(#Let{#Cst{5}, #Add{#Var{0}, #Cst{3}}})
+
+// Test: (+ 5 3) = 8
+@test3 = @eval_simple(@env_empty)(λ&v. v)(#Add{#Cst{5}, #Cst{3}})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #NIL}}}

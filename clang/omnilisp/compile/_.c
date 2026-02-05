@@ -966,26 +966,26 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
     }
 
     // Module system: Module definition
-    // #Modl{name, exports, body}
+    // #Modl{name, exports, body} - emit as AST node for @omni_eval to handle
     if (nam == OMNI_NAM_MODL && ari == 3) {
-      fputs("(@omni_register_module(", e->out);
+      fputs("#Modl{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));  // name
-      fputs(")(", e->out);
+      fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));  // exports
-      fputs(")(", e->out);
+      fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 2));  // body
-      fputs("))", e->out);
+      fputc('}', e->out);
       return;
     }
 
-    // Module system: Import
+    // Module system: Import - emit as AST node for @omni_eval to handle
     // #Impt{module_name, bindings}
     if (nam == OMNI_NAM_IMPT && ari == 2) {
-      fputs("(@omni_import_module(", e->out);
+      fputs("#Impt{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));  // module name
-      fputs(")(", e->out);
+      fputs(", ", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 1));  // bindings
-      fputs("))", e->out);
+      fputc('}', e->out);
       return;
     }
 
@@ -994,6 +994,16 @@ fn void omni_emit_term(OmniEmit *e, Term t) {
     if (nam == OMNI_NAM_EXPT && ari == 1) {
       fputs("#Expt{", e->out);
       omni_emit_term(e, omni_ctr_arg(t, 0));  // names list
+      fputc('}', e->out);
+      return;
+    }
+
+    // Module define: #Def{name_nick, value} - used in module bodies
+    if (nam == OMNI_NAM_DEFN && ari == 2) {
+      fputs("#Def{", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 0));  // name nick
+      fputs(", ", e->out);
+      omni_emit_term(e, omni_ctr_arg(t, 1));  // value
       fputc('}', e->out);
       return;
     }

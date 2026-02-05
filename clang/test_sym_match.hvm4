@@ -1,0 +1,7 @@
+// Test #Sym pattern matching
+
+@test1 = λ{#Sym: λ&n. n; _: λ&u. 0}(#Sym{123})
+@test2 = λ{#Sym: λ&n. n; _: λ&u. 0}(#Cst{456})
+@test3 = λ{#Sym: λ&n. n; _: λ&u. 0}(7522834)
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #NIL}}}

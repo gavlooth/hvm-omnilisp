@@ -1,0 +1,63 @@
+;; TEST: abs - positive number
+;; EXPECT: 5
+(abs 5)
+
+;; TEST: abs - negative number
+;; EXPECT: 7
+(abs -7)
+
+;; TEST: abs - zero
+;; EXPECT: 0
+(abs 0)
+
+;; TEST: floor - positive integer
+;; EXPECT: 42
+(floor 42)
+
+;; TEST: ceil - positive integer
+;; EXPECT: 42
+(ceil 42)
+
+;; TEST: round - positive integer
+;; EXPECT: 42
+(round 42)
+
+;; TEST: sqrt - perfect square
+;; EXPECT: 5
+(sqrt 25)
+
+;; TEST: sqrt - non-perfect square
+;; EXPECT: 4
+(sqrt 20)
+
+;; TEST: pow - base 2 exp 10
+;; EXPECT: 1024
+(pow 2 10)
+
+;; TEST: pow - base 3 exp 4
+;; EXPECT: 81
+(pow 3 4)
+
+;; TEST: pow - any number to 0
+;; EXPECT: 1
+(pow 5 0)
+
+;; TEST: pow - any number to 1
+;; EXPECT: 7
+(pow 7 1)
+
+;; TEST: min - first smaller
+;; EXPECT: 3
+(min 3 7)
+
+;; TEST: min - second smaller
+;; EXPECT: 2
+(min 5 2)
+
+;; TEST: max - first larger
+;; EXPECT: 8
+(max 8 4)
+
+;; TEST: max - second larger
+;; EXPECT: 9
+(max 3 9)

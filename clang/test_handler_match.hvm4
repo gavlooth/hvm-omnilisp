@@ -1,0 +1,27 @@
+// Test handler matching directly in pure HVM4
+
+// Create a handler with tag 7522834 (the hash for "ask")
+@test_handler = #Hdlr{7522834, λ&p. λ&r. (r(42))}
+
+// Create a tag as #Sym{7522834}
+@test_tag = #Sym{7522834}
+
+// Test: Extract tag_num from #Sym
+@test_tag_extract =
+  !!&tag = @test_tag;
+  (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag)
+
+// Test: Full handler_matches function
+@omni_handler_matches_test = λ&handler. λ&tag.
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+@test_match = @omni_handler_matches_test(@test_handler)(@test_tag)
+
+// Test: What if we pass raw number as tag?
+@test_match_raw = @omni_handler_matches_test(@test_handler)(7522834)
+
+@main = #CON{@test_tag_extract, #CON{@test_match, #CON{@test_match_raw, #NIL}}}

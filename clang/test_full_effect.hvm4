@@ -1,0 +1,191 @@
+// Test with actual runtime included
+// We need to include the runtime definitions
+
+// Include key parts of runtime
+@omni_menv_empty = #MEnv{#NIL, #NIL, #Noth, #Cst{0}}
+
+// Environment operations
+@omni_env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t.
+      λ{
+        0: h
+        _: λ&u_. @omni_env_get(t)((idx - 1))
+      }(idx)
+  }(env)
+
+@omni_env_extend = λ&env. λ&val.
+  #CON{val, env}
+
+@omni_menv_extend = λ&menv. λ&new_env.
+  λ{
+    #MEnv: λ&e. λ&h. λ&p. λ&l. #MEnv{new_env, h, p, l}
+    _: λ&u_. #MEnv{new_env, #NIL, #Noth, #Cst{0}}
+  }(menv)
+
+@omni_list_append = λ&lst1. λ&lst2.
+  λ{
+    #NIL: lst2
+    #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(lst2)}
+  }(lst1)
+
+// Simplified eval that handles the cases we need
+@omni_eval = λ&menv. λ&exp.
+  !!&menv_parts = (λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #E4{e, h, p, l}; _: λ&u_. #E4{#NIL, #NIL, #Noth, #Cst{0}}})(menv);
+  !!&env = (λ{#E4: λ&e. λ&h. λ&p. λ&l. e})(menv_parts);
+  !!&cur_handlers = (λ{#E4: λ&e. λ&h. λ&p. λ&l. h})(menv_parts);
+  !!&cur_parent = (λ{#E4: λ&e. λ&h. λ&p. λ&l. p})(menv_parts);
+  !!&cur_level = (λ{#E4: λ&e. λ&h. λ&p. λ&l. l})(menv_parts);
+  λ{
+    #Lit: λ&n. #Cst{n}
+    #Var: λ&i. @omni_env_get(env)(i)
+    #Lam: λ&body. #Clo{env, body}
+    #LamR: λ&body. #CloR{env, body}
+    #Sym: λ&s. #Sym{s}
+    #Cod: λ&inner. @omni_eval(menv)(inner)
+    #Hdle: λ&handlers. λ&body.
+      @omni_handle_cps(#MEnv{env, cur_handlers, cur_parent, cur_level})(handlers)(body)(λ&v. v)
+    _: λ&u_. exp
+  }(exp)
+
+// Apply
+@omni_apply = λ&menv. λ&fn. λ&arg.
+  !!&fn_forced = fn;
+  λ{
+    #Clo: λ&cenv. λ&body.
+      (λ&new_env.
+        (λ&new_menv. @omni_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
+      )(@omni_env_extend(cenv)(arg))
+    #Kont: λ&k. (k(arg))
+    _: λ&u. #Err{#sym_apply}
+  }(fn_forced)
+
+// Unwrap for CPS arithmetic
+@omni_unwrap_cst = λ&v.
+  λ{
+    #Cst: λ&n. n
+    _: λ&u_. 0
+  }(v)
+
+// CPS eval
+@omni_eval_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Lit: λ&n. (kont(#Cst{n}))
+      #Cst: λ&n. (kont(#Cst{n}))
+      #Var: λ&i. (kont(@omni_env_get(env)(i)))
+      #Lam: λ&body. (kont(#CloC{env, body}))
+      #Sym: λ&s. (kont(#Sym{s}))
+
+      #Perf: λ&tag. λ&payload.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(tag)(λ&tv.
+          @omni_eval_cps(#MEnv{env, handlers, parent, level})(payload)(λ&pv.
+            (λ&resume_k.
+              @omni_perform_cps(#MEnv{env, handlers, parent, level})(tv)(pv)(resume_k)
+            )(#Kont{kont})))
+
+      // Default: fall back to direct eval
+      _ : λ&u_. (kont(@omni_eval(#MEnv{env, handlers, parent, level})(e)))
+    }(e)
+  ; _ : λ&u_. #Err{#sym_cps}}(menv)
+
+// CPS apply
+@omni_apply_cps = λ&m. λ&vf. λ&vx. λ&k.
+  !!&menv = m; !!&kont = k; !!&arg = vx; !!&func = vf;
+  λ{
+    #CloC: λ&cenv. λ&body.
+      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+        @omni_eval_cps(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body)(kont)
+      ; _ : λ&u_. #Err{#sym_app}}(menv)
+    #Kont: λ&saved_k.
+      (λ&result. (kont(result)))((saved_k(arg)))
+    #Clo: λ&cenv. λ&body.
+      λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+        (λ&result. (kont(result)))(@omni_eval(#MEnv{#CON{arg, cenv}, handlers, parent, level})(body))
+      ; _ : λ&u_. #Err{#sym_app}}(menv)
+    _ : λ&u_. #Err{#sym_app_unknown}
+  }(func)
+
+// Handler helpers
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@omni_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+@omni_handle_cps = λ&menv. λ&handlers. λ&body. λ&k.
+  λ{
+    #MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+      (λ&evaluated_handlers.
+        (λ&new_handlers.
+          (λ&new_menv.
+            @omni_eval_cps(new_menv)(body)(k)
+          )(#MEnv{env, new_handlers, parent, level})
+        )(@omni_list_append(evaluated_handlers)(old_handlers))
+      )(@omni_eval_handlers(#MEnv{env, old_handlers, parent, level})(handlers))
+    _: λ&u_. #Err{#sym_handle_cps}
+  }(menv)
+
+@omni_perform_cps = λ&menv. λ&tag. λ&payload. λ&resume_k.
+  λ{
+    #MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+      @omni_find_handler_cps(#MEnv{env, handlers, parent, level})(handlers)(tag)(payload)(resume_k)
+    _: λ&u_. #Err{#sym_perform_cps}
+  }(menv)
+
+@omni_find_handler_cps = λ&menv. λ&handlers. λ&tag. λ&payload. λ&resume_k.
+  λ{
+    #NIL: #Err{#sym_nohandler, tag}
+    #CON: λ&h. λ&t.
+      (λ&matched.
+        λ{
+          1: @omni_invoke_handler_cps(menv)(h)(payload)(resume_k)
+          _: λ&u_. @omni_find_handler_cps(menv)(t)(tag)(payload)(resume_k)
+        }(matched)
+      )(@omni_handler_matches(h)(tag))
+  }(handlers)
+
+@omni_handler_matches = λ&handler. λ&tag.
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+@omni_invoke_handler_cps = λ&menv. λ&handler. λ&payload. λ&resume_k.
+  !!&pay = payload;
+  !!&res_k = resume_k;
+  λ{
+    #MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+      λ{
+        #Hdlr: λ&htag. λ&hfn.
+          (λ&menv1.
+            (λ&partial.
+              (λ&menv2.
+                (λ&result.
+                  @omni_eval_cps(#MEnv{env, handlers, parent, level})(result)(λ&v. v)
+                )(@omni_apply(menv2)(partial)(res_k))
+              )(#MEnv{env, handlers, parent, level})
+            )(@omni_apply(menv1)(hfn)(pay))
+          )(#MEnv{env, handlers, parent, level})
+        _: λ&u_. #Err{#sym_invoke_handler}
+      }(handler)
+    _: λ&u_. #Err{#sym_invoke_handler_menv}
+  }(menv)
+
+// The expression to test
+// (handle (perform ask 5) (ask [p r] 999))
+@test_expr = #Hdle{#CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}, #Perf{#Cod{#Sym{7522834}}, #Cst{5}}}
+
+// Run it
+@main = @omni_eval(@omni_menv_empty)(@test_expr)

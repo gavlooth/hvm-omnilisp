@@ -1,0 +1,17 @@
+;; Test dict values equal
+
+;; TEST: equality of same numbers
+;; EXPECT: true
+(= 0 0)
+
+;; TEST: inequality of different numbers
+;; EXPECT: false
+(= 0 1)
+
+;; TEST: first entry lookup
+;; EXPECT: 42
+(get #{0 42} 0)
+
+;; TEST: second entry lookup (the failing case)
+;; EXPECT: 99
+(get #{0 42 1 99} 1)

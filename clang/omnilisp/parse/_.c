@@ -3403,10 +3403,44 @@ fn Term parse_omni_sexp(PState *s) {
     }
 
     // Parse module body (sequence of definitions)
+    // We need to wrap defines with #Def{name, value} so the runtime
+    // can build the module environment with named bindings.
     Term body = omni_nil();
     Term *body_tail = &body;
     while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      // Peek to check if this is a define
+      omni_skip(s);
+      u32 saved = s->pos;
+      int is_define = 0;
+      u32 def_nick = 0;
+
+      if (parse_peek(s) == '(') {
+        parse_advance(s);  // skip (
+        omni_skip(s);
+        u32 kw_start, kw_len;
+        if (omni_parse_symbol_raw(s, &kw_start, &kw_len) &&
+            omni_symbol_is(s, kw_start, kw_len, "define")) {
+          omni_skip(s);
+          // Not a type define (those start with {)
+          if (parse_peek(s) != '{') {
+            u32 name_start, name_len;
+            if (omni_parse_symbol_raw(s, &name_start, &name_len)) {
+              def_nick = omni_symbol_nick(s, name_start, name_len);
+              is_define = 1;
+            }
+          }
+        }
+      }
+
+      // Restore and parse normally
+      s->pos = saved;
       Term expr = parse_omni_expr(s);
+
+      if (is_define && def_nick != 0) {
+        // Wrap in #Def{name, value} for module runtime
+        expr = omni_ctr2(OMNI_NAM_DEFN, term_new_num(def_nick), expr);
+      }
+
       Term cell = omni_cons(expr, omni_nil());
       *body_tail = cell;
       body_tail = &HEAP[term_val(cell) + 1];

@@ -1,0 +1,14 @@
+// Even more minimal test
+
+// Test 1: Just invoke a native lambda
+@test1 = (λ&x.λ&y.#CON{x, y})(1)(2)
+
+// Test 2: Handler function returns AST
+@handler_fn = λ&p.λ&r.#App{r, #Cst{42}}
+@test2 = (@handler_fn(0))(99)
+
+// Test 3: Resume is a Kont
+@resume_k = #Kont{λ&v. #Cst{(v + 100)}}
+@test3 = (@handler_fn(0))(@resume_k)
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #NIL}}}

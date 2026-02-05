@@ -1,0 +1,129 @@
+// Trace effect handling step by step
+
+// Empty menv
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Basic operations
+@omni_env_extend = λ&env. λ&arg. #CON{arg, env}
+@omni_menv_extend = λ&menv. λ&new_env.
+  λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #MEnv{new_env, h, p, l}}(menv)
+
+@omni_list_append = λ&lst1. λ&lst2.
+  λ{
+    #NIL: lst2
+    #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(lst2)}
+  }(lst1)
+
+// Simplified @omni_eval - handles what we need
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&cur_h. λ&cur_p. λ&cur_l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      #Cst: λ&n. #Cst{n}
+      #Sym: λ&s. #Sym{s}
+      #Cod: λ&inner. @mock_eval(#MEnv{env, cur_h, cur_p, cur_l})(inner)
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// @omni_apply
+@mock_apply = λ&menv. λ&fn. λ&arg.
+  !!&fn_forced = fn;
+  λ{
+    #Clo: λ&cenv. λ&body.
+      (λ&new_env.
+        (λ&new_menv. @mock_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
+      )(@omni_env_extend(cenv)(arg))
+    #Kont: λ&k. (k(arg))
+    _: λ&u. #OtherFn{fn_forced}
+  }(fn_forced)
+
+// @omni_eval_one_handler
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+// @omni_eval_handlers
+@eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @eval_handlers(menv)(t)})(@eval_handler(menv)(h))
+  }(hdlrs)
+
+// @omni_handler_matches
+@handler_matches = λ&handler. λ&tag.
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+// @omni_invoke_handler_cps
+@invoke_handler = λ&menv. λ&handler. λ&payload. λ&resume_k.
+  !!&pay = payload;
+  !!&res_k = resume_k;
+  λ{
+    #MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+      λ{
+        #Hdlr: λ&htag. λ&hfn.
+          (λ&menv1.
+            (λ&partial.
+              (λ&menv2.
+                (λ&result.
+                  result  // In full runtime, would call @omni_eval_cps here
+                )(@mock_apply(menv2)(partial)(res_k))
+              )(#MEnv{env, handlers, parent, level})
+            )(@mock_apply(menv1)(hfn)(pay))
+          )(#MEnv{env, handlers, parent, level})
+        _: λ&u_. #Err{#sym_invoke_handler}
+      }(handler)
+    _: λ&u_. #Err{#sym_invoke_handler_menv}
+  }(menv)
+
+// @omni_find_handler_cps
+@find_handler = λ&menv. λ&handlers. λ&tag. λ&payload. λ&resume_k.
+  λ{
+    #NIL: #Err{#sym_nohandler, tag}
+    #CON: λ&h. λ&t.
+      (λ&matched.
+        λ{
+          1: @invoke_handler(menv)(h)(payload)(resume_k)
+          _: λ&u_. @find_handler(menv)(t)(tag)(payload)(resume_k)
+        }(matched)
+      )(@handler_matches(h)(tag))
+  }(handlers)
+
+// Build the expression
+// (handle (perform ask 5) (ask [p r] 999))
+// Compiles to:
+// #Hdle{#CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}, #Perf{#Cod{#Sym{7522834}}, #Cst{5}}}
+
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Step 1: Evaluate handlers
+@evaluated_handlers = @eval_handlers(@menv_empty)(@handlers_def)
+
+// Step 2: Create new menv with handlers
+@new_handlers = @omni_list_append(@evaluated_handlers)(#NIL)
+@new_menv = #MEnv{#NIL, @new_handlers, #Noth, 0}
+
+// Step 3: Evaluate the tag (performs lookup)
+@tag_value = @mock_eval(@new_menv)(#Cod{#Sym{7522834}})
+
+// Step 4: Evaluate the payload
+@payload_value = @mock_eval(@new_menv)(#Cst{5})
+
+// Step 5: Find and invoke handler
+@resume_kont = #Kont{λ&x. x}
+@result = @find_handler(@new_menv)(@new_handlers)(@tag_value)(@payload_value)(@resume_kont)
+
+// Show intermediate values
+@main = #CON{#S1{@evaluated_handlers},
+        #CON{#S2{@tag_value},
+        #CON{#S3{@payload_value},
+        #CON{#S4{@result}, #NIL}}}}

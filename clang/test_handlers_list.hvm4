@@ -1,0 +1,46 @@
+// Debug what handlers list looks like in CPS flow
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Basic operations
+@omni_list_append = λ&lst1. λ&lst2.
+  λ{#NIL: lst2; #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(lst2)}}(lst1)
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Handler evaluation
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+@eval_handlers = λ&menv. λ&hdlrs.
+  λ{#NIL: #NIL; #CON: λ&h. λ&t. #CON{@eval_handler(menv)(h), @eval_handlers(menv)(t)}}(hdlrs)
+
+// Handle CPS - return handlers list for debug
+@mock_handle_cps = λ&menv. λ&handlers. λ&body. λ&k.
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    !!&evaluated_handlers = @eval_handlers(#MEnv{env, old_handlers, parent, level})(handlers);
+    !!&new_handlers = @omni_list_append(evaluated_handlers)(old_handlers);
+    !!&new_menv = #MEnv{env, new_handlers, parent, level};
+    // Return debug info about new_menv
+    #DebugMenv{new_menv, new_handlers, evaluated_handlers}
+  }(menv)
+
+// Test expression
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Test
+@result = @mock_handle_cps(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+@main = @result

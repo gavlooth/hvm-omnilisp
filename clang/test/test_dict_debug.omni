@@ -1,0 +1,9 @@
+;; Test dict debug
+
+;; TEST: simple dict creation
+;; EXPECT: #Dict{((0 42))}
+#{0 42}
+
+;; TEST: get from simple dict
+;; EXPECT: 42
+(get #{0 42} 0)

@@ -1,0 +1,24 @@
+// Fix: capture handlers with strict binding before pattern match
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Original (broken) version
+@test_fn_broken = λ&menv. λ&handlers. λ&body. λ&k.
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    #Inside{env, old_handlers, parent, level, handlers}
+  }(menv)
+
+// Fixed version: capture handlers before pattern match
+@test_fn_fixed = λ&menv. λ&handlers. λ&body. λ&k.
+  !!&captured_handlers = handlers;
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    #Inside{env, old_handlers, parent, level, captured_handlers}
+  }(menv)
+
+// Test
+@result_broken = @test_fn_broken(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+@result_fixed = @test_fn_fixed(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+@main = #CON{@result_broken, #CON{@result_fixed, #NIL}}

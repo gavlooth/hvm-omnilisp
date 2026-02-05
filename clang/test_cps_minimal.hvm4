@@ -1,0 +1,68 @@
+// Minimal CPS evaluator test - separate parameters, no compound extraction
+
+// Environment operations
+@env_empty = #NIL
+@env_extend = λ&env. λ&val. #CON{val, env}
+@env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t. λ{0: h; _: λ&u_. @env_get(t)((idx - 1))}(idx)
+  }(env)
+
+@unwrap = λ&v. λ{#Cst: λ&n. n; _: λ&u_. 0}(v)
+
+// CPS evaluator with SEPARATE parameters (not extracted from compound)
+@eval_cps = λ&env. λ&kont. λ&expr.
+  λ{
+    #Cst: λ&n. (kont(#Cst{n}))
+
+    #Var: λ&i. (kont(@env_get(env)(i)))
+
+    #Lam: λ&body. (kont(#Clo{env, body}))
+
+    #App: λ&f. λ&x.
+      @eval_cps(env)(λ&vf.
+        @eval_cps(env)(λ&vx.
+          @apply_cps(vf)(vx)(kont)
+        )(x)
+      )(f)
+
+    #Add: λ&a. λ&b.
+      @eval_cps(env)(λ&va.
+        @eval_cps(env)(λ&vb.
+          (kont(#Cst{(@unwrap(va) + @unwrap(vb))}))
+        )(b)
+      )(a)
+
+    #Let: λ&val. λ&body.
+      @eval_cps(env)(λ&vv.
+        @eval_cps(@env_extend(env)(vv))(kont)(body)
+      )(val)
+
+    _ : λ&u_. #Err{#sym_unknown_expr}
+  }(expr)
+
+// Apply closure in CPS mode
+@apply_cps = λ&clo. λ&arg. λ&kont.
+  λ{
+    #Clo: λ&cenv. λ&body.
+      @eval_cps(@env_extend(cenv)(arg))(kont)(body)
+    _ : λ&u_. #Err{#sym_not_closure}
+  }(clo)
+
+// Test 1: constant
+@test1 = @eval_cps(@env_empty)(λ&v. v)(#Cst{42})
+
+// Test 2: let binding
+@test2 = @eval_cps(@env_empty)(λ&v. v)(#Let{#Cst{5}, #Var{0}})
+
+// Test 3: let with add using bound var
+@test3 = @eval_cps(@env_empty)(λ&v. v)(#Let{#Cst{5}, #Add{#Var{0}, #Cst{3}}})
+
+// Test 4: function application (identity)
+@test4 = @eval_cps(@env_empty)(λ&v. v)(#App{#Lam{#Var{0}}, #Cst{5}})
+
+// Test 5: nested add
+@test5 = @eval_cps(@env_empty)(λ&v. v)(#Add{#Add{#Cst{1}, #Cst{2}}, #Add{#Cst{3}, #Cst{4}}})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #CON{@test4, #CON{@test5, #NIL}}}}}

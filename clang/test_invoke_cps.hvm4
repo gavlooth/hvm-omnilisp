@@ -1,0 +1,30 @@
+// Test @omni_invoke_handler_cps step by step
+
+// Minimal menv
+@menv = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Handler: (ask [p r] 999)
+// Handler fn should be a closure that takes 2 args
+@handler_fn = #Lam{#Lam{#Cst{999}}}
+
+// Evaluated handler
+@handler = #Hdlr{7522834, @handler_fn}
+
+// Payload
+@payload = #Cst{5}
+
+// Resume continuation
+@resume_k = #Kont{λ&v. v}
+
+// Test @omni_apply with handler_fn and payload
+@test_apply1 = @omni_apply(@menv)(@handler_fn)(@payload)
+// Should return a closure waiting for resume arg
+
+// Test applying result to resume_k
+@test_apply2 = @omni_apply(@menv)(@test_apply1)(@resume_k)
+// Should return #Cst{999}
+
+// Test full invoke flow
+@test_invoke = @omni_invoke_handler_cps(@menv)(@handler)(@payload)(@resume_k)
+
+@main = #CON{@test_apply1, #CON{@test_apply2, #CON{@test_invoke, #NIL}}}

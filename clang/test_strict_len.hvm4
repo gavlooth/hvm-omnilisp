@@ -1,0 +1,51 @@
+// Test strict binding effect on @list_len
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Test 1: Direct @list_len (no strict binding)
+@test1 = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        #Direct{@list_len(handlers)}
+      _: λ&u_. #Other{}
+    }(e)
+  }(menv)
+
+// Test 2: Strict binding then use
+@test2 = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        !!&handlers_len = @list_len(handlers);
+        #Strict{handlers_len}
+      _: λ&u_. #Other{}
+    }(e)
+  }(menv)
+
+// Test 3: Multiple strict bindings
+@test3 = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        !!&a = @list_len(hdlrs);
+        !!&b = @list_len(handlers);
+        #Multi{a, b}
+      _: λ&u_. #Other{}
+    }(e)
+  }(menv)
+
+@handler_def = #HDef{7522834, 99}
+@expr = #Hdle{#CON{@handler_def, #NIL}, #Perf{0, 0}}
+
+@r1 = @test1(@menv_empty)(@expr)(λ&v. v)
+@r2 = @test2(@menv_empty)(@expr)(λ&v. v)
+@r3 = @test3(@menv_empty)(@expr)(λ&v. v)
+
+@main = #CON{@r1, #CON{@r2, #CON{@r3, #NIL}}}

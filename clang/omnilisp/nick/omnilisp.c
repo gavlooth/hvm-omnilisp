@@ -437,6 +437,7 @@ static u32 OMNI_NAM_IMPT;  // Import: #Impt{module_name, bindings}
 static u32 OMNI_NAM_EXPT;  // Export list: #Expt{names}
 static u32 OMNI_NAM_QUAL;  // Qualified access: #Qual{module, name}
 static u32 OMNI_NAM_MODA;  // Module alias: #ModAlias{env} - for (import M :as Alias)
+static u32 OMNI_NAM_DEFN;  // Module define: #Def{name_nick, value} - for module body
 
 // Code/quasiquote
 static u32 OMNI_NAM_COD;   // Code: #Cod{expr}
@@ -987,6 +988,7 @@ fn void omni_names_init(void) {
   OMNI_NAM_EXPT = omni_nick("Expt");
   OMNI_NAM_QUAL = omni_nick("Qual");
   OMNI_NAM_MODA = omni_nick("ModA");
+  OMNI_NAM_DEFN = omni_nick("Def");
 
   // Code/quasiquote
   OMNI_NAM_COD  = omni_nick("Cod");

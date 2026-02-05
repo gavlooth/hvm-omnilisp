@@ -1,0 +1,21 @@
+;; Minimal dict test
+
+;; TEST: empty dict
+;; EXPECT: nothing
+(get #{} 0)
+
+;; TEST: single entry found
+;; EXPECT: 42
+(get #{0 42} 0)
+
+;; TEST: single entry not found (the failing case)
+;; EXPECT: nothing
+(get #{0 42} 1)
+
+;; TEST: two entries, find first
+;; EXPECT: 42
+(get #{0 42 1 99} 0)
+
+;; TEST: two entries, find second
+;; EXPECT: 99
+(get #{0 42 1 99} 1)

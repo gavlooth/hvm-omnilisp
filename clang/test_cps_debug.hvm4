@@ -1,0 +1,32 @@
+// Debug CPS test - try strict binding before capture
+@env_empty = #NIL
+@env_extend = λ&env. λ&val. #CON{val, env}
+
+@env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t. λ{0: h; _: λ&u_. @env_get(t)((idx - 1))}(idx)
+  }(env)
+
+@unwrap = λ&v. λ{#Cst: λ&n. n; _: λ&u_. 0}(v)
+
+@add_cont2 = λ&kont. λ&va. λ&vb.
+  (kont(#Cst{(@unwrap(va) + @unwrap(vb))}))
+
+@add_cont1 = λ&kont. λ&b. λ&env. λ&va.
+  // Try strict binding to force va evaluation
+  !!&va_strict = va;
+  @eval_cps(env)(@add_cont2(kont)(va_strict))(b)
+
+@eval_cps = λ&env. λ&kont. λ&expr.
+  λ{
+    #Cst: λ&n. (kont(#Cst{n}))
+    #Var: λ&i. (kont(@env_get(env)(i)))
+    #Add: λ&a. λ&b.
+      @eval_cps(env)(@add_cont1(kont)(b)(env))(a)
+    _ : λ&u_. #Err{#sym_unknown}
+  }(expr)
+
+@test1 = @eval_cps(#CON{#Cst{5}, #NIL})(λ&v. v)(#Add{#Var{0}, #Cst{3}})
+
+@main = @test1

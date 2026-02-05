@@ -1,0 +1,24 @@
+// Debug what mock_handle_cps receives
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Handle CPS - return handlers parameter for debug
+@mock_handle_cps = λ&menv. λ&handlers. λ&body. λ&k.
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    // Return what handlers parameter contains
+    #DebugHandlers{handlers,
+      λ{
+        #NIL: #IsNil
+        #CON: λ&h. λ&t. #IsCon{h, t}
+      }(handlers)
+    }
+  }(menv)
+
+// Test expression
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Test
+@result = @mock_handle_cps(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+@main = @result

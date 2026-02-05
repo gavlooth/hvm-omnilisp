@@ -1,0 +1,65 @@
+;; test_negative_comparison.omni - Tests for signed integer comparison
+
+;; TEST: negative less than zero
+;; EXPECT: true
+(< -5 0)
+
+;; TEST: zero greater than negative
+;; EXPECT: true
+(> 0 -5)
+
+;; TEST: negative less than negative (more negative)
+;; EXPECT: true
+(< -10 -5)
+
+;; TEST: negative not less than less-negative
+;; EXPECT: false
+(< -5 -10)
+
+;; TEST: negative greater than more-negative
+;; EXPECT: true
+(> -5 -10)
+
+;; TEST: negative not greater than less-negative
+;; EXPECT: false
+(> -10 -5)
+
+;; TEST: negative less-or-equal to itself
+;; EXPECT: true
+(<= -5 -5)
+
+;; TEST: negative greater-or-equal to itself  
+;; EXPECT: true
+(>= -5 -5)
+
+;; TEST: negative less-or-equal to zero
+;; EXPECT: true
+(<= -5 0)
+
+;; TEST: zero greater-or-equal to negative
+;; EXPECT: true
+(>= 0 -5)
+
+;; TEST: computed negative less than zero
+;; EXPECT: true
+(< (- 0 5) 0)
+
+;; TEST: computed negative comparison
+;; EXPECT: true
+(< (- 0 10) (- 0 5))
+
+;; TEST: positive comparisons still work
+;; EXPECT: true
+(< 5 10)
+
+;; TEST: positive greater than
+;; EXPECT: true
+(> 10 5)
+
+;; TEST: mixed - positive vs negative
+;; EXPECT: true
+(> 5 -5)
+
+;; TEST: mixed - negative vs positive (flipped)
+;; EXPECT: false
+(> -5 5)

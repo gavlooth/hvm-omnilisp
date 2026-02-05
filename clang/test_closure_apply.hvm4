@@ -1,0 +1,22 @@
+// Test closure application with different payload types
+
+// Test data
+@menv = #MEnv{#NIL, #NIL, #Noth, #Cst{0}}
+
+// Handler closure: (lambda [p] (lambda [r] 999))
+// When evaluated, #Lam becomes #Clo
+@handler_clo = #Clo{#NIL, #Lam{#Cst{999}}}
+
+// Test with #Noth payload
+@test_noth =
+  (λ&partial.
+    (λ&result. result)(@omni_apply(@menv)(partial)(#Kont{λ&v. v}))
+  )(@omni_apply(@menv)(@handler_clo)(#Noth))
+
+// Test with #Cst{5} payload
+@test_cst5 =
+  (λ&partial.
+    (λ&result. result)(@omni_apply(@menv)(partial)(#Kont{λ&v. v}))
+  )(@omni_apply(@menv)(@handler_clo)(#Cst{5}))
+
+@main = #CON{@test_noth, #CON{@test_cst5, #NIL}}

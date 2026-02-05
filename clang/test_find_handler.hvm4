@@ -1,0 +1,54 @@
+// Debug find handler flow
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Handler evaluation
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+// Handler match
+@handler_matches = λ&handler. λ&tag.
+  !!&forced_tag = tag;
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. forced_tag})(forced_tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+// Find handler
+@mock_find_handler = λ&handlers. λ&tag.
+  !!&forced_tag = tag;
+  λ{
+    #NIL: #NotFound{}
+    #CON: λ&h. λ&t.
+      (λ&matched.
+        λ{
+          1: #Found{h}
+          _: λ&u_. @mock_find_handler(t)(forced_tag)
+        }(matched)
+      )(@handler_matches(h)(forced_tag))
+  }(handlers)
+
+// Setup
+@hdef = #HDef{7522834, #Lam{#Lam{#Cst{999}}}}
+@handler = @eval_handler(@menv_empty)(@hdef)
+@handlers = #CON{@handler, #NIL}
+@tag = #Sym{7522834}
+
+// Test
+@result = @mock_find_handler(@handlers)(@tag)
+
+@main = @result

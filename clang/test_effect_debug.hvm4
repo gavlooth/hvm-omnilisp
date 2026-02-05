@@ -1,0 +1,22 @@
+// Debug test for Sym extraction
+
+// Test: Extract value from #Sym
+@test_sym_extract =
+  !!&tag = #Sym{15957719};
+  (λ{#Sym: λ&n. n; _: λ&u_. 0})(tag)
+
+// Test: Compare extracted value with raw number
+@test_sym_compare =
+  !!&tag = #Sym{15957719};
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  (tag_num == 15957719)
+
+// Test: Full handler matching simulation
+@test_full_match =
+  !!&handler = #Hdlr{15957719, λ&p. λ&r. (r(42))};
+  !!&tag = #Sym{15957719};
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  !!&matches = (λ{#Hdlr: λ&ht. λ&hf. (ht == tag_num); _: λ&u_. 0})(handler);
+  matches
+
+@main = #CON{@test_sym_extract, #CON{@test_sym_compare, #CON{@test_full_match, #NIL}}}

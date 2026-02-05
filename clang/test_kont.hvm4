@@ -1,0 +1,18 @@
+// Test just calling a Kont via apply_cps
+
+@omni_apply_cps = λ&m. λ&vf. λ&vx. λ&k.
+  !!&menv = m; !!&kont = k; !!&arg = vx; !!&func = vf;
+  λ{
+    #Kont: λ&saved_k.
+      (λ&result. (kont(result)))((saved_k(arg)))
+    _ : λ&u_. #Err{#sym_cant_apply}
+  }(func)
+
+// Test 1: Direct Kont invocation
+@resume_k = #Kont{λ&v. #Cst{(v + 100)}}
+@test1 = @omni_apply_cps(0)(@resume_k)(#Cst{42})(λ&v. v)
+
+// Test 2: Even simpler - just call the saved_k directly
+@test2 = (λ&v. #Cst{(v + 100)})(#Cst{42})
+
+@main = #CON{@test1, #CON{@test2, #NIL}}

@@ -1,0 +1,49 @@
+// Test basic list operations
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+// Test 1: Empty list
+@test1 = @list_len(#NIL)
+
+// Test 2: Single element list
+@single = #CON{42, #NIL}
+@test2 = @list_len(@single)
+
+// Test 3: Two element list
+@double = #CON{1, #CON{2, #NIL}}
+@test3 = @list_len(@double)
+
+// Test 4: Eval handlers on single-element list
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr. #Hdlr{tag, fn_expr}
+    _: λ&u_. h
+  }(h)
+
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@handler_def = #HDef{7522834, 99}
+@handler_list = #CON{@handler_def, #NIL}
+@test4_input_len = @list_len(@handler_list)
+@test4_result = @omni_eval_handlers(0)(@handler_list)
+@test4_output_len = @list_len(@test4_result)
+
+@main = #CON{
+  #T1{@test1},
+  #CON{
+    #T2{@test2},
+    #CON{
+      #T3{@test3},
+      #CON{
+        #T4{@test4_input_len, @test4_output_len},
+        #NIL
+      }
+    }
+  }
+}

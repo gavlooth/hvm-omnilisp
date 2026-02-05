@@ -1,0 +1,19 @@
+// Debug argument passing
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Test function - returns all arguments
+@test_fn = λ&a. λ&b. λ&c. λ&d. #Args{a, b, c, d}
+
+// Test call
+@result = @test_fn(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+// Also test partially applied
+@partial1 = @test_fn(@menv_empty)
+@partial2 = @partial1(@handlers_def)
+@partial3 = @partial2(@body_perf)
+@result2 = @partial3(λ&v. v)
+
+@main = #CON{@result, #CON{@result2, #NIL}}

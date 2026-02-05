@@ -1,0 +1,77 @@
+// Test handler count - trace exactly how many handlers are installed
+
+// Count elements in a list
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+// Get handlers from menv
+@get_handlers = λ&menv.
+  λ{#MEnv: λ&e. λ&h. λ&p. λ&l. h}(menv)
+
+// Evaluate handlers
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr. #Hdlr{tag, fn_expr}
+    _: λ&u_. h
+  }(h)
+
+@omni_list_append = λ&a. λ&b.
+  λ{#NIL: b; #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(b)}}(a)
+
+// Simple CPS evaluator - just trace handlers
+@omni_eval_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Cst: λ&n. (kont(#Cst{n}))
+
+      #Hdle: λ&hdlrs. λ&body.
+        // Step 1: Evaluate handler definitions
+        !!&evaluated_handlers = @omni_eval_handlers(#MEnv{env, handlers, parent, level})(hdlrs);
+        !!&eval_count = @list_len(evaluated_handlers);
+
+        // Step 2: Count old handlers
+        !!&old_count = @list_len(handlers);
+
+        // Step 3: Append
+        !!&new_handlers = @omni_list_append(evaluated_handlers)(handlers);
+        !!&new_count = @list_len(new_handlers);
+
+        // Return debug info about handler counts
+        #Debug{
+          #eval_count{eval_count},
+          #old_count{old_count},
+          #new_count{new_count},
+          @omni_eval_cps(#MEnv{env, new_handlers, parent, level})(body)(kont)
+        }
+
+      #Perf: λ&tag. λ&payload.
+        !!&handler_count = @list_len(handlers);
+        #Perf_Debug{handler_count, handlers}
+
+      _ : λ&u_. (kont(e))
+    }(e)
+  ; _ : λ&u_. #Err{#sym_cps}}(menv)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// One handler definition
+@handler_def = #HDef{7522834, 99}
+@hdlrs = #CON{@handler_def, #NIL}
+
+// Body is a perform
+@body = #Perf{7522834, 0}
+
+// Expression: (handle body (hdlrs))
+@test_expr = #Hdle{@hdlrs, @body}
+
+@test = @omni_eval_cps(@menv_empty)(@test_expr)(λ&v. v)
+
+@main = @test

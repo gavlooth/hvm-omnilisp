@@ -1,0 +1,40 @@
+// Debug eval_handlers
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Handler evaluation
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+@eval_handlers = λ&menv. λ&hdlrs.
+  λ{#NIL: #NIL; #CON: λ&h. λ&t. #CON{@eval_handler(menv)(h), @eval_handlers(menv)(t)}}(hdlrs)
+
+// Test: the handlers definition
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+
+// Test 1: Direct call to eval_handlers
+@test1 = @eval_handlers(@menv_empty)(@handlers_def)
+
+// Test 2: Test pattern match on handlers_def
+@test2 = λ{
+  #NIL: #WasNil
+  #CON: λ&h. λ&t. #WasCon{h, t}
+}(@handlers_def)
+
+// Test 3: Test eval_handler directly
+@test3 = @eval_handler(@menv_empty)(#HDef{7522834, #Lam{#Lam{#Cst{999}}}})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #NIL}}}

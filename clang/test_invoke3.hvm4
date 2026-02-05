@@ -1,0 +1,41 @@
+// Test evaluating handler result
+
+@omni_env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t.
+      λ{0: h; _: λ&u_. @omni_env_get(t)((idx - 1))}(idx)
+  }(env)
+
+@omni_eval_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Cst: λ&n. (kont(#Cst{n}))
+      #Var: λ&i. (kont(@omni_env_get(env)(i)))
+      #App: λ&f. λ&x.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(f)(λ&vf.
+          @omni_eval_cps(#MEnv{env, handlers, parent, level})(x)(λ&vx.
+            @omni_apply_cps(#MEnv{env, handlers, parent, level})(vf)(vx)(kont)))
+      _ : λ&u_. (kont(e))
+    }(e)
+  ; _ : λ&u_. #Err{#sym_cps}}(menv)
+
+@omni_apply_cps = λ&m. λ&vf. λ&vx. λ&k.
+  !!&menv = m; !!&kont = k; !!&arg = vx; !!&func = vf;
+  λ{
+    #Kont: λ&saved_k.
+      (λ&result. (kont(result)))((saved_k(arg)))
+    _ : λ&u_. #Err{#sym_cant_apply}
+  }(func)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Handler result: #App{#Kont{λv. #Cst{(v + 100)}}, #Cst{42}}
+@resume_k = #Kont{λ&v. #Cst{(v + 100)}}
+@handler_result = #App{@resume_k, #Cst{42}}
+
+// Test: Evaluate the handler result
+@test_eval = @omni_eval_cps(@menv_empty)(@handler_result)(λ&v. v)
+
+@main = @test_eval

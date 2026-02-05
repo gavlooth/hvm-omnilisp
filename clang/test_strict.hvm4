@@ -1,0 +1,37 @@
+// Test strict bindings effect on variable capture
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Without strict bindings
+@test_no_strict = λ&m. λ&exp.
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        #NoStrict{@list_len(hdlrs), @list_len(handlers)}
+      _: λ&u_. #Other{}
+    }(exp)
+  }(m)
+
+// With strict bindings - like the real CPS eval
+@test_with_strict = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        #WithStrict{@list_len(hdlrs), @list_len(handlers)}
+      _: λ&u_. #Other{}
+    }(e)
+  }(menv)
+
+@handler_def = #HDef{7522834, 99}
+@hdlrs = #CON{@handler_def, #NIL}
+@body = #Perf{0, 0}
+@expr = #Hdle{@hdlrs, @body}
+
+@test1 = @test_no_strict(@menv_empty)(@expr)
+@test2 = @test_with_strict(@menv_empty)(@expr)(λ&v. v)
+
+@main = #CON{@test1, #CON{@test2, #NIL}}

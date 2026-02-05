@@ -1,0 +1,21 @@
+// Debug menv pattern match
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Test function with menv pattern match
+@test_fn1 = λ&menv. λ&handlers. λ&body. λ&k.
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    #Inside{env, old_handlers, parent, level, handlers}
+  }(menv)
+
+// Without the menv pattern match
+@test_fn2 = λ&menv. λ&handlers. λ&body. λ&k.
+  #Args{menv, handlers, body, k}
+
+// Test
+@result1 = @test_fn1(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+@result2 = @test_fn2(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+@main = #CON{@result1, #CON{@result2, #NIL}}

@@ -1,0 +1,43 @@
+;; test_str_compare.omni - Tests for string comparison
+
+;; Str-compare returns -1, 0, or 1 for lexicographic comparison
+
+;; TEST: compare equal
+;; EXPECT: 0
+(str-compare "hello" "hello")
+
+;; TEST: compare less than
+;; EXPECT: -1
+(str-compare "abc" "abd")
+
+;; TEST: compare greater than
+;; EXPECT: 1
+(str-compare "abd" "abc")
+
+;; TEST: compare shorter is less
+;; EXPECT: -1
+(str-compare "ab" "abc")
+
+;; TEST: compare longer is greater
+;; EXPECT: 1
+(str-compare "abc" "ab")
+
+;; TEST: compare empty strings
+;; EXPECT: 0
+(str-compare "" "")
+
+;; TEST: compare empty vs non-empty
+;; EXPECT: -1
+(str-compare "" "a")
+
+;; TEST: compare non-empty vs empty
+;; EXPECT: 1
+(str-compare "a" "")
+
+;; TEST: compare case sensitive
+;; EXPECT: 1
+(str-compare "a" "A")
+
+;; TEST: compare numbers in string
+;; EXPECT: -1
+(str-compare "1" "2")

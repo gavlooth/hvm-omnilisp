@@ -1,0 +1,34 @@
+// Test the CPS add helper functions
+
+// Unwrap helper
+@unwrap = λ&v. λ{#Cst: λ&n. n; _ : λ&u_. 0}(v)
+
+// Add continuation 2 - computes sum
+@add_cont2 = λ&kont. λ&va. λ&vb.
+  (kont(#Cst{(@unwrap(va) + @unwrap(vb))}))
+
+// Simple eval that just returns the value
+@eval = λ&exp. λ&kont.
+  λ{
+    #Cst: λ&n. (kont(#Cst{n}))
+    _ : λ&u_. #Err{#sym_unknown}
+  }(exp)
+
+// Add continuation 1 - evaluates b
+@add_cont1 = λ&kont. λ&b. λ&va.
+  @eval(b)(@add_cont2(kont)(va))
+
+// Test: evaluate #Cst{5} with add continuation
+// Should call add_cont1(λ&v. v)(#Cst{3})(#Cst{5})
+// Then call eval(#Cst{3})(add_cont2(λ&v. v)(#Cst{5}))
+// Then call add_cont2(λ&v. v)(#Cst{5})(#Cst{3})
+// Should return #Cst{8}
+@test1 = @eval(#Cst{5})(@add_cont1(λ&v. v)(#Cst{3}))
+
+// Direct test of add_cont2
+@test2 = @add_cont2(λ&v. v)(#Cst{5})(#Cst{3})
+
+// Direct test of add_cont1
+@test3 = @add_cont1(λ&v. v)(#Cst{3})(#Cst{5})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #NIL}}}

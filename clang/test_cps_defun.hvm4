@@ -1,0 +1,86 @@
+// Defunctionalized CPS - use data to represent continuations
+@env_empty = #NIL
+@env_extend = λ&env. λ&val. #CON{val, env}
+
+@env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t. λ{0: h; _: λ&u_. @env_get(t)((idx - 1))}(idx)
+  }(env)
+
+@unwrap = λ&v. λ{#Cst: λ&n. n; _: λ&u_. 0}(v)
+
+// Continuation types:
+// #KId           - identity continuation
+// #KAdd1{k,b,env} - first add continuation: waiting for va, has b and env to eval next
+// #KAdd2{k,va}    - second add continuation: waiting for vb, has va already
+// #KLet{k,body,env} - let continuation: waiting for value, has body and env
+// #KApp1{k,x,env} - waiting for function, has arg expr and env
+// #KApp2{k,vf}    - waiting for arg value, has function value
+
+// Apply a continuation to a value
+@apply_k = λ&k. λ&v.
+  λ{
+    #KId: v
+    #KAdd1: λ&k2. λ&b. λ&env.
+      @eval_cps(env)(#KAdd2{k2, v})(b)
+    #KAdd2: λ&k2. λ&va.
+      @apply_k(k2)(#Cst{(@unwrap(va) + @unwrap(v))})
+    #KLet: λ&k2. λ&body. λ&env.
+      @eval_cps(@env_extend(env)(v))(k2)(body)
+    #KApp1: λ&k2. λ&x. λ&env.
+      // v is the function, evaluate arg
+      @eval_cps(env)(#KApp2{k2, v})(x)
+    #KApp2: λ&k2. λ&vf.
+      // v is the arg, apply function
+      @apply_fn(vf)(v)(k2)
+    _ : λ&u_. #Err{#sym_bad_kont}
+  }(k)
+
+// Apply a function value to an argument
+@apply_fn = λ&f. λ&arg. λ&k.
+  λ{
+    #Clo: λ&cenv. λ&body.
+      @eval_cps(@env_extend(cenv)(arg))(k)(body)
+    _ : λ&u_. #Err{#sym_not_function}
+  }(f)
+
+@eval_cps = λ&env. λ&k. λ&expr.
+  λ{
+    #Cst: λ&n. @apply_k(k)(#Cst{n})
+    #Var: λ&i. @apply_k(k)(@env_get(env)(i))
+    #Lam: λ&body. @apply_k(k)(#Clo{env, body})
+    #Let: λ&val. λ&body.
+      @eval_cps(env)(#KLet{k, body, env})(val)
+    #Add: λ&a. λ&b.
+      @eval_cps(env)(#KAdd1{k, b, env})(a)
+    #App: λ&f. λ&x.
+      @eval_cps(env)(#KApp1{k, x, env})(f)
+    _ : λ&u_. #Err{#sym_unknown}
+  }(expr)
+
+// Test 1: constant
+@test1 = @eval_cps(@env_empty)(#KId)(#Cst{42})
+
+// Test 2: var in env
+@test2 = @eval_cps(#CON{#Cst{7}, #NIL})(#KId)(#Var{0})
+
+// Test 3: let [x 5] x
+@test3 = @eval_cps(@env_empty)(#KId)(#Let{#Cst{5}, #Var{0}})
+
+// Test 4: (+ 3 4)
+@test4 = @eval_cps(@env_empty)(#KId)(#Add{#Cst{3}, #Cst{4}})
+
+// Test 5: let [x 5] (+ x 3)
+@test5 = @eval_cps(@env_empty)(#KId)(#Let{#Cst{5}, #Add{#Var{0}, #Cst{3}}})
+
+// Test 6: ((lambda [x] x) 5) - identity application
+@test6 = @eval_cps(@env_empty)(#KId)(#App{#Lam{#Var{0}}, #Cst{5}})
+
+// Test 7: ((lambda [x] (+ x 1)) 5) = 6
+@test7 = @eval_cps(@env_empty)(#KId)(#App{#Lam{#Add{#Var{0}, #Cst{1}}}, #Cst{5}})
+
+// Test 8: (let [f (lambda [x] (+ x 10))] (f 5)) = 15
+@test8 = @eval_cps(@env_empty)(#KId)(#Let{#Lam{#Add{#Var{0}, #Cst{10}}}, #App{#Var{0}, #Cst{5}}})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #CON{@test4, #CON{@test5, #CON{@test6, #CON{@test7, #CON{@test8, #NIL}}}}}}}}

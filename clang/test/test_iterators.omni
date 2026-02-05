@@ -1,0 +1,55 @@
+;; TEST: iter-map - map function over list
+;; EXPECT: (2 4 6)
+(iter-map (lambda [x] (* x 2)) '(1 2 3))
+
+;; TEST: iter-filter - filter elements
+;; EXPECT: (2 4)
+(iter-filter (lambda [x] (= 0 (% x 2))) '(1 2 3 4 5))
+
+;; TEST: take-while - take while predicate is true
+;; EXPECT: (1 2 3)
+(take-while (lambda [x] (< x 4)) '(1 2 3 4 5))
+
+;; TEST: drop-while - drop while predicate is true
+;; EXPECT: (4 5)
+(drop-while (lambda [x] (< x 4)) '(1 2 3 4 5))
+
+;; TEST: chain - concatenate lists
+;; EXPECT: (1 2 3 4 5 6)
+(chain '(1 2 3) '(4 5 6))
+
+;; TEST: enumerate - add indices to elements
+;; EXPECT: ((0 a) (1 b) (2 c))
+(enumerate '(a b c))
+
+;; TEST: fold - reduce with function
+;; EXPECT: 15
+(fold (lambda [a] [b] (+ a b)) 0 '(1 2 3 4 5))
+
+;; TEST: find - find first matching element
+;; EXPECT: 3
+(find (lambda [x] (> x 2)) '(1 2 3 4 5))
+
+;; TEST: any? - any element matches predicate
+;; EXPECT: true
+(any? (lambda [x] (> x 3)) '(1 2 3 4 5))
+
+;; TEST: any? - none match predicate
+;; EXPECT: false
+(any? (lambda [x] (> x 10)) '(1 2 3 4 5))
+
+;; TEST: all? - all elements match predicate
+;; EXPECT: true
+(all? (lambda [x] (< x 10)) '(1 2 3 4 5))
+
+;; TEST: all? - not all match predicate
+;; EXPECT: false
+(all? (lambda [x] (< x 3)) '(1 2 3 4 5))
+
+;; TEST: nth - get element at index
+;; EXPECT: c
+(nth 2 '(a b c d e))
+
+;; TEST: flat-map - map and flatten
+;; EXPECT: (1 1 2 2 3 3)
+(flat-map (lambda [x] (list x x)) '(1 2 3))

@@ -1,0 +1,12 @@
+;; Debug effect handling step by step
+
+;; Step 1: Just the handle with a constant body (no perform)
+;; This should work
+(handle 999 (ask [p r] 888))
+
+;; Step 2: handle with perform that has nothing payload
+;; This worked before
+(handle (perform ask nothing) (ask [p r] 42))
+
+;; Step 3: The failing case - perform with non-nothing payload
+(handle (perform ask 5) (ask [p r] 777))

@@ -1,0 +1,51 @@
+// Tiny CPS test with Add - using helper functions
+@env_empty = #NIL
+@env_extend = λ&env. λ&val. #CON{val, env}
+
+@env_get = λ&env. λ&idx.
+  λ{
+    #NIL: #Err{#sym_unbound}
+    #CON: λ&h. λ&t. λ{0: h; _: λ&u_. @env_get(t)((idx - 1))}(idx)
+  }(env)
+
+@unwrap = λ&v. λ{#Cst: λ&n. n; _: λ&u_. 0}(v)
+
+// Continuation helper for Add: kont -> b -> env -> va -> result
+@add_cont1 = λ&kont. λ&b. λ&env. λ&va.
+  @eval_cps(env)(@add_cont2(kont)(va))(b)
+
+// Continuation helper for Add: kont -> va -> vb -> result
+@add_cont2 = λ&kont. λ&va. λ&vb.
+  (kont(#Cst{(@unwrap(va) + @unwrap(vb))}))
+
+// Continuation helper for Let: env -> kont -> body -> vv -> result
+@let_cont = λ&env. λ&kont. λ&body. λ&vv.
+  @eval_cps(@env_extend(env)(vv))(kont)(body)
+
+@eval_cps = λ&env. λ&kont. λ&expr.
+  λ{
+    #Cst: λ&n. (kont(#Cst{n}))
+    #Var: λ&i. (kont(@env_get(env)(i)))
+    #Let: λ&val. λ&body.
+      @eval_cps(env)(@let_cont(env)(kont)(body))(val)
+    #Add: λ&a. λ&b.
+      @eval_cps(env)(@add_cont1(kont)(b)(env))(a)
+    _ : λ&u_. #Err{#sym_unknown}
+  }(expr)
+
+// Test 1: constant
+@test1 = @eval_cps(@env_empty)(λ&v. v)(#Cst{42})
+
+// Test 2: var in env
+@test2 = @eval_cps(#CON{#Cst{7}, #NIL})(λ&v. v)(#Var{0})
+
+// Test 3: let [x 5] x
+@test3 = @eval_cps(@env_empty)(λ&v. v)(#Let{#Cst{5}, #Var{0}})
+
+// Test 4: (+ 3 4)
+@test4 = @eval_cps(@env_empty)(λ&v. v)(#Add{#Cst{3}, #Cst{4}})
+
+// Test 5: let [x 5] (+ x 3)  - this is the failing case
+@test5 = @eval_cps(@env_empty)(λ&v. v)(#Let{#Cst{5}, #Add{#Var{0}, #Cst{3}}})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #CON{@test4, #CON{@test5, #NIL}}}}}

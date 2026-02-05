@@ -1,0 +1,55 @@
+// Test variable capture in nested lambdas
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr. #Hdlr{tag, fn_expr}
+    _: λ&u_. h
+  }(h)
+
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Simpler test - just one level of nesting
+@test_simple = λ&m.
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    // handlers should be #NIL here
+    #Simple{
+      #hdl_len{@list_len(handlers)},
+      #is_nil{λ{#NIL: 1; _: λ&u_. 0}(handlers)}
+    }
+  }(m)
+
+@test1 = @test_simple(@menv_empty)
+
+// Test with expression matching
+@test_expr = λ&m. λ&exp.
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        // Inside here, what is handlers?
+        #HdleCase{
+          #hdlrs_len{@list_len(hdlrs)},
+          #handlers_len{@list_len(handlers)},
+          #handlers_is_nil{λ{#NIL: 1; _: λ&u_. 0}(handlers)}
+        }
+      _: λ&u_. #Other{}
+    }(exp)
+  }(m)
+
+@handler_def = #HDef{7522834, 99}
+@hdlrs = #CON{@handler_def, #NIL}
+@body = #Perf{0, 0}
+@expr = #Hdle{@hdlrs, @body}
+
+@test2 = @test_expr(@menv_empty)(@expr)
+
+@main = #CON{@test1, #CON{@test2, #NIL}}

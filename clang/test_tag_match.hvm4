@@ -1,0 +1,26 @@
+// Test tag matching with #Sym
+
+@omni_handler_matches = λ&handler. λ&tag.
+  // Extract numeric tag from #Sym{} if present
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. tag})(tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+// Test cases
+@handler = #Hdlr{7522834, 99}
+
+// Test 1: Match with plain number
+@test1 = @omni_handler_matches(@handler)(7522834)
+
+// Test 2: Match with #Sym{number}
+@test2 = @omni_handler_matches(@handler)(#Sym{7522834})
+
+// Test 3: Non-matching
+@test3 = @omni_handler_matches(@handler)(1234)
+
+// Test 4: Non-matching #Sym
+@test4 = @omni_handler_matches(@handler)(#Sym{1234})
+
+@main = #CON{@test1, #CON{@test2, #CON{@test3, #CON{@test4, #NIL}}}}

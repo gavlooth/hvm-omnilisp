@@ -1,0 +1,56 @@
+// Trace CPS evaluation step by step
+
+@list_len = λ&lst.
+  λ{#NIL: 0; #CON: λ&h. λ&t. (1 + @list_len(t))}(lst)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr. #Hdlr{tag, fn_expr}
+    _: λ&u_. h
+  }(h)
+
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@omni_list_append = λ&a. λ&b.
+  λ{#NIL: b; #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(b)}}(a)
+
+// Return debug tuple at each step, NOT continue to body
+@omni_eval_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdle: λ&hdlrs. λ&body.
+        // Just return debug info, don't continue
+        !!&evaluated_handlers = @omni_eval_handlers(#MEnv{env, handlers, parent, level})(hdlrs);
+        !!&old_handlers = handlers;
+        !!&new_handlers = @omni_list_append(evaluated_handlers)(handlers);
+        #Step{
+          #hdlrs_raw_len{@list_len(hdlrs)},
+          #eval_len{@list_len(evaluated_handlers)},
+          #old_len{@list_len(old_handlers)},
+          #new_len{@list_len(new_handlers)}
+        }
+
+      _ : λ&u_. #Other{e}
+    }(e)
+  }(menv)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+@handler_def = #HDef{7522834, 99}
+@hdlrs = #CON{@handler_def, #NIL}
+@body = #Perf{0, 0}
+@test_expr = #Hdle{@hdlrs, @body}
+
+// Check hdlrs length directly
+@test_hdlrs_len = @list_len(@hdlrs)
+
+// Run CPS eval
+@test = @omni_eval_cps(@menv_empty)(@test_expr)(λ&v. v)
+
+@main = #CON{#hdlrs_direct{@test_hdlrs_len}, #CON{@test, #NIL}}

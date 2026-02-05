@@ -1,0 +1,57 @@
+// Test that handlers are correctly scoped through CPS
+
+@omni_eval_handlers = λ&menv. λ&hdlrs.
+  λ{
+    #NIL: #NIL
+    #CON: λ&h. λ&t.
+      (λ&evaluated_h. #CON{evaluated_h, @omni_eval_handlers(menv)(t)})(@omni_eval_one_handler(menv)(h))
+  }(hdlrs)
+
+@omni_eval_one_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr. #Hdlr{tag, fn_expr}  // Simplified - don't eval fn
+    _: λ&u_. h
+  }(h)
+
+@omni_list_append = λ&a. λ&b.
+  λ{#NIL: b; #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(b)}}(a)
+
+// Minimal CPS evaluator that traces handlers
+@omni_eval_cps = λ&m. λ&exp. λ&k.
+  !!&menv = m; !!&kont = k; !!&e = exp;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Cst: λ&n. (kont(#Cst{n}))
+
+      #Add: λ&a. λ&b.
+        @omni_eval_cps(#MEnv{env, handlers, parent, level})(a)(λ&va.
+          @omni_eval_cps(#MEnv{env, handlers, parent, level})(b)(λ&vb.
+            (kont(#Cst{(va + vb)}))))
+
+      #Perf: λ&tag. λ&payload.
+        // Just return the handlers list to check
+        #Debug{#Perform, handlers, tag}
+
+      #Hdle: λ&hdlrs. λ&body.
+        (λ&evaluated_handlers.
+          (λ&new_handlers.
+            // Return debug info showing the new handlers
+            #Debug{#Handle, new_handlers, @omni_eval_cps(#MEnv{env, new_handlers, parent, level})(body)(kont)}
+          )(@omni_list_append(evaluated_handlers)(handlers))
+        )(@omni_eval_handlers(#MEnv{env, handlers, parent, level})(hdlrs))
+
+      _ : λ&u_. (kont(e))
+    }(e)
+  ; _ : λ&u_. #Err{#sym_cps}}(menv)
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Test expression:
+// (handle (perform 'ask 0) (ask [p r] (r 42)))
+@handler_def = #HDef{7522834, 99}  // Simplified: tag=7522834, fn=99
+@body = #Perf{#Cst{7522834}, #Cst{0}}
+@test_expr = #Hdle{#CON{@handler_def, #NIL}, @body}
+
+@test = @omni_eval_cps(@menv_empty)(@test_expr)(λ&v. v)
+
+@main = @test

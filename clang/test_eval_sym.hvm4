@@ -1,0 +1,26 @@
+// Test that #Cod/#Sym evaluation produces #Sym that can be matched
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Cod: λ&inner. @mock_eval(#MEnv{env, h, p, l})(inner)
+      #Sym: λ&s. #Sym{s}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Test eval produces #Sym
+@test_eval = @mock_eval(@menv_empty)(#Cod{#Sym{7522834}})
+
+// Test pattern match on eval result
+@test_match = λ{#Sym: λ&n. n; _: λ&u. 0}(@test_eval)
+
+// Test with strict binding
+@test_strict =
+  !!&v = @mock_eval(@menv_empty)(#Cod{#Sym{7522834}});
+  λ{#Sym: λ&n. n; _: λ&u. 0}(v)
+
+@main = #CON{@test_eval, #CON{@test_match, #CON{@test_strict, #NIL}}}

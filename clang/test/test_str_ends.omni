@@ -1,0 +1,38 @@
+;; test_str_ends.omni - Tests for string ends-with
+
+;; Str-ends? checks if string ends with suffix
+;; TEST: ends-with basic
+;; EXPECT: true
+(str-ends? "hello" "lo")
+
+;; TEST: ends-with single char
+;; EXPECT: true
+(str-ends? "hello" "o")
+
+;; TEST: ends-with whole string
+;; EXPECT: true
+(str-ends? "hello" "hello")
+
+;; TEST: ends-with empty suffix
+;; EXPECT: true
+(str-ends? "hello" "")
+
+;; TEST: ends-with not matching
+;; EXPECT: false
+(str-ends? "hello" "le")
+
+;; TEST: ends-with longer suffix
+;; EXPECT: false
+(str-ends? "hi" "hello")
+
+;; TEST: ends-with middle match
+;; EXPECT: false
+(str-ends? "hello" "ell")
+
+;; TEST: ends-with case sensitive
+;; EXPECT: false
+(str-ends? "hello" "LO")
+
+;; TEST: ends-with empty string
+;; EXPECT: true
+(str-ends? "" "")

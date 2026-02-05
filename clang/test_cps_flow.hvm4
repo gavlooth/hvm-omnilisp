@@ -1,0 +1,126 @@
+// Test CPS evaluation flow
+
+@menv_empty = #MEnv{#NIL, #NIL, #Noth, 0}
+
+// Basic operations
+@omni_env_extend = λ&env. λ&val. #CON{val, env}
+@omni_menv_extend = λ&menv. λ&new_env.
+  λ{#MEnv: λ&e. λ&h. λ&p. λ&l. #MEnv{new_env, h, p, l}}(menv)
+@omni_list_append = λ&lst1. λ&lst2.
+  λ{#NIL: lst2; #CON: λ&h. λ&t. #CON{h, @omni_list_append(t)(lst2)}}(lst1)
+
+// Simplified eval
+@mock_eval = λ&menv. λ&exp.
+  λ{#MEnv: λ&env. λ&h. λ&p. λ&l.
+    λ{
+      #Lam: λ&body. #Clo{env, body}
+      #Cod: λ&inner. @mock_eval(#MEnv{env, h, p, l})(inner)
+      #Sym: λ&s. #Sym{s}
+      #Cst: λ&n. #Cst{n}
+      _: λ&u. exp
+    }(exp)
+  }(menv)
+
+// Apply
+@mock_apply = λ&menv. λ&fn. λ&arg.
+  !!&fn_forced = fn;
+  λ{
+    #Clo: λ&cenv. λ&body.
+      (λ&new_env.
+        (λ&new_menv. @mock_eval(new_menv)(body))(@omni_menv_extend(menv)(new_env))
+      )(@omni_env_extend(cenv)(arg))
+    #Kont: λ&k. (k(arg))
+    _: λ&u. #Err{#sym_apply}
+  }(fn_forced)
+
+// Handler evaluation
+@eval_handler = λ&menv. λ&h.
+  λ{
+    #HDef: λ&tag. λ&fn_expr.
+      (λ&handler_fn. #Hdlr{tag, handler_fn})(@mock_eval(menv)(fn_expr))
+    _: λ&u. h
+  }(h)
+
+@eval_handlers = λ&menv. λ&hdlrs.
+  λ{#NIL: #NIL; #CON: λ&h. λ&t. #CON{@eval_handler(menv)(h), @eval_handlers(menv)(t)}}(hdlrs)
+
+// Handler matching
+@handler_matches = λ&handler. λ&tag.
+  !!&forced_tag = tag;
+  !!&tag_num = (λ{#Sym: λ&n. n; _: λ&u_. forced_tag})(forced_tag);
+  λ{
+    #Hdlr: λ&htag. λ&hfn. (htag == tag_num)
+    _: λ&u_. 0
+  }(handler)
+
+// Invoke handler
+@mock_invoke_handler = λ&menv. λ&handler. λ&payload. λ&resume_k.
+  !!&pay = payload;
+  !!&res_k = resume_k;
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Hdlr: λ&htag. λ&hfn.
+        @mock_apply(#MEnv{env, handlers, parent, level})(
+          @mock_apply(#MEnv{env, handlers, parent, level})(hfn)(pay)
+        )(res_k)
+      _: λ&u_. #Err{#sym_invoke_handler}
+    }(handler)
+  }(menv)
+
+// Find handler
+@mock_find_handler = λ&menv. λ&handlers. λ&tag. λ&payload. λ&resume_k.
+  !!&forced_tag = tag;
+  λ{
+    #NIL: #Err{#sym_nohandler}
+    #CON: λ&h. λ&t.
+      (λ&matched.
+        λ{
+          1: @mock_invoke_handler(menv)(h)(payload)(resume_k)
+          _: λ&u_. @mock_find_handler(menv)(t)(forced_tag)(payload)(resume_k)
+        }(matched)
+      )(@handler_matches(h)(forced_tag))
+  }(handlers)
+
+// Perform CPS
+@mock_perform_cps = λ&menv. λ&tag. λ&payload. λ&resume_k.
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    @mock_find_handler(#MEnv{env, handlers, parent, level})(handlers)(tag)(payload)(resume_k)
+  }(menv)
+
+// CPS eval
+@mock_eval_cps = λ&menv. λ&exp. λ&kont.
+  λ{#MEnv: λ&env. λ&handlers. λ&parent. λ&level.
+    λ{
+      #Cst: λ&n. (kont(#Cst{n}))
+      #Sym: λ&s. (kont(#Sym{s}))
+      #Perf: λ&tag. λ&payload.
+        // Force evaluation of tag and payload before perform
+        !!&tag_val = @mock_eval(#MEnv{env, handlers, parent, level})(tag);
+        !!&pay_val = @mock_eval(#MEnv{env, handlers, parent, level})(payload);
+        !!&resume_k = #Kont{kont};
+        @mock_perform_cps(#MEnv{env, handlers, parent, level})(tag_val)(pay_val)(resume_k)
+      _: λ&u. (kont(@mock_eval(#MEnv{env, handlers, parent, level})(exp)))
+    }(exp)
+  }(menv)
+
+// Handle CPS
+@mock_handle_cps = λ&menv. λ&handlers. λ&body. λ&k.
+  λ{#MEnv: λ&env. λ&old_handlers. λ&parent. λ&level.
+    // Step 1: evaluate handlers
+    !!&evaluated_handlers = @eval_handlers(#MEnv{env, old_handlers, parent, level})(handlers);
+    // Step 2: append to existing handlers
+    !!&new_handlers = @omni_list_append(evaluated_handlers)(old_handlers);
+    // Step 3: create new menv
+    !!&new_menv = #MEnv{env, new_handlers, parent, level};
+    // Step 4: evaluate body in CPS
+    @mock_eval_cps(new_menv)(body)(k)
+  }(menv)
+
+// Test expression
+@handlers_def = #CON{#HDef{7522834, #Lam{#Lam{#Cst{999}}}}, #NIL}
+@body_perf = #Perf{#Cod{#Sym{7522834}}, #Cst{5}}
+
+// Test
+@result = @mock_handle_cps(@menv_empty)(@handlers_def)(@body_perf)(λ&v. v)
+
+@main = @result
