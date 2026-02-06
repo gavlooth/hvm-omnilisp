@@ -1,0 +1,18 @@
+;; test_module_import.omni - Module import test
+
+;; Define a module
+(module utils
+  (export double triple)
+  
+  (define double [x]
+    (* x 2))
+  
+  (define triple [x]
+    (* x 3)))
+
+;; Import and use
+(import utils)
+
+;; TEST: use imported function
+;; EXPECT: 10
+(utils/double 5)

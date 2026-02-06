@@ -1,0 +1,12 @@
+;; test_module_simple.omni - Simple module test
+
+;; TEST: Define a simple module
+;; EXPECT: #Mod{...}
+(module math
+  (export add sub)
+  
+  (define add [x] [y]
+    (+ x y))
+  
+  (define sub [x] [y]
+    (- x y)))

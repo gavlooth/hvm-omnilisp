@@ -2290,6 +2290,26 @@ fn Term parse_omni_atom(PState *s) {
     if (omni_symbol_is(s, sym_start, sym_len, "nothing")) return omni_nothing();
     if (omni_symbol_is(s, sym_start, sym_len, "nil")) return omni_nil();
 
+    // Check for qualified name: module/name
+    u32 slash_pos = 0;
+    int has_slash = 0;
+    for (u32 i = 0; i < sym_len; i++) {
+      if (s->src[sym_start + i] == '/') {
+        slash_pos = i;
+        has_slash = 1;
+        break;
+      }
+    }
+
+    if (has_slash && slash_pos > 0 && slash_pos < sym_len - 1) {
+      // Split into module and name
+      u32 mod_nick = omni_symbol_nick(s, sym_start, slash_pos);
+      u32 name_nick = omni_symbol_nick(s, sym_start + slash_pos + 1, sym_len - slash_pos - 1);
+      
+      // Create #Qual{module_nick, name_nick}
+      return omni_ctr2(OMNI_NAM_QUAL, term_new_num(mod_nick), term_new_num(name_nick));
+    }
+
     // Note: _ in expression context is treated as a regular symbol.
     // In pattern context, _ is a wildcard (handled by parse_omni_pattern).
     // For pipe argument positioning, use flip/partial instead of placeholder.
