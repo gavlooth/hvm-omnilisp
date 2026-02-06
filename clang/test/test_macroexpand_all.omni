@@ -1,17 +1,14 @@
-;; test_macroexpand_all.lisp - Tests for recursive macro expansion
+;; test_macroexpand_all.omni - Tests for recursive macro expansion
 
 ;; Define nested macros
-(define-syntax inc
-  (syntax-rules ()
-    ((inc x) (+ x 1))))
+(define [syntax inc]
+  [(inc ?x) (+ ?x 1)])
 
-(define-syntax double
-  (syntax-rules ()
-    ((double x) (* x 2))))
+(define [syntax double]
+  [(double ?x) (* ?x 2)])
 
-(define-syntax inc-and-double
-  (syntax-rules ()
-    ((inc-and-double x) (double (inc x)))))
+(define [syntax inc-and-double]
+  [(inc-and-double ?x) (double (inc ?x))])
 
 ;; TEST: macroexpand-all fully expands
 ;; EXPECT: (* (+ x 1) 2)
@@ -26,9 +23,8 @@
 (macroexpand-all '(let [x 5] (inc-and-double x)))
 
 ;; Triple nesting
-(define-syntax triple-inc
-  (syntax-rules ()
-    ((triple-inc x) (inc (inc (inc x))))))
+(define [syntax triple-inc]
+  [(triple-inc ?x) (inc (inc (inc ?x)))])
 
 ;; TEST: deeply nested expansion
 ;; EXPECT: (+ (+ (+ x 1) 1) 1)

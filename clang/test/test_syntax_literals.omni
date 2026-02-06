@@ -1,61 +1,61 @@
-;; test_syntax_literals.lisp - Tests for syntax-rules literals
+;; test_syntax_literals.omni - Tests for literal keywords in macros
 
-;; Literals in syntax-rules are matched exactly
+;; Literals are matched exactly, not as pattern variables
 ;; TEST: basic literal keyword
 ;; EXPECT: :matched
 (do
-  (define-syntax my-if
-    :literals (then else)
-    [(_ cond then t else e) `(if ,cond ,t ,e)])
+  (define [syntax my-if]
+    [literals then else]
+    [(my-if ?cond then ?t else ?e) `(if ,?cond ,?t ,?e)])
   (my-if true then :matched else :not))
 
 ;; TEST: literal prevents binding
 ;; EXPECT: :yes
 (do
-  (define-syntax check-lit
-    :literals (yes)
-    [(_ yes) :yes]
-    [(_ x) :no])
+  (define [syntax check-lit]
+    [literals yes]
+    [(check-lit yes) :yes]
+    [(check-lit ?x) :no])
   (check-lit yes))
 
 ;; TEST: non-literal binds variable
 ;; EXPECT: 42
 (do
-  (define-syntax check-lit
-    :literals (yes)
-    [(_ yes) :literal]
-    [(_ x) x])
+  (define [syntax check-lit]
+    [literals yes]
+    [(check-lit yes) :literal]
+    [(check-lit ?x) ?x])
   (check-lit 42))
 
 ;; TEST: multiple literals
 ;; EXPECT: (3 "hello")
 (do
-  (define-syntax config
-    :literals (port host)
-    [(_ port p host h) `(list ,p ,h)])
+  (define [syntax config]
+    [literals port host]
+    [(config port ?p host ?h) `(list ,?p ,?h)])
   (config port 3 host "hello"))
 
 ;; TEST: literal in nested position
 ;; EXPECT: :found
 (do
-  (define-syntax find-key
-    :literals (key)
-    [(_ (key v) ...) `(list ,@v)]
-    [(_ _) :not-found])
+  (define [syntax find-key]
+    [literals key]
+    [(find-key (key ?v) ...) `(list ,@?v)]
+    [(find-key ?_) :not-found])
   (if (list? (find-key (key 1) (key 2))) :found :error))
 
 ;; TEST: arrow as literal
 ;; EXPECT: (lambda [x] (+ x 1))
 (do
-  (define-syntax fn-arrow
-    :literals (=>)
-    [(_ args => body) `(lambda ,args ,body)])
+  (define [syntax fn-arrow]
+    [literals =>]
+    [(fn-arrow ?args => ?body) `(lambda ,?args ,?body)])
   (fn-arrow [x] => (+ x 1)))
 
 ;; TEST: colon as literal
 ;; EXPECT: #{"name" "test" "value" 42}
 (do
-  (define-syntax dict-lit
-    :literals (:)
-    [(_ (k : v) ...) `(dict ,@(interleave k v))])
+  (define [syntax dict-lit]
+    [literals :]
+    [(dict-lit (?k : ?v) ...) `(dict ,@(interleave ?k ?v))])
   (dict-lit ("name" : "test") ("value" : 42)))

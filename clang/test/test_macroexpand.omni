@@ -1,17 +1,14 @@
-;; test_macroexpand.lisp - Tests for macroexpand
+;; test_macroexpand.omni - Tests for macroexpand
 
 ;; Define test macros
-(define-syntax double
-  (syntax-rules ()
-    ((double x) (* x 2))))
+(define [syntax double]
+  [(double ?x) (* ?x 2)])
 
-(define-syntax square
-  (syntax-rules ()
-    ((square x) (* x x))))
+(define [syntax square]
+  [(square ?x) (* ?x ?x)])
 
-(define-syntax quad
-  (syntax-rules ()
-    ((quad x) (double (double x)))))
+(define [syntax quad]
+  [(quad ?x) (double (double ?x))])
 
 ;; TEST: macroexpand simple
 ;; EXPECT: (* x 2)
