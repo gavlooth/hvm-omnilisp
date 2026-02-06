@@ -1668,6 +1668,131 @@ fn Term parse_omni_quoted_data(PState *s) {
 }
 
 // =============================================================================
+// Quasiquote Data Parsing
+// =============================================================================
+
+// Forward declaration
+fn Term parse_omni_quasiquoted_data(PState *s);
+
+// Parse quasiquoted data - like quoted data but handles unquote/unquote-splicing
+fn Term parse_omni_quasiquoted_data(PState *s) {
+  omni_skip(s);
+  char c = parse_peek(s);
+
+  // Unquote: ,expr - parse as regular expression
+  if (c == ',') {
+    parse_advance(s);
+    if (parse_peek(s) == '@') {
+      // Unquote-splicing: ,@expr
+      parse_advance(s);
+      Term unquoted = parse_omni_expr(s);  // Parse as full expression
+      return omni_ctr1(OMNI_NAM_UQS, unquoted);
+    }
+    // Regular unquote: ,expr
+    Term unquoted = parse_omni_expr(s);  // Parse as full expression
+    return omni_ctr1(OMNI_NAM_UQ, unquoted);
+  }
+
+  // Nested quasiquote
+  if (c == '`') {
+    parse_advance(s);
+    Term inner = parse_omni_quasiquoted_data(s);
+    return omni_ctr1(OMNI_NAM_QQ, inner);
+  }
+
+  // List: (...)
+  if (c == '(') {
+    parse_advance(s);
+    omni_skip(s);
+
+    if (parse_peek(s) == ')') {
+      parse_advance(s);
+      return omni_nil();
+    }
+
+    Term result = omni_nil();
+    Term *tail = &result;
+    while (parse_peek(s) != ')' && !parse_at_end(s)) {
+      Term elem = parse_omni_quasiquoted_data(s);  // Recursive quasiquote parse
+      Term cell = omni_cons(elem, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ')');
+    return result;
+  }
+
+  // Array: [...]
+  if (c == '[') {
+    parse_advance(s);
+    omni_skip(s);
+
+    Term items = omni_nil();
+    Term *tail = &items;
+    while (parse_peek(s) != ']' && !parse_at_end(s)) {
+      Term item = parse_omni_quasiquoted_data(s);  // Recursive quasiquote parse
+      Term cell = omni_cons(item, omni_nil());
+      *tail = cell;
+      tail = &HEAP[term_val(cell) + 1];
+    }
+    omni_expect_char(s, ']');
+    return omni_ctr1(OMNI_NAM_ARR, items);
+  }
+
+  // Number
+  Term num_out;
+  if (omni_parse_number(s, &num_out)) {
+    return num_out;
+  }
+
+  // String
+  if (c == '"') {
+    parse_advance(s);
+    Term chars = omni_nil();
+    Term *tail = &chars;
+    while (parse_peek(s) != '"' && !parse_at_end(s)) {
+      char ch = parse_peek(s);
+      if (ch == '\\') {
+        parse_advance(s);
+        ch = parse_peek(s);
+        switch (ch) {
+          case 'n': ch = '\n'; break;
+          case 't': ch = '\t'; break;
+          case 'r': ch = '\r'; break;
+          case '\\': ch = '\\'; break;
+          case '"': ch = '"'; break;
+          default: break;
+        }
+      }
+      Term chr_cell = omni_cons(omni_chr((u32)ch), omni_nil());
+      *tail = chr_cell;
+      tail = &HEAP[term_val(chr_cell) + 1];
+      parse_advance(s);
+    }
+    omni_expect_char(s, '"');
+    return chars;
+  }
+
+  // Symbol - use nick encoding
+  u32 sym_start, sym_len;
+  if (omni_parse_symbol_raw(s, &sym_start, &sym_len)) {
+    // Check special values
+    if (omni_symbol_is(s, sym_start, sym_len, "true")) return omni_true();
+    if (omni_symbol_is(s, sym_start, sym_len, "false")) return omni_false();
+    if (omni_symbol_is(s, sym_start, sym_len, "nothing")) return omni_nothing();
+    if (omni_symbol_is(s, sym_start, sym_len, "nil")) return omni_nil();
+
+    // Use full hash for symbols
+    u32 hash = omni_symbol_hash(s, sym_start, sym_len);
+    omni_symtab_register(hash, s->src, sym_start, sym_len);
+    return omni_sym(hash);
+  }
+
+  parse_error(s, "quasiquoted data", c);
+  return omni_nil();
+}
+
+// =============================================================================
 // Expression Parsing
 // =============================================================================
 
@@ -1709,12 +1834,12 @@ fn Term parse_omni_atom(PState *s) {
   // Quasiquote: `expr
   if (c == '`') {
     parse_advance(s);
-    Term quoted = parse_omni_atom(s);
+    Term quoted = parse_omni_quasiquoted_data(s);  // Use quasiquote parser!
     // Quasiquote - allows unquoting inside
     return omni_ctr1(OMNI_NAM_QQ, quoted);
   }
 
-  // Unquote: ,expr or ,@expr
+  // Unquote: ,expr or ,@expr (only valid inside quasiquote)
   if (c == ',') {
     parse_advance(s);
     if (parse_peek(s) == '@') {
