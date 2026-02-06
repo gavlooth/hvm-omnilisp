@@ -34,7 +34,7 @@
 |---------|----------|----------|
 | **Type System** | Full inference, annotations, checking | High |
 | **Gradual Multiple Dispatch** | Arity + type-based, compile-time when typed | High |
-| **Macro System** | Hygienic macros, syntax-rules | Medium |
+| **Macro System** | Hygienic macros, define [syntax ...] | Medium |
 | **Channels (CSP)** | Buffered/unbuffered, send/recv | Optional (defer) |
 | **Destructuring** | In let, match, function params | Medium |
 | **Collections** | Arrays, dicts, sets | High |

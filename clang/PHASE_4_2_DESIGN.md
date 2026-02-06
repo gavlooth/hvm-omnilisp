@@ -1,21 +1,23 @@
 # Phase 4.2: Macro System
 
 **Status:** Design Phase  
-**Date:** 2026-02-05  
+**Date:** 2026-02-06 (Updated)  
 **Depends on:** Phase 4.1 (Module System)
 
 ## Overview
 
 The macro system provides compile-time metaprogramming through:
-- **Pattern-based** transformations (syntax-rules)
-- **Procedural** macros (define-syntax with full code)
+- **Pattern-based** transformations using `define [syntax ...]`
 - **Hygienic** expansion (prevents variable capture)
+- **Quasiquote** for code generation
 - **Reader macros** (syntax extensions)
+
+**OmniLisp has ONE macro system**, not two. All macros use `define [syntax name]` with pattern matching.
 
 ## Motivation
 
 **Without macros:**
-```scheme
+```lisp
 ;; Repetitive code
 (if (< x 0)
   (do
@@ -31,31 +33,28 @@ The macro system provides compile-time metaprogramming through:
 ```
 
 **With macros:**
-```scheme
+```lisp
 ;; Define once, use everywhere
-(define-syntax assert-range
-  [(_ val min max msg)
-   `(if (or (< ,val ,min) (> ,val ,max))
+(define [syntax assert-range]
+  [(assert-range ?val ?min ?max ?msg)
+   `(if (or (< ,?val ,?min) (> ,?val ,?max))
       (do
-        (perform log ,msg)
-        (error ,msg))
-      ,val)])
+        (perform log ,?msg)
+        (error ,?msg))
+      ,?val)])
 
 (sqrt (assert-range x 0 inf "negative value"))
 (process (assert-range y 0 100 "too large"))
 ```
 
-## Macro Types
+## Macro Definition Syntax
 
-### 1. Pattern-Based Macros (syntax-rules)
+### Basic Pattern Matching
 
-Simple pattern matching and substitution:
-
-```scheme
-(define-syntax when
-  (syntax-rules ()
-    [(_ test body ...)
-     (if test (do body ...) unit)]))
+```lisp
+(define [syntax when]
+  [(when ?test ?body ...)
+   (if ?test (do ?body ...) nothing)])
 
 ;; Usage
 (when (> x 0)
@@ -67,43 +66,73 @@ Simple pattern matching and substitution:
   (do
     (print "positive")
     (increment-counter))
-  unit)
+  nothing)
 ```
 
-### 2. Procedural Macros (define-syntax)
+### Pattern Variables
 
-Full code generation with quasiquote:
+| Syntax | Meaning |
+|--------|---------|
+| `?name` | Capture single form |
+| `?name ...` | Capture zero or more forms |
+| `literal` | Match exact symbol |
 
-```scheme
-(define-syntax for
-  [(_ [var start end] body ...)
+### Multiple Patterns
+
+```lisp
+(define [syntax my-and]
+  [(my-and) true]
+  [(my-and ?x) ?x]
+  [(my-and ?x ?rest ...)
+   (if ?x (my-and ?rest ...) false)])
+```
+
+## Code Generation with Quasiquote
+
+### Quasiquote Basics
+
+```lisp
+`expr         ; Quote entire expression
+,expr         ; Unquote (evaluate) expr
+,@expr        ; Unquote-splice (spread list)
+```
+
+### Example: For Loop
+
+```lisp
+(define [syntax for]
+  [(for [?var ?start ?end] ?body ...)
    (let ([loop-name (gensym "loop")])
      `(letrec ([,loop-name
-                 (lambda [,var]
-                   (if (< ,var ,end)
-                     (do ,@body
-                         (,loop-name (+ ,var 1)))
-                     unit))])
-        (,loop-name ,start)))])
+                 (lambda [,?var]
+                   (if (< ,?var ,?end)
+                     (do ,@?body
+                         (,loop-name (+ ,?var 1)))
+                     nothing))])
+        (,loop-name ,?start)))])
 
 ;; Usage
 (for [i 0 10]
   (print i))
 ```
 
-### 3. Reader Macros
+## Literal Keywords
 
-Syntax extensions at read time:
+Specify keywords that must match exactly:
 
-```scheme
-;; Define #[...] as set literal
-(define-reader-macro "[" 
-  (lambda [reader]
-    (let ([items (read-delimited reader "]")])
-      `(set ,@items))))
+```lisp
+(define [syntax cond]
+  [literals else]
+  [(cond (else ?body ...)) (do ?body ...)]
+  [(cond (?test ?result)) (if ?test ?result nothing)]
+  [(cond (?test ?result) ?rest ...)
+   (if ?test ?result (cond ?rest ...))])
 
 ;; Usage
-#[1 2 3 4]  ;; → (set 1 2 3 4)
+(cond
+  ((= x 0) "zero")
+  ((> x 0) "positive")
+  (else "negative"))
 ```
 
 ## Hygiene
@@ -111,52 +140,39 @@ Syntax extensions at read time:
 ### Problem: Variable Capture
 
 **Unhygienic macro:**
-```scheme
-(define-syntax swap
-  [(_ a b)
-   `(let ([temp ,a])
-      (set! ,a ,b)
-      (set! ,b temp))])
+```lisp
+(define [syntax swap]
+  [(swap ?a ?b)
+   `(let [temp ,?a]
+      (do (set! ,?a ,?b)
+          (set! ,?b temp)))])
 
-(let ([temp 5] [x 10] [y 20])
+(let [temp 5] [x 10] [y 20]
   (swap x y)
-  temp)  ;; Returns 10, not 5! 'temp' was captured
+  temp)  ; Returns 10, not 5! 'temp' was captured
 ```
 
 **Hygienic solution:**
-```scheme
-(define-syntax swap
-  [(_ a b)
+```lisp
+(define [syntax swap]
+  [(swap ?a ?b)
    (let ([temp-var (gensym "temp")])
-     `(let ([,temp-var ,a])
-        (set! ,a ,b)
-        (set! ,b ,temp-var)))])
+     `(let [,temp-var ,?a]
+        (do (set! ,?a ,?b)
+            (set! ,?b ,temp-var))))])
 
-(let ([temp 5] [x 10] [y 20])
+(let [temp 5] [x 10] [y 20]
   (swap x y)
-  temp)  ;; Returns 5 - unique temp variable
+  temp)  ; Returns 5 - unique temp variable
 ```
 
 ### Gensym
 
 Generate unique symbols:
 
-```scheme
-(gensym)         ;; → g__1234
-(gensym "loop")  ;; → loop__5678
-```
-
-### Identifier Comparison
-
-```scheme
-;; bound-identifier=?
-;; Compares binding identity
-(bound-identifier=? x x)      ;; → true
-(bound-identifier=? x y)      ;; → false
-
-;; free-identifier=?
-;; Compares symbolic names
-(free-identifier=? 'map 'map)  ;; → true
+```lisp
+(gensym)         ; → g__1234
+(gensym "loop")  ; → loop__5678
 ```
 
 ## Macro Expansion
@@ -185,151 +201,146 @@ expand(expr):
 
 ### Example Trace
 
-```scheme
+```lisp
 (when (> x 0) (print x) (increment))
 
 → expand (when ...)
-→ (if (> x 0) (do (print x) (increment)) unit)
+→ (if (> x 0) (do (print x) (increment)) nothing)
 → expand (if ...)
-→ (if (> x 0) (do (print x) (increment)) unit)  # Primitive, done
+→ (if (> x 0) (do (print x) (increment)) nothing)  # Primitive, done
 ```
 
 ## Standard Macros
 
 ### Control Flow
 
-```scheme
-;; when - conditional with implicit begin
-(define-syntax when
-  (syntax-rules ()
-    [(_ test body ...) 
-     (if test (do body ...) unit)]))
+```lisp
+;; when - conditional with implicit do
+(define [syntax when]
+  [(when ?test ?body ...)
+   (if ?test (do ?body ...) nothing)])
 
 ;; unless - inverted conditional
-(define-syntax unless
-  (syntax-rules ()
-    [(_ test body ...) 
-     (if test unit (do body ...))]))
+(define [syntax unless]
+  [(unless ?test ?body ...)
+   (if ?test nothing (do ?body ...))])
 
 ;; cond - multi-way conditional
-(define-syntax cond
-  (syntax-rules (else)
-    [(_ [else body ...]) (do body ...)]
-    [(_ [test body ...]) (if test (do body ...) unit)]
-    [(_ [test body ...] rest ...)
-     (if test (do body ...) (cond rest ...))]))
+(define [syntax cond]
+  [literals else]
+  [(cond (else ?body ...)) (do ?body ...)]
+  [(cond (?test ?body ...))
+   (if ?test (do ?body ...) nothing)]
+  [(cond (?test ?body ...) ?rest ...)
+   (if ?test (do ?body ...) (cond ?rest ...))])
 ```
 
 ### Binding
 
-```scheme
+```lisp
 ;; let* - sequential let
-(define-syntax let*
-  (syntax-rules ()
-    [(_ () body ...) (do body ...)]
-    [(_ ([name val] rest ...) body ...)
-     (let [name val]
-       (let* (rest ...) body ...))]))
+(define [syntax let*]
+  [(let* () ?body ...) (do ?body ...)]
+  [(let* ([?name ?val] ?rest ...) ?body ...)
+   (let [?name ?val]
+     (let* (?rest ...) ?body ...))])
 
 ;; and - short-circuit conjunction
-(define-syntax and
-  (syntax-rules ()
-    [(_) true]
-    [(_ test) test]
-    [(_ test rest ...)
-     (if test (and rest ...) false)]))
+(define [syntax and]
+  [(and) true]
+  [(and ?test) ?test]
+  [(and ?test ?rest ...)
+   (if ?test (and ?rest ...) false)])
+
+;; or - short-circuit disjunction
+(define [syntax or]
+  [(or) false]
+  [(or ?test) ?test]
+  [(or ?test ?rest ...)
+   (let [temp ?test]
+     (if temp temp (or ?rest ...)))])
 ```
 
 ### Loops
 
-```scheme
+```lisp
 ;; while - imperative loop
-(define-syntax while
-  [(_ test body ...)
+(define [syntax while]
+  [(while ?test ?body ...)
    (let ([loop (gensym "while")])
      `(letrec ([,loop (lambda []
-                        (if ,test
-                          (do ,@body (,loop))
-                          unit))])
+                        (if ,?test
+                          (do ,@?body (,loop))
+                          nothing))])
         (,loop)))])
 
 ;; for-each - iterate over list
-(define-syntax for-each
-  [(_ [var lst] body ...)
+(define [syntax for-each]
+  [(for-each [?var ?lst] ?body ...)
    `(letrec ([loop (lambda [remaining]
                      (match remaining
-                       () unit
+                       () nothing
                        (h .. t) (do
-                                 (let [,var h]
-                                   ,@body)
+                                 (let [,?var h]
+                                   ,@?body)
                                  (loop t))))])
-      (loop ,lst))])
+      (loop ,?lst))])
 ```
 
 ## Advanced Features
 
-### Syntax Parameters
+### Nested Ellipsis
 
-Establish compile-time parameters:
+```lisp
+(define [syntax matrix]
+  [(matrix [[?val ...] ...])
+   `[,@(list ,@?val ...) ...]])
 
-```scheme
-(define-syntax-parameter it
-  (lambda [stx] (error "it not in context")))
+;; Usage
+(matrix [[1 2 3] [4 5 6]])
+;; → [[1 2 3] [4 5 6]]
+```
 
-(define-syntax aif  ; anaphoric if
-  [(_ test then else)
-   `(let [result ,test]
-      (syntax-parameterize ([it (lambda [stx] 'result)])
-        (if result ,then ,else)))])
+### Anaphoric Macros
+
+```lisp
+(define [syntax aif]  ; anaphoric if
+  [(aif ?test ?then ?else)
+   `(let [it ,?test]
+      (if it ,?then ,?else))])
 
 ;; Usage
 (aif (find 42 my-list)
-  (print it)  ; 'it' refers to result
+  (print it)  ; 'it' bound to result
   (print "not found"))
 ```
 
-### Syntax Classes
+## Reader Macros
 
-Pattern matching with constraints:
+Syntax extensions at read time:
 
-```scheme
-(define-syntax-class identifier
-  #:description "an identifier"
-  (pattern x:id))
+```lisp
+;; Define #[...] as set literal
+(define-reader-macro "["
+  (lambda [reader]
+    (let ([items (read-delimited reader "]")])
+      `(set ,@items))))
 
-(define-syntax-class expr
-  #:description "an expression"
-  (pattern e))
-
-(define-syntax my-let
-  [(_ ([name:identifier val:expr] ...) body:expr ...)
-   `(let ,(map list names vals) ,@body)])
-```
-
-### Ellipsis Patterns
-
-Repetition in patterns:
-
-```scheme
-(define-syntax let
-  (syntax-rules ()
-    [(_ ([name val] ...) body ...)
-     ((lambda [name ...] body ...) val ...)]))
-
-;; ... means "zero or more"
+;; Usage
+#[1 2 3 4]  ; → (set 1 2 3 4)
 ```
 
 ## Module Integration
 
 ### Macro Export
 
-```scheme
+```lisp
 (module mylib
   (export when unless defstruct)
   
-  (define-syntax when ...)
-  (define-syntax unless ...)
-  (define-syntax defstruct ...))
+  (define [syntax when] ...)
+  (define [syntax unless] ...)
+  (define [syntax defstruct] ...))
 
 ;; Import macros
 (import mylib)
@@ -349,29 +360,17 @@ Repetition in patterns:
 ### Phase 4.2.1: Macro Representation
 
 ```c
-typedef enum {
-    MACRO_SYNTAX_RULES,   // Pattern-based
-    MACRO_PROCEDURAL,     // Full code
-    MACRO_READER,         // Read-time
-} MacroKind;
-
 typedef struct SyntaxRule {
-    Term *pattern;
-    Term *template;
-    char **literals;    // Literal identifiers
+    Term *pattern;        // e.g., (when ?test ?body ...)
+    Term *template;       // e.g., (if ?test (do ?body ...) nothing)
+    char **literals;      // Literal identifiers (e.g., "else")
     size_t literal_count;
 } SyntaxRule;
 
 typedef struct Macro {
-    char *name;
-    MacroKind kind;
-    union {
-        struct {
-            SyntaxRule *rules;
-            size_t rule_count;
-        } syntax_rules;
-        Term *procedure;    // Transformer function
-    } data;
+    char *name;           // e.g., "when"
+    SyntaxRule *rules;    // Pattern-template pairs
+    size_t rule_count;
 } Macro;
 ```
 
@@ -379,8 +378,8 @@ typedef struct Macro {
 
 ```c
 typedef struct PatternMatch {
-    char **var_names;
-    Term **var_values;
+    char **var_names;     // e.g., ["?test", "?body"]
+    Term **var_values;    // Captured values
     size_t count;
 } PatternMatch;
 
@@ -458,32 +457,31 @@ Test files validating the macro system:
 - `test_syntax_pattern.omni` - Pattern matching
 - `test_syntax_ellipsis.omni` - Ellipsis patterns
 - `test_syntax_literals.omni` - Literal matching
-- `test_reader_macros.omni` - Reader extensions
 
 ## Examples
 
 ### Example 1: Assert Macro
 
-```scheme
-(define-syntax assert
-  [(_ condition message)
-   `(if (not ,condition)
-      (error (format "Assertion failed: ~a" ,message))
-      unit)])
+```lisp
+(define [syntax assert]
+  [(assert ?condition ?message)
+   `(if (not ,?condition)
+      (error (format "Assertion failed: ~a" ,?message))
+      nothing)])
 
 (assert (> x 0) "x must be positive")
 ```
 
 ### Example 2: With-Resource Macro
 
-```scheme
-(define-syntax with-resource
-  [(_ [var init] body ...)
+```lisp
+(define [syntax with-resource]
+  [(with-resource [?var ?init] ?body ...)
    (let ([cleanup (gensym "cleanup")])
-     `(let ([,var ,init]
-            [,cleanup (lambda [] (close ,var))])
+     `(let [,?var ,?init]
+            [,cleanup (lambda [] (close ,?var))]
         (try
-          (do ,@body)
+          (do ,@?body)
           (finally (,cleanup)))))])
 
 (with-resource [file (open "data.txt")]
@@ -492,17 +490,17 @@ Test files validating the macro system:
 
 ### Example 3: Memoization Macro
 
-```scheme
-(define-syntax defmemo
-  [(_ name [arg] body)
+```lisp
+(define [syntax defmemo]
+  [(defmemo ?name [?arg] ?body)
    (let ([cache (gensym "cache")])
      `(do
         (define ,cache (make-hash))
-        (define ,name [,arg]
-          (if (hash-has? ,cache ,arg)
-            (hash-get ,cache ,arg)
-            (let [result ,body]
-              (hash-set! ,cache ,arg result)
+        (define ,?name [,?arg]
+          (if (hash-has? ,cache ,?arg)
+            (hash-get ,cache ,?arg)
+            (let [result ,?body]
+              (hash-set! ,cache ,?arg result)
               result)))))])
 
 (defmemo fib [n]
@@ -512,14 +510,15 @@ Test files validating the macro system:
 
 ## Success Criteria
 
-- [ ] syntax-rules pattern matching
-- [ ] Procedural macros with quasiquote
+- [ ] `define [syntax ...]` pattern matching
+- [ ] Pattern variables with `?name` and `?name ...`
+- [ ] Literal keyword matching
+- [ ] Quasiquote code generation
 - [ ] Hygienic expansion with gensym
 - [ ] Recursive macro expansion
-- [ ] Ellipsis patterns
+- [ ] Ellipsis patterns (`...`)
 - [ ] Macro export/import
 - [ ] bound-identifier=? and free-identifier=?
-- [ ] Syntax parameters
 - [ ] Reader macros
 - [ ] All macro test files pass
 
@@ -532,7 +531,7 @@ Test files validating the macro system:
 
 ---
 
-**Implementation Approach:** Full hygienic macro system for HVM. C interpreter could support basic syntax-rules.
+**Implementation Approach:** Full hygienic macro system for HVM4.
 
 ---
 
